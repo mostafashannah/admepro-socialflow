@@ -5571,6 +5571,10 @@ function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canF
             {/* Admin/AM only — sends this media straight into the
                 client-facing comment thread as a link, same hand-off as
                 forwarding a comment attachment. Always confirms first. */}
+            {canForward && post.client_id && (asset.url||asset.data) && (
+              <AddToClientAssetsButton url={asset.url||asset.data} name={asset.name} type={(asset.type||"").startsWith("video")?"video":(asset.type||"").startsWith("image")?"image":"file"} clientId={post.client_id} clientName={post.client_name}
+                style={{height:20,borderRadius:5,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",fontSize:9,fontWeight:700,cursor:"pointer"}}/>
+            )}
             {canForward && onForward && (asset.url||asset.data) && (
               <button onClick={()=>{ if(confirm(`Forward "${asset.name||"this file"}" to the client-facing comments?`)) onForward(asset); }} style={{height:20,borderRadius:5,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",fontSize:9,fontWeight:700,cursor:"pointer"}}>
                 Forward to Client
@@ -7770,6 +7774,9 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                             Posts a fresh comment in the Client tab rather
                             than mutating this one, so the internal record
                             (who attached it, when) stays intact. */}
+                        {c.file_url && post.client_id && (currentUser?.role==="admin" || ["account_manager","account_director","account_executive"].includes(currentUser?.role)) && (
+                          <AddToClientAssetsButton url={c.file_url} name={c.file_name} type={c.file_type} clientId={post.client_id} clientName={post.client_name}/>
+                        )}
                         {c.file_url && onAddComment && (currentUser?.role==="admin" || ["account_manager","account_director","account_executive"].includes(currentUser?.role)) && (
                           <button onClick={()=>{ if(confirm(`Forward "${c.file_name||"this attachment"}" to the client-facing comments?`)) forwardAttachmentToClient(c); }} title="Forward attachment to client" style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",padding:2,display:"flex"}}>
                             <Ico d={Icons.forward||Icons.share||Icons.arrow} size={12} stroke="var(--text3)"/>
@@ -14217,6 +14224,110 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
 // and drilling into one reveals its subfolders, mirroring how FolderBrowser
 // itself navigates. allFolders is a flat list of every known folder path
 // (e.g. "2026-03", "2026-03/ProjectX") derived once by the caller.
+// Lets any media preview (post design files, comment attachments, library
+// cards) offer "Add to Client Assets" without threading assets/addAsset
+// through every component in between — App refreshes this each render and
+// the modal reads it when opened.
+const clientAssetsBridge = {assets:[], addAsset:null};
+
+function AddToClientAssetsModal({open, onClose, clientId, clientName, file}) {
+  const [path, setPath] = useState([]);
+  const [newName, setNewName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState("");
+  const [fileName, setFileName] = useState("");
+  useEffect(()=>{ if(open){ setPath([]); setNewName(""); setDone(""); setFileName(file?.name||""); } },[open]);
+  if(!open) return null;
+
+  const storageKey = `sf_extra_folders_${clientId}`;
+  let extra = [];
+  try { extra = JSON.parse(localStorage.getItem(storageKey)||"[]"); } catch(e){}
+  const root = CLIENT_ASSETS_FOLDER;
+  const cats = [
+    ...(clientAssetsBridge.assets||[]).filter(a=>(a.tags||[]).includes(`client_${clientId}`)).map(a=>a.category||""),
+    ...extra,
+  ].filter(c=>c===root||c.startsWith(root+"/"));
+  const fullPath = [root, ...path];
+  const children = [...new Set(cats.map(c=>c.split("/").filter(Boolean)).filter(segs=>segs.length>fullPath.length && fullPath.every((p,i)=>segs[i]===p)).map(segs=>segs[fullPath.length]))].sort();
+  const target = fullPath.join("/");
+
+  const createFolder = () => {
+    const name = newName.trim().replace(/\//g,"-");
+    if(!name) return;
+    const fp = [...fullPath, name].join("/");
+    try { if(!extra.includes(fp)) localStorage.setItem(storageKey, JSON.stringify([...extra, fp])); } catch(e){}
+    setPath([...path, name]); setNewName("");
+  };
+  const save = async () => {
+    if(!clientAssetsBridge.addAsset || !file?.url) return;
+    setSaving(true);
+    try {
+      // Keep the original extension if the new name dropped it, so the
+      // renamed file still opens/previews as the right type.
+      const origExt = (file.name||"").match(/\.[a-zA-Z0-9]{1,5}$/)?.[0] || "";
+      let finalName = fileName.trim() || file.name || "File";
+      if(origExt && !finalName.toLowerCase().endsWith(origExt.toLowerCase())) finalName += origExt;
+      await clientAssetsBridge.addAsset({name:finalName, file_url:file.url, file_type:file.type||"file", category:target, project_id:"", tags:[`client_${clientId}`], file_size:file.size||null});
+      setDone(`Added to ${target}`);
+      setTimeout(onClose, 900);
+    } catch(e) { alert("Couldn't add this file to Client Assets."); }
+    setSaving(false);
+  };
+
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"var(--surface)",borderRadius:14,padding:20,width:420,maxHeight:"75vh",display:"flex",flexDirection:"column",border:"1px solid var(--border)"}}>
+        <h3 style={{fontWeight:700,fontSize:15,color:"var(--text)",marginBottom:4}}>Add to Client Assets</h3>
+        <p style={{fontSize:12,color:"var(--text3)",marginBottom:8}}>{clientName?`Saving to ${clientName}'s shared files`:"Saving to the client's shared files"}</p>
+        <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",marginBottom:4}}>File name</label>
+        <input value={fileName} onChange={e=>setFileName(e.target.value)} style={{fontSize:13,padding:"8px 10px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text)",marginBottom:12}}/>
+        <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap",fontSize:12,marginBottom:10,paddingBottom:10,borderBottom:"1px solid var(--border)"}}>
+          <span onClick={()=>setPath([])} style={{cursor:"pointer",fontWeight:path.length===0?700:500,color:path.length===0?"var(--text1)":"var(--accent)"}}>{root}</span>
+          {path.map((seg,i)=>(
+            <React.Fragment key={i}>
+              <span style={{color:"var(--text3)"}}>/</span>
+              <span onClick={()=>setPath(path.slice(0,i+1))} style={{cursor:"pointer",fontWeight:i===path.length-1?700:500,color:i===path.length-1?"var(--text1)":"var(--accent)"}}>{seg}</span>
+            </React.Fragment>
+          ))}
+        </div>
+        <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:6,minHeight:80}}>
+          {children.length===0&&<p style={{fontSize:12,color:"var(--text3)",textAlign:"center",padding:"16px 0"}}>No subfolders here — add the file here or create a folder below</p>}
+          {children.map(name=>(
+            <div key={name} onClick={()=>setPath([...path,name])} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 10px",borderRadius:8,border:"1px solid var(--border)",cursor:"pointer",background:"var(--surface)"}}>
+              <span style={{fontSize:16}}>📁</span>
+              <span style={{fontSize:13,fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
+              <Ico d={Icons.arrow} size={12} stroke="var(--text3)"/>
+            </div>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:6,marginTop:12}}>
+          <input value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")createFolder();}} placeholder={`New folder inside ${path[path.length-1]||root}`} style={{flex:1,fontSize:12,padding:"8px 10px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text)"}}/>
+          <button onClick={createFolder} disabled={!newName.trim()} style={{fontSize:12,fontWeight:700,padding:"8px 12px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text)",cursor:newName.trim()?"pointer":"default",opacity:newName.trim()?1:0.5}}>+ Create</button>
+        </div>
+        <div style={{display:"flex",gap:8,marginTop:14}}>
+          <button onClick={onClose} style={{flex:1,fontSize:12,fontWeight:600,padding:"9px 0",borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text)",cursor:"pointer"}}>Cancel</button>
+          <button onClick={save} disabled={saving||!!done} style={{flex:2,fontSize:12,fontWeight:700,padding:"9px 0",borderRadius:8,border:"none",background:done?"#10b981":"var(--accent)",color:"#fff",cursor:"pointer"}}>
+            {done || (saving?"Adding…":`Add Here (${target})`)}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddToClientAssetsButton({url, name, type, size, clientId, clientName, style}) {
+  const [open, setOpen] = useState(false);
+  if(!clientId || !url) return null;
+  return (
+    <>
+      <button onClick={e=>{e.stopPropagation(); setOpen(true);}} title="Add to this client's shared Client Assets folder" style={style||{fontSize:11,color:"var(--text3)",fontWeight:600,background:"none",border:"none",cursor:"pointer",padding:0}}>
+        + Client Assets
+      </button>
+      <AddToClientAssetsModal open={open} onClose={()=>setOpen(false)} clientId={clientId} clientName={clientName} file={{url,name,type,size}}/>
+    </>
+  );
+}
+
 function FolderPickerModal({open, allFolders=[], initialPath="", onPick, onClose}) {
   const [path, setPath] = useState(()=>initialPath?initialPath.split("/").filter(Boolean):[]);
   useEffect(()=>{ if(open) setPath(initialPath?initialPath.split("/").filter(Boolean):[]); },[open, initialPath]);
@@ -14319,6 +14430,7 @@ function AssetCard({asset:a, proj, allFolders=[], onUpdate, onDelete, selected, 
               {a.file_url&&a.file_url!="#"&&<a href={a.file_url} download={a.name} target="_blank" rel="noreferrer" style={{fontSize:11,color:"var(--accent)",fontWeight:600,textDecoration:"none"}}>Download</a>}
               {onUpdate&&<button onClick={()=>setEditing(true)} style={{fontSize:11,color:"var(--text3)",fontWeight:600,background:"none",border:"none",cursor:"pointer",padding:0}}>Rename</button>}
               {onUpdate&&<button onClick={()=>setShowPicker(true)} style={{fontSize:11,color:"var(--text3)",fontWeight:600,background:"none",border:"none",cursor:"pointer",padding:0}}>Move</button>}
+              {onUpdate&&a.file_url&&a.file_url!="#"&&(()=>{ const ct=(a.tags||[]).find(t=>String(t).startsWith("client_")); return ct ? <AddToClientAssetsButton url={a.file_url} name={a.name} type={a.file_type} size={a.file_size} clientId={String(ct).slice(7)}/> : null; })()}
             </div>
           </>
         )}
@@ -48642,6 +48754,8 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
     logActivity("Asset Uploaded","clients",assetData.name||"","success","",currentUser?.email||"admin");
     return a;
   };
+
+  clientAssetsBridge.assets = data.assets; clientAssetsBridge.addAsset = addAsset;
 
   const updateAsset = async (id, patch) => {
     setData(d=>({...d, assets:d.assets.map(a=>a.id===id?{...a,...patch}:a)}));
