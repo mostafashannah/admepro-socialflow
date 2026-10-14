@@ -246,6 +246,9 @@ function egyptIslamicHolidaysForYear(year) {
 // blocked, off the Timeline) and flagged pending_start — activate-members-cron.php
 // flips them to active on the start date itself.
 const isFutureStart = (d) => !!d && String(d).slice(0,10) > new Date().toISOString().slice(0,10);
+// The one folder per client whose contents are shared with the client portal
+// (the portal's Assets tab shows its inner folders as the root).
+const CLIENT_ASSETS_FOLDER = "Client Assets";
 const CLIENT_ROLES = ["client_admin","client_member"];
 const INTERNAL_ROLES = ["admin","hr","account_manager","account_director","account_executive","business_development","content_creator","graphic_designer","accountant","office_boy"];
 
@@ -13311,7 +13314,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         </div>
       )}
       {tab==="assets"&&(
-        <FolderBrowser assets={cAssets} projects={cProjects} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset} storagePrefix={`assets/client-${client.id}`} storageKey={`sf_extra_folders_${client.id}`} extraTags={[`client_${client.id}`]} currentUser={currentUser}/>
+        <FolderBrowser assets={cAssets} projects={cProjects} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset} storagePrefix={`assets/client-${client.id}`} storageKey={`sf_extra_folders_${client.id}`} extraTags={[`client_${client.id}`]} currentUser={currentUser} fixedFolders={[CLIENT_ASSETS_FOLDER]}/>
       )}
       {tab==="calendar"&&<CalendarView posts={cPosts} onPostClick={onPostClick}/>}
       {tab==="brain"&&(
@@ -14332,7 +14335,7 @@ function AssetCard({asset:a, proj, allFolders=[], onUpdate, onDelete, selected, 
 // new (empty) folders, drag-and-drop to move files between folders, and
 // drag-and-drop of OS files onto the panel to upload into the open folder.
 // ════════════════════════════════════════════════════════════════
-function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAsset, storagePrefix="assets", storageKey="sf_extra_folders", extraTags=[], currentUser, categoryPrefix=""}) {
+function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAsset, storagePrefix="assets", storageKey="sf_extra_folders", extraTags=[], currentUser, categoryPrefix="", fixedFolders=[]}) {
   const isAdmin = currentUser?.role==="admin";
   const fileInputRef = useRef(null);
   const [path, setPath] = useState([]);
@@ -14427,8 +14430,13 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
       const segs = fp.split("/").filter(Boolean);
       if(segs.length>path.length && path.every((p,i)=>segs[i]===p)) set.add(segs[path.length]);
     });
+    if(path.length===0) fixedFolders.forEach(n=>set.add(n));
     return [...set].sort();
   })();
+  // Fixed folders (e.g. the per-client "Client Assets" folder the portal is
+  // scoped to) always exist at the root and can't be selected, so they can't
+  // be bulk-moved or deleted along with everything else.
+  const isFixedFolder = (name) => path.length===0 && fixedFolders.includes(name);
 
   const filesHere = assets.filter(a=>{ const rel=stripPrefix(a.category); return rel!=null && rel.split("/").filter(Boolean).join("/")===currentPath; });
 
@@ -14549,7 +14557,7 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
               onDragOver={e=>{e.preventDefault();setDragOverFolder(name);}} onDragLeave={()=>setDragOverFolder(null)}
               onDrop={e=>{e.preventDefault();setDragOverFolder(null);const id=e.dataTransfer.getData("text/plain");if(id)moveAssetTo(id,[...path,name].join("/"));}}
               style={{display:"flex",alignItems:"center",gap:8,padding:"12px 14px",borderRadius:"var(--rs)",border:`1px solid ${selectedFolders.has(name)?"var(--accent)":dragOverFolder===name?"var(--accent)":"var(--border)"}`,background:dragOverFolder===name?"var(--accent)11":selectedFolders.has(name)?"var(--accentbg)":"var(--surface)",cursor:"pointer"}}>
-              <input type="checkbox" checked={selectedFolders.has(name)} onClick={e=>e.stopPropagation()} onChange={()=>toggleSelectFolder(name)} style={{width:14,height:14,cursor:"pointer",accentColor:"var(--accent)",flexShrink:0}}/>
+              {isFixedFolder(name) ? <span title="Shared with the client portal" style={{width:14,flexShrink:0,fontSize:12}}>🔒</span> : <input type="checkbox" checked={selectedFolders.has(name)} onClick={e=>e.stopPropagation()} onChange={()=>toggleSelectFolder(name)} style={{width:14,height:14,cursor:"pointer",accentColor:"var(--accent)",flexShrink:0}}/>}
               <span style={{fontSize:20}}>📁</span>
               <span style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
             </div>
@@ -14562,7 +14570,7 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
               onDragOver={e=>{e.preventDefault();setDragOverFolder(name);}} onDragLeave={()=>setDragOverFolder(null)}
               onDrop={e=>{e.preventDefault();setDragOverFolder(null);const id=e.dataTransfer.getData("text/plain");if(id)moveAssetTo(id,[...path,name].join("/"));}}
               style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:"1px solid var(--border)",background:dragOverFolder===name?"var(--accent)11":selectedFolders.has(name)?"var(--accentbg)":"var(--surface)",cursor:"pointer"}}>
-              <input type="checkbox" checked={selectedFolders.has(name)} onClick={e=>e.stopPropagation()} onChange={()=>toggleSelectFolder(name)} style={{width:14,height:14,cursor:"pointer",accentColor:"var(--accent)",flexShrink:0}}/>
+              {isFixedFolder(name) ? <span title="Shared with the client portal" style={{width:14,flexShrink:0,fontSize:12}}>🔒</span> : <input type="checkbox" checked={selectedFolders.has(name)} onClick={e=>e.stopPropagation()} onChange={()=>toggleSelectFolder(name)} style={{width:14,height:14,cursor:"pointer",accentColor:"var(--accent)",flexShrink:0}}/>}
               <span style={{fontSize:16}}>📁</span>
               <span style={{flex:1,fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
               <Ico d={Icons.chevR} size={12} stroke="var(--text3)"/>
@@ -23567,10 +23575,14 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
             <div>
               <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>Assets</h2>
-              <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Your project files, organized by month.</p>
+              <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Files shared with you by the team.</p>
             </div>
-            <FolderBrowser assets={cAssets} projects={cProjects} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset}
-              storagePrefix={`assets/client-${client.id}`} storageKey={`sf_extra_folders_${client.id}`} extraTags={[`client_${client.id}`]} currentUser={client}/>
+            {/* Only the "Client Assets" folder is shared with the portal — its
+                inner folders show up here as the root. Month/project folders
+                are derived from projects, so pass none (they'd otherwise
+                appear as empty root folders). */}
+            <FolderBrowser assets={(cAssets||[]).filter(a=>a.category===CLIENT_ASSETS_FOLDER||(a.category||"").startsWith(CLIENT_ASSETS_FOLDER+"/"))} projects={[]} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset}
+              storagePrefix={`assets/client-${client.id}`} storageKey={`sf_extra_folders_${client.id}`} extraTags={[`client_${client.id}`]} currentUser={client} categoryPrefix={CLIENT_ASSETS_FOLDER}/>
           </div>
         )}
 
