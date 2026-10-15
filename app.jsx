@@ -26323,6 +26323,9 @@ function LoginScreen({onLogin,clients}) {
           if(cu.status==="blocked") { setErr("Your account has been blocked."); setLoading(false); return; }
           if(cu.password && cu.password !== password) { setErr("Incorrect password."); setLoading(false); return; }
           const clientOrg = clients.find(c=>c.id===cu.client_id)||{name:cu.client_name,id:cu.client_id};
+          // First successful sign-in completes the invitation.
+          ue("ClientUser", cu.id, {status:"active", last_login:new Date().toISOString()}).catch(()=>{});
+          cu.status = "active";
           onLogin({...cu, isClient:true, role:cu.role||"client_member", clientOrg}); setLoading(false); return;
         }
       } catch(e) {}
