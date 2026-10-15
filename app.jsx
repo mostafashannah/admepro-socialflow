@@ -23281,7 +23281,65 @@ function ClientContactReportsTab({reports=[], onAddComment, client, team=[], bra
   );
 }
 
-function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,onAddPost,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief,messages=[],integrations=[],onSendReply,onApproveDraft,onDismissDraft,assets=[],onAddAsset,onUpdateAsset,onDeleteAsset,leads=[],comments=[],onAddComment,team=[],contactReports=[],onAddContactReportComment,brandingAssets}) {
+// Client-portal "Team" page — only the account's admin (main contact) sees
+// it. Lets them activate/deactivate each login, reveal its password and
+// choose which of the account's enabled portal sections each person gets.
+function PortalTeamPanel({client, me, users, accountFeatures, onUpdate, isMobile}) {
+  const [shown,setShown] = useState({});
+  const [busy,setBusy] = useState("");
+  const enabledFeatures = CLIENT_PORTAL_TOGGLEABLE_FEATURES.filter(([k])=>accountFeatures[k]!==false);
+  const save = async (u, patch) => { setBusy(u.id); try { await onUpdate(u.id, patch); } finally { setBusy(""); } };
+  const toggleFeature = (u,key) => {
+    const cur = parseMaybeJson(u.portal_features, {});
+    save(u, {portal_features: JSON.stringify({...cur, [key]: cur[key]===false})});
+  };
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
+      <div>
+        <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?20:24,fontWeight:800}}>Team</h2>
+        <p style={{fontSize:13,color:"var(--text2)",marginTop:4}}>Manage who can sign in to {client.name}'s portal and which sections each person can see.</p>
+      </div>
+      {users.length===0&&<div style={{padding:30,textAlign:"center",color:"var(--text2)"}}>No team members yet.</div>}
+      {users.map(u=>{
+        const isMe = u.id===me?.id;
+        const admin = u.role==="client_admin";
+        const active = u.status!=="blocked";
+        const f = parseMaybeJson(u.portal_features, {});
+        return (
+          <div key={u.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"column",gap:12,opacity:busy===u.id?0.6:1}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+              <div style={{width:38,height:38,borderRadius:99,background:clr(u.name||u.email),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:13}}>{initials(u.name||u.email)}</div>
+              <div style={{flex:1,minWidth:150}}>
+                <p style={{fontWeight:700,fontSize:14}}>{u.name}{isMe&&" (you)"}</p>
+                <p style={{fontSize:12,color:"var(--text2)"}}>{u.email} · {admin?"Admin":"Member"}</p>
+              </div>
+              <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:99,background:active?"#10b98122":"#ef444422",color:active?"#10b981":"#ef4444"}}>{active?"Active":"Deactivated"}</span>
+              {!isMe&&<button onClick={()=>save(u,{status:active?"blocked":"active"})} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:600,color:active?"#ef4444":"#10b981"}}>{active?"Deactivate":"Activate"}</button>}
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"var(--text2)"}}>
+              <span>Password:</span>
+              <code style={{background:"var(--surface2)",padding:"3px 8px",borderRadius:6,color:"var(--text)"}}>{u.password ? (shown[u.id]?u.password:"••••••••") : "not set"}</code>
+              {u.password&&<button onClick={()=>setShown(p=>({...p,[u.id]:!p[u.id]}))} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"var(--accent)",fontWeight:600}}>{shown[u.id]?"Hide":"Show"}</button>}
+            </div>
+            {!admin&&(
+              <div>
+                <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>Can access</p>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  {enabledFeatures.map(([k,label])=>{
+                    const on = f[k]!==false;
+                    return <button key={k} onClick={()=>toggleFeature(u,k)} style={{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:600,cursor:"pointer",border:`1px solid ${on?"var(--accent)":"var(--border2)"}`,background:on?"var(--accent)":"transparent",color:on?"#fff":"var(--text2)"}}>{on?"✓ ":""}{label}</button>;
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,onAddPost,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief,messages=[],integrations=[],onSendReply,onApproveDraft,onDismissDraft,assets=[],onAddAsset,onUpdateAsset,onDeleteAsset,leads=[],comments=[],onAddComment,team=[],contactReports=[],onAddContactReportComment,brandingAssets,portalUser,portalUsers=[],onUpdatePortalUser}) {
   const {isMobile} = useResponsive();
   const [view,setView] = useState(()=>{
     try { return new URLSearchParams(window.location.search).get("view") || "dashboard"; } catch(e) { return "dashboard"; }
@@ -23346,7 +23404,15 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
   // Features sub-tab (client.portal_features, {key:false} = hidden).
   // Dashboard is never hidden — see CLIENT_PORTAL_TOGGLEABLE_FEATURES.
   const portalFeatures = parseMaybeJson(client.portal_features, {});
-  const featureEnabled = key => portalFeatures[key] !== false;
+  // Named portal logins: look the user up live so permission/activation
+  // changes made by the account admin apply without a re-login.
+  const liveMe = (portalUsers||[]).find(u=>u.id===portalUser?.id) || portalUser;
+  const isNamedUser = !!portalUser?.client_id;
+  const isPortalAdmin = !isNamedUser || liveMe?.role==="client_admin";
+  const myFeatures = parseMaybeJson(liveMe?.portal_features, {});
+  const displayName = (isNamedUser && liveMe?.name) ? liveMe.name : (client.username||client.name);
+  useEffect(()=>{ if(isNamedUser && liveMe?.status==="blocked") onLogout(); },[liveMe?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  const featureEnabled = key => portalFeatures[key] !== false && (isPortalAdmin || myFeatures[key] !== false);
   const navItems = [
     {key:"dashboard", label:"Dashboard", mLabel:"Home"},
     {key:"posts", label:"Tasks", mLabel:"Tasks"},
@@ -23356,7 +23422,8 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
     {key:"leads", label:`Leads${clientLeads.length?` (${clientLeads.length})`:""}`, mLabel:"Leads"},
     {key:"contact_reports", label:"Contact Reports", mLabel:"Reports"},
     ...(clientSubs.length>0?[{key:"subscriptions",label:"Subscriptions",mLabel:"Billing"}]:[]),
-  ].filter(item=>item.key==="dashboard"||featureEnabled(item.key));
+    ...(isPortalAdmin?[{key:"team",label:"Team",mLabel:"Team"}]:[]),
+  ].filter(item=>item.key==="dashboard"||item.key==="team"||featureEnabled(item.key));
   // If staff disabled the feature the client currently has open (or had it
   // open before this session started), bounce back to Dashboard rather
   // than showing a page with no nav item pointing at it.
@@ -23410,8 +23477,8 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
           {/* User dropdown — name/avatar opens Settings/Themes/Logout */}
           <div ref={userMenuRef} style={{position:"relative",flexShrink:0}}>
             <button onClick={()=>setShowUserMenu(o=>!o)} style={{display:"flex",alignItems:"center",gap:8,background:"none",border:"none",cursor:"pointer",padding:"6px 4px"}}>
-              <div style={{width:30,height:30,borderRadius:99,background:clr(client.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color:"#fff",flexShrink:0}}>{initials(client.username||client.name)}</div>
-              {!isMobile&&<span style={{fontSize:13,fontWeight:600,color:"var(--text2)",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{client.username||client.name}</span>}
+              <div style={{width:30,height:30,borderRadius:99,background:clr(client.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color:"#fff",flexShrink:0}}>{initials(displayName)}</div>
+              {!isMobile&&<span style={{fontSize:13,fontWeight:600,color:"var(--text2)",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{displayName}</span>}
               <Ico d={Icons.chevD} size={13} stroke="var(--text3)" style={{transform:showUserMenu?"rotate(180deg)":"none",transition:"transform 0.2s",flexShrink:0}}/>
             </button>
             {showUserMenu&&(
@@ -23672,7 +23739,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         {view==="dashboard"&&(
           <div style={{display:"flex",flexDirection:"column",gap:20}}>
             <div>
-              <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>Welcome back, {client.username||client.name}</h2>
+              <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>Welcome back, {displayName}</h2>
               <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Here's how your account is looking right now.</p>
             </div>
 
@@ -23932,6 +23999,10 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
           </div>
         )}
 
+        {view==="team"&&isPortalAdmin&&(
+          <PortalTeamPanel client={client} me={liveMe} users={(portalUsers||[]).filter(u=>u.client_id===client.id)} accountFeatures={portalFeatures} onUpdate={onUpdatePortalUser} isMobile={isMobile}/>
+        )}
+
         {view==="settings"&&(
           <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
             {/* Settings Header */}
@@ -23943,7 +24014,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
             {/* Profile Section */}
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:isMobile?16:24}}>
               <div style={{display:"flex",alignItems:"flex-start",gap:16,marginBottom:20}}>
-                <div style={{width:80,height:80,borderRadius:12,background:clr(client.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,fontWeight:800,color:"#fff",flexShrink:0}}>{initials(client.username||client.name)}</div>
+                <div style={{width:80,height:80,borderRadius:12,background:clr(client.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,fontWeight:800,color:"#fff",flexShrink:0}}>{initials(displayName)}</div>
                 <div style={{flex:1}}>
                   <p style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?18:20,fontWeight:800,marginBottom:2}}>{client.username||client.name}</p>
                   <p style={{fontSize:13,color:"var(--text2)",marginBottom:8}}>{client.industry}</p>
@@ -50979,7 +51050,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         </div>
       )}
       <div style={impersonatorUser?{marginTop:48}:{}}>
-        <ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} onAddPost={addPost} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]} comments={data.comments||[]} onAddComment={handleAddComment} team={data.team||[]} contactReports={data.contactReports||[]} onAddContactReportComment={addContactReportComment} brandingAssets={brandingAssets}/>
+        <ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} onAddPost={addPost} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]} comments={data.comments||[]} onAddComment={handleAddComment} team={data.team||[]} contactReports={data.contactReports||[]} onAddContactReportComment={addContactReportComment} brandingAssets={brandingAssets} portalUser={currentUser} portalUsers={data.clientUsers||[]} onUpdatePortalUser={updateClientUser}/>
       </div>
     </>);
   }

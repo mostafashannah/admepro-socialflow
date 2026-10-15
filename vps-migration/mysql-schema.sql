@@ -549,7 +549,7 @@ CREATE TABLE IF NOT EXISTS client_users (
   client_id VARCHAR(36) NOT NULL, client_name TEXT,
   email TEXT NOT NULL, name TEXT NOT NULL,
   role TEXT DEFAULT ('client_member'), status VARCHAR(50) DEFAULT 'invited',
-  photo_url MEDIUMTEXT, mobile TEXT, last_login TEXT, password TEXT, title TEXT
+  photo_url MEDIUMTEXT, mobile TEXT, last_login TEXT, password TEXT, title TEXT, portal_features TEXT, portal_features TEXT
 ) ENGINE=InnoDB;
 
 -- ----------------------------------------------------------------
