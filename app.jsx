@@ -13748,7 +13748,19 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
   const connected = integrations.filter(i=>i.client_id===client.id && i.status==="active" && ["facebook","instagram"].includes(i.app_key));
   const bot = botSettings || {enabled:false, mode:"approve", channels:["instagram","messenger"], brain:""};
   const botChannels = Array.isArray(bot.channels) ? bot.channels : (bot.channels ? JSON.parse(bot.channels) : []);
-  const visibleMessages = messages.filter(m=>m.draft_status!=="dismissed");
+  // The app-wide message list only holds the latest 500 messages across ALL
+  // clients, so one busy client's traffic pushes everyone else's out of it —
+  // fetch this client's own messages directly and merge by id.
+  const [ownMessages, setOwnMessages] = useState([]);
+  useEffect(()=>{
+    let live = true;
+    const load = () => qe("CustomerMessage",{client_id:client.id},"-created_at",1000).then(r=>{ if(live) setOwnMessages(r?.entities||[]); }).catch(()=>{});
+    load();
+    const t = setInterval(load, 30000);
+    return ()=>{ live=false; clearInterval(t); };
+  },[client.id]);
+  const mergedMessages = (()=>{ const seen = new Set(); return [...messages, ...ownMessages].filter(m=>{ if(m.id&&seen.has(m.id)) return false; if(m.id) seen.add(m.id); return true; }); })();
+  const visibleMessages = mergedMessages.filter(m=>m.draft_status!=="dismissed");
 
   const threads = (()=>{
     const byKey = {};
