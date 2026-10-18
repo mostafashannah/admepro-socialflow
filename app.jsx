@@ -61,7 +61,9 @@ function UploadProgressToast() {
         <div key={i.id} style={{background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:12,padding:"10px 12px",boxShadow:"0 8px 28px rgba(0,0,0,0.25)"}}>
           <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,fontWeight:600,marginBottom:6}}>
             <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Uploading {i.name}</span>
-            <span style={{color:"var(--accent)"}}>{pct}%</span>
+            <span style={{color:"var(--accent)",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>{pct}%
+              {i.cancel&&<button onClick={i.cancel} title="Cancel upload" style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:99,padding:"1px 9px",fontSize:11,fontWeight:700,color:"var(--text2)",cursor:"pointer"}}>Cancel</button>}
+            </span>
           </div>
           <div style={{height:5,borderRadius:99,background:"var(--surface2)",overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:"var(--accent)",transition:"width 0.2s"}}/></div>
         </div>); })}
@@ -90,7 +92,7 @@ const uploadToStorage = async (rawFile, folder="uploads") => {
     const uploadTimeoutMs = Math.max(120000, Math.round(file.size / (150*1024)) * 1000);
     // XHR instead of fetch so upload progress events are available.
     const upId = ++uploadProgressStore.seq;
-    uploadProgressStore.items[upId] = {id:upId, name:file.name, loaded:0, total:file.size};
+    uploadProgressStore.items[upId] = {id:upId, name:file.name, loaded:0, total:file.size, cancel:null};
     uploadProgressNotify();
     try {
       res = await new Promise((resolve, reject) => {
@@ -101,10 +103,13 @@ const uploadToStorage = async (rawFile, folder="uploads") => {
         xhr.setRequestHeader("Authorization", `Bearer ${SB_KEY}`);
         xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
         xhr.setRequestHeader("x-upsert", "true");
-        xhr.upload.onprogress = (e) => { if(e.lengthComputable){ uploadProgressStore.items[upId] = {id:upId, name:file.name, loaded:e.loaded, total:e.total}; uploadProgressNotify(); } };
+        xhr.upload.onprogress = (e) => { if(e.lengthComputable){ uploadProgressStore.items[upId] = {...uploadProgressStore.items[upId], loaded:e.loaded, total:e.total}; uploadProgressNotify(); } };
         xhr.onload = () => resolve({ok:xhr.status>=200&&xhr.status<300, status:xhr.status, text:async()=>xhr.responseText});
         xhr.onerror = () => reject(new Error("network error"));
         xhr.ontimeout = () => { const er=new Error("timeout"); er.name="AbortError"; reject(er); };
+        xhr.onabort = () => { const er=new Error("Upload cancelled"); er.name="UploadCancelled"; reject(er); };
+        uploadProgressStore.items[upId].cancel = () => xhr.abort();
+        uploadProgressNotify();
         xhr.send(file);
       });
     } finally {
@@ -112,6 +117,7 @@ const uploadToStorage = async (rawFile, folder="uploads") => {
       uploadProgressNotify();
     }
   } catch(e) {
+    if(e?.name==="UploadCancelled") throw e;
     if(e?.name==="AbortError") throw new Error("Upload timed out — your connection may be too slow or unstable. Please try again.");
     throw new Error("Upload failed: " + (e?.message||e));
   }
