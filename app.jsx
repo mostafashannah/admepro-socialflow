@@ -917,8 +917,13 @@ const WORKFLOW_ASSIGNMENTS = {
 const getAssigneeForStage = (stage, teamMembers) => {
   const roleNeeded = WORKFLOW_ASSIGNMENTS[stage]?.role;
   if (!roleNeeded) return null;
-  return (teamMembers || []).find(m => m.role === roleNeeded && m.status !== "inactive");
+  const active = (teamMembers || []).filter(m => m.status !== "inactive");
+  // Auto-pick prefers the exact role; a Senior Graphic Designer only fills in
+  // when there's no plain designer.
+  return active.find(m => m.role === roleNeeded) || active.find(m => stageRoleMatches(roleNeeded, m.role));
 };
+// The Design stage accepts both Graphic Designer and Senior Graphic Designer.
+const stageRoleMatches = (roleNeeded, role) => role === roleNeeded || (roleNeeded === "graphic_designer" && role === "senior_graphic_designer");
 
 // `assigned_to` is deliberately overwritten every time a post moves into a
 // review/approval stage (see WORKFLOW_ASSIGNMENTS above) — it always means
@@ -968,7 +973,7 @@ const eligibleAssignees = (stage, teamMembers) => {
   const active = (teamMembers || []).filter(m => m.status !== "inactive");
   const roleNeeded = WORKFLOW_ASSIGNMENTS[stage]?.role;
   if (!roleNeeded) return active;
-  return active.filter(m => m.role === roleNeeded);
+  return active.filter(m => stageRoleMatches(roleNeeded, m.role));
 };
 
 // ════════════════════════════════════════════════════════════════
