@@ -36,6 +36,38 @@ async function convertHeicIfNeeded(file) {
   }
 }
 
+// Live upload progress shared by every uploadToStorage() call, so any screen
+// can show a real % (see UploadProgressToast and useUploadPct below).
+const uploadProgressStore = {items:{}, subs:new Set(), seq:0};
+const uploadProgressNotify = () => uploadProgressStore.subs.forEach(fn=>{ try{fn();}catch(e){} });
+function useUploadProgress() {
+  const [,tick] = useState(0);
+  useEffect(()=>{ const fn=()=>tick(n=>n+1); uploadProgressStore.subs.add(fn); return ()=>uploadProgressStore.subs.delete(fn); },[]);
+  return Object.values(uploadProgressStore.items);
+}
+// Average % across uploads in flight (null when nothing is uploading).
+function useUploadPct() {
+  const items = useUploadProgress();
+  if(!items.length) return null;
+  const total = items.reduce((a,i)=>a+i.total,0) || 1;
+  return Math.min(100, Math.round(items.reduce((a,i)=>a+i.loaded,0)/total*100));
+}
+function UploadProgressToast() {
+  const items = useUploadProgress();
+  if(!items.length) return null;
+  return (
+    <div style={{position:"fixed",right:16,bottom:16,zIndex:100000,display:"flex",flexDirection:"column",gap:8,width:280,maxWidth:"calc(100vw - 32px)"}}>
+      {items.map(i=>{ const pct = i.total ? Math.min(100,Math.round(i.loaded/i.total*100)) : 0; return (
+        <div key={i.id} style={{background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:12,padding:"10px 12px",boxShadow:"0 8px 28px rgba(0,0,0,0.25)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,fontWeight:600,marginBottom:6}}>
+            <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Uploading {i.name}</span>
+            <span style={{color:"var(--accent)"}}>{pct}%</span>
+          </div>
+          <div style={{height:5,borderRadius:99,background:"var(--surface2)",overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:"var(--accent)",transition:"width 0.2s"}}/></div>
+        </div>); })}
+    </div>
+  );
+}
 // Upload a file to self-hosted storage (vps-migration/storage.php) — returns public URL
 const uploadToStorage = async (rawFile, folder="uploads") => {
   const file = await convertHeicIfNeeded(rawFile);
@@ -56,16 +88,29 @@ const uploadToStorage = async (rawFile, folder="uploads") => {
     // normal connection, well before anything is actually wrong — scale the
     // allowance with file size instead of failing large-but-healthy uploads.
     const uploadTimeoutMs = Math.max(120000, Math.round(file.size / (150*1024)) * 1000);
-    res = await fetchWithTimeout(`${SB_STORAGE_URL}/object/${SB_BUCKET}/${path}`, {
-      method: "POST",
-      headers: {
-        "apikey": SB_KEY,
-        "Authorization": `Bearer ${SB_KEY}`,
-        "Content-Type": file.type || "application/octet-stream",
-        "x-upsert": "true",
-      },
-      body: file,
-    }, uploadTimeoutMs);
+    // XHR instead of fetch so upload progress events are available.
+    const upId = ++uploadProgressStore.seq;
+    uploadProgressStore.items[upId] = {id:upId, name:file.name, loaded:0, total:file.size};
+    uploadProgressNotify();
+    try {
+      res = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `${SB_STORAGE_URL}/object/${SB_BUCKET}/${path}`);
+        xhr.timeout = uploadTimeoutMs;
+        xhr.setRequestHeader("apikey", SB_KEY);
+        xhr.setRequestHeader("Authorization", `Bearer ${SB_KEY}`);
+        xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+        xhr.setRequestHeader("x-upsert", "true");
+        xhr.upload.onprogress = (e) => { if(e.lengthComputable){ uploadProgressStore.items[upId] = {id:upId, name:file.name, loaded:e.loaded, total:e.total}; uploadProgressNotify(); } };
+        xhr.onload = () => resolve({ok:xhr.status>=200&&xhr.status<300, status:xhr.status, text:async()=>xhr.responseText});
+        xhr.onerror = () => reject(new Error("network error"));
+        xhr.ontimeout = () => { const er=new Error("timeout"); er.name="AbortError"; reject(er); };
+        xhr.send(file);
+      });
+    } finally {
+      delete uploadProgressStore.items[upId];
+      uploadProgressNotify();
+    }
   } catch(e) {
     if(e?.name==="AbortError") throw new Error("Upload timed out — your connection may be too slow or unstable. Please try again.");
     throw new Error("Upload failed: " + (e?.message||e));
@@ -5399,6 +5444,7 @@ function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const uploadPct = useUploadPct();
   const fileRef = useRef(null);
 
   useEffect(()=>{ if(open) setSelected([]); },[open]);
@@ -5457,7 +5503,7 @@ function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
           <button onClick={()=>fileRef.current?.click()} disabled={uploading}
             style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:8,background:"var(--accent)",color:"#fff",border:"none",cursor:uploading?"default":"pointer",fontWeight:700,fontSize:12,opacity:uploading?0.6:1,flexShrink:0}}>
             {uploading?<Spinner size={12}/>:<Ico d={Icons.upload} size={13} stroke="#fff"/>}
-            {uploading?"Uploading…":"Upload New"}
+            {uploading?`Uploading${uploadPct!==null?` ${uploadPct}%`:"…"}`:"Upload New"}
           </button>
           <input ref={fileRef} type="file" multiple={multiple} accept="image/*,video/*" style={{display:"none"}}
             onChange={e=>{handleUpload(e.target.files); e.target.value="";}}/>
@@ -52054,4 +52100,4 @@ class ErrorBoundary extends React.Component {
 }
 
 const __root=ReactDOM.createRoot(document.getElementById("root"));
-__root.render(React.createElement(ErrorBoundary,null,React.createElement(App)));
+__root.render(React.createElement(ErrorBoundary,null,React.createElement(App),React.createElement(UploadProgressToast)));
