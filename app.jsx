@@ -13359,7 +13359,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
       </div>
       {/* Tab content */}
       {tab==="overview"&&(
-        <ClientOverviewTab client={client} cProjects={cProjects} cPosts={cPosts} cMessages={cMessages} cLeads={cLeads} integrations={integrations}/>
+        <ClientOverviewTab client={client} cProjects={cProjects} cPosts={cPosts} cMessages={cMessages} cLeads={cLeads} integrations={integrations} onOpenPost={onPostClick}/>
       )}
       {tab==="projects"&&(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
@@ -13493,7 +13493,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         </div>
       )}
       {tab==="insights"&&(
-        <InsightsTab client={client} integrations={integrations} posts={cPosts}/>
+        <InsightsTab client={client} integrations={integrations} posts={cPosts} onOpenPost={onPostClick}/>
       )}
       {tab==="ads"&&(
         <ClientAdsTab client={client} integrations={integrations}/>
@@ -16228,7 +16228,7 @@ function MultiLineChart({series, height=260}) {
 // using the insight_likes/insight_comments/insight_shares/insight_reach columns
 // that post-insights-cron.php refreshes daily from Meta. Posts with no insight
 // data yet (not refreshed, or not published to a connected platform) are excluded.
-function BestPerformingPosts({posts}) {
+function BestPerformingPosts({posts, onOpen}) {
   const scored = (posts||[])
     .filter(p=>p.stage==="published" && (p.insight_likes!=null||p.insight_comments!=null||p.insight_reach!=null))
     .map(p=>({...p, score:(p.insight_likes||0)+(p.insight_comments||0)*2+(p.insight_shares||0)*3}))
@@ -16240,7 +16240,7 @@ function BestPerformingPosts({posts}) {
       <h4 style={{fontWeight:700,fontSize:14,marginBottom:12}}>Best Performing Posts</h4>
       <div style={{display:"flex",flexDirection:"column",gap:2}}>
         {scored.map((p,i)=>(
-          <div key={p.id} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderBottom:i<scored.length-1?"1px solid var(--border)":"none"}}>
+          <div key={p.id} onClick={onOpen?()=>onOpen(p):undefined} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",cursor:onOpen?"pointer":"default",borderBottom:i<scored.length-1?"1px solid var(--border)":"none"}}>
             <span style={{fontSize:13,fontWeight:800,color:"var(--text3)",width:18,flexShrink:0}}>#{i+1}</span>
             <div style={{minWidth:0,flex:1}}>
               <p style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</p>
@@ -16267,7 +16267,7 @@ const INSIGHTS_DATE_RANGES = [
 // publish-date range — for the dedicated "Best Performing Posts" sub-tab
 // (the plain BestPerformingPosts above stays as the unfiltered top-5 used
 // on dashboard/overview summaries).
-function BestPerformingPostsFull({posts, client}) {
+function BestPerformingPostsFull({posts, client, onOpen}) {
   const [platform, setPlatform] = useState("all");
   const [range, setRange] = useState("last_month");
   const [customFrom, setCustomFrom] = useState("");
@@ -16327,7 +16327,7 @@ function BestPerformingPostsFull({posts, client}) {
         ) : (
           <div style={{display:"flex",flexDirection:"column",gap:2}}>
             {filtered.map((p,i)=>(
-              <div key={p.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:i<filtered.length-1?"1px solid var(--border)":"none"}}>
+              <div key={p.id} onClick={onOpen?()=>onOpen(p):undefined} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",cursor:onOpen?"pointer":"default",borderBottom:i<filtered.length-1?"1px solid var(--border)":"none"}}>
                 <span style={{fontSize:13,fontWeight:800,color:"var(--text3)",width:22,flexShrink:0}}>#{i+1}</span>
                 <div style={{minWidth:0,flex:1}}>
                   <p style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</p>
@@ -16900,7 +16900,7 @@ async function downloadInsightsReportPDF(client, posts, connectedPlatforms, rang
   }
 }
 
-function InsightsTab({client, integrations, posts}) {
+function InsightsTab({client, integrations, posts, onOpenPost}) {
   const [sub, setSub] = usePersistentState("sf_tab_insights_sub","all");
   const [reportRange, setReportRange] = useState("last_month"); // last_month|90d
   const [downloadingReport, setDownloadingReport] = useState(false);
@@ -16945,13 +16945,13 @@ function InsightsTab({client, integrations, posts}) {
       </div>
       {sub==="all" && <AllPlatformsSummaryTab posts={posts} connectedPlatforms={connectedPlatforms} onSelectPlatform={setSub}/>}
       {connectedPlatforms.includes(sub) && isMetaPlatform(sub) && <MetaInsightsTab key={sub} client={client} integrations={integrations} platformFilter={sub}/>}
-      {connectedPlatforms.includes(sub) && !isMetaPlatform(sub) && <BestPerformingPostsFull key={sub} posts={posts.filter(p=>p.platform===sub)} client={client}/>}
-      {sub==="best" && <BestPerformingPostsFull posts={posts} client={client}/>}
+      {connectedPlatforms.includes(sub) && !isMetaPlatform(sub) && <BestPerformingPostsFull key={sub} posts={posts.filter(p=>p.platform===sub)} client={client} onOpen={onOpenPost}/>}
+      {sub==="best" && <BestPerformingPostsFull posts={posts} client={client} onOpen={onOpenPost}/>}
     </div>
   );
 }
 
-function ClientOverviewTab({client, cProjects, cPosts, cMessages, cLeads, integrations}) {
+function ClientOverviewTab({client, cProjects, cPosts, cMessages, cLeads, integrations, onOpenPost}) {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState(null);
   const VERDICT_COLOR = {do:"#10b981", dont:"#ef4444"};
@@ -17021,7 +17021,7 @@ No markdown, no explanation, just the JSON array.`;
 
       <ClientPerformanceTrend clientId={client.id}/>
 
-      <BestPerformingPosts posts={cPosts}/>
+      <BestPerformingPosts posts={cPosts} onOpen={onOpenPost}/>
 
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px"}}>
         <h4 style={{fontWeight:700,fontSize:14,marginBottom:14}}>Workflow Pipeline</h4>
@@ -23850,7 +23850,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
 
             {(integrations||[]).length>0&&<ClientPerformanceTrend clientId={client.id}/>}
 
-            <BestPerformingPosts posts={allCPosts}/>
+            <BestPerformingPosts posts={allCPosts} onOpen={setSel}/>
 
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:16}}>
               <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16}}>
@@ -23897,7 +23897,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
 
         {/* INSIGHTS VIEW */}
         {view==="insights"&&(
-          <InsightsTab client={client} integrations={integrations} posts={allCPosts}/>
+          <InsightsTab client={client} integrations={integrations} posts={allCPosts} onOpenPost={setSel}/>
         )}
 
         {/* ASSETS VIEW */}
