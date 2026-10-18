@@ -174,6 +174,7 @@ const ROLES = {
   business_development: { label: "Business Development", color: "#06b6d4" },
   content_creator: { label: "Content Creator", color: "#8b5cf6" },
   graphic_designer:{ label: "Graphic Designer",color: "#f59e0b" },
+  senior_graphic_designer:{ label: "Senior Graphic Designer",color: "#d97706" },
   accountant: { label: "Accountant", color: "#8b5cf6" },
   office_boy: { label: "Office Boy", color: "#6b7280" },
   client_admin: { label: "Client Admin", color: "#0ea5e9" },
@@ -270,7 +271,10 @@ function StorageUsageBar({usedBytes, limitBytes}) {
   );
 }
 const CLIENT_ROLES = ["client_admin","client_member"];
-const INTERNAL_ROLES = ["admin","hr","account_manager","account_director","account_executive","business_development","content_creator","graphic_designer","accountant","office_boy"];
+// Senior Graphic Designer does everything a Graphic Designer does, plus can
+// assign any designer on the team to a task.
+const isDesignerRole = r => r==="graphic_designer" || r==="senior_graphic_designer";
+const INTERNAL_ROLES = ["admin","hr","account_manager","account_director","account_executive","business_development","content_creator","graphic_designer","senior_graphic_designer","accountant","office_boy"];
 
 // Granular permissions the Roles & Permissions settings page can toggle per
 // role. "admin" always implicitly has every permission regardless of what's
@@ -313,6 +317,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
   account_executive: ["hr.view_performance","clients.manage","assets.manage","crm.leads","finance.quotes"],
   content_creator: ["assets.manage"],
   graphic_designer: ["assets.manage"],
+  senior_graphic_designer: ["assets.manage"],
   accountant: ["finance.quotes","finance.full"],
 };
 // Converts the flat role_permissions rows fetched from the API into
@@ -429,7 +434,7 @@ function nextStageFor(post) {
 // else, for any other role, ever gets a quick "Move to X" action.
 function canAdvanceStageAsNonManager(currentUser, post, nextKey) {
   if (currentUser?.role === "content_creator") return post.stage === "content_creation" && nextKey === "internal_review";
-  if (currentUser?.role === "graphic_designer") return post.stage === "design" && nextKey === "design_review";
+  if (isDesignerRole(currentUser?.role)) return post.stage === "design" && nextKey === "design_review";
   return false;
 }
 // Which pipeline stage a role is actually responsible for finishing — their
@@ -439,7 +444,7 @@ function canAdvanceStageAsNonManager(currentUser, post, nextKey) {
 // listed here (e.g. account_manager) keep the old "counts once it reaches
 // Scheduled/Published" behavior, since their responsibility spans the
 // whole pipeline rather than one stage.
-const ROLE_OWNED_STAGE = { content_creator: "content_creation", graphic_designer: "design" };
+const ROLE_OWNED_STAGE = { content_creator: "content_creation", graphic_designer: "design", senior_graphic_designer: "design" };
 // A task still sitting in someone's own stage past its due date, with no
 // due-date extension and not yet handed off, is a real accountability gap
 // — they didn't finish their part on their own timeline. Counted separately
@@ -670,8 +675,8 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     // revision (which clears _completed_at for the new cycle), and
     // finished again today shows as completed work on BOTH days, since
     // both were genuinely worked and finished, not just the most recent one.
-    const completedAtField = userRole==="graphic_designer" ? "design_completed_at" : userRole==="content_creator" ? "content_completed_at" : null;
-    const completedDatesField = userRole==="graphic_designer" ? "design_completed_dates" : userRole==="content_creator" ? "content_completed_dates" : null;
+    const completedAtField = isDesignerRole(userRole) ? "design_completed_at" : userRole==="content_creator" ? "content_completed_at" : null;
+    const completedDatesField = isDesignerRole(userRole) ? "design_completed_dates" : userRole==="content_creator" ? "content_completed_dates" : null;
     const completedAt = completedAtField ? p[completedAtField] : null;
     // History entries are {date, duration_mins} snapshots — each completion
     // cycle (finished, sent back, finished again) writes its own frozen
@@ -771,8 +776,8 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     // every task after it too, since their own cursor search reads this
     // task's real end_mins, not the estimate.
     let dur = est;
-    const completedAtField = userRole==="graphic_designer" ? "design_completed_at" : userRole==="content_creator" ? "content_completed_at" : null;
-    const completedDatesField = userRole==="graphic_designer" ? "design_completed_dates" : userRole==="content_creator" ? "content_completed_dates" : null;
+    const completedAtField = isDesignerRole(userRole) ? "design_completed_at" : userRole==="content_creator" ? "content_completed_at" : null;
+    const completedDatesField = isDesignerRole(userRole) ? "design_completed_dates" : userRole==="content_creator" ? "content_completed_dates" : null;
     const completedAt = completedAtField ? post[completedAtField] : null;
     // Checks the accumulated completed-dates HISTORY too, not just the
     // latest _completed_at timestamp — a task finished on this day, then
@@ -932,7 +937,7 @@ function wasOwnerOf(post, email, role) {
   if (!email) return false;
   if (post.assigned_to === email) return true;
   if (role === "content_creator" && post.content_assigned_to === email) return true;
-  if (role === "graphic_designer" && post.design_assigned_to === email) return true;
+  if (isDesignerRole(role) && post.design_assigned_to === email) return true;
   // assigned_to_extra — the extra people tagged onto a task via the
   // Assigned To card's "+" picker — is just as real an assignment as the
   // primary one; someone added there should see the task on their own
@@ -6185,6 +6190,10 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   const [comment,setComment] = useState("");
   const [sending,setSending] = useState(false);
   const isManager = ["admin","account_manager","account_director","account_executive"].includes(currentUser?.role);
+  // A senior designer can choose which designers work a task — only the
+  // assignee picker opens up, none of the other manager controls.
+  const isSeniorDesigner = currentUser?.role==="senior_graphic_designer";
+  const canAssignPeople = isManager || isSeniorDesigner;
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -6876,10 +6885,10 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                 </div>
               ) : <span style={{fontSize:12,color:"var(--text3)"}}>Not set</span>}
             </div>}
-            <div onClick={()=>isManager&&setShowAssigneePicker(v=>!v)} style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",cursor:isManager?"pointer":"default"}}>
+            <div onClick={()=>canAssignPeople&&setShowAssigneePicker(v=>!v)} style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",cursor:canAssignPeople?"pointer":"default"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
                 <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Assigned To</p>
-                {isManager&&<Ico d={showAssigneePicker?Icons.x:Icons.plus} size={12} stroke="var(--text3)"/>}
+                {canAssignPeople&&<Ico d={showAssigneePicker?Icons.x:Icons.plus} size={12} stroke="var(--text3)"/>}
               </div>
               {assignee ? (() => {
                 const extras = parseJ(post.assigned_to_extra||"[]").map(email=>team?.find(t=>t.email===email)).filter(Boolean);
@@ -6917,7 +6926,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
               (which still drives the workflow/ownership logic above) can be
               tagged on as an additional person working this task; toggling a
               row saves immediately, no separate "Save" step. */}
-          {showAssigneePicker&&isManager&&(
+          {showAssigneePicker&&canAssignPeople&&(
             <div style={{padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",display:"flex",flexDirection:"column",gap:6}}>
               <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Add People to This Task</p>
               {/* Quick-add by typing first names, comma or space separated
@@ -6929,7 +6938,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                   onKeyDown={e=>{if(e.key!=="Enter") return; e.preventDefault();
                     const tokens = assigneeNameInput.split(/[,\n]/).map(t=>t.trim().toLowerCase()).filter(Boolean);
                     if(!tokens.length) return;
-                    const eligible = (team||[]).filter(m=>m.status!=="inactive"&&m.email!==post.assigned_to);
+                    const eligible = (team||[]).filter(m=>m.status!=="inactive"&&m.email!==post.assigned_to&&(!isSeniorDesigner||isDesignerRole(m.role)));
                     const matchedEmails = tokens.map(tok=>eligible.find(m=>m.name.toLowerCase().split(" ").some(part=>part.startsWith(tok))||m.name.toLowerCase().startsWith(tok))?.email).filter(Boolean);
                     const current = parseJ(post.assigned_to_extra||"[]");
                     const next = [...new Set([...current, ...matchedEmails])];
@@ -6940,12 +6949,13 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                   style={{flex:1,fontSize:12,padding:"6px 8px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)"}}/>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:220,overflowY:"auto"}}>
-                {(team||[]).filter(m=>m.status!=="inactive"&&m.email!==post.assigned_to).map(m=>{
+                {(team||[]).filter(m=>m.status!=="inactive"&&m.email!==post.assigned_to&&(!isSeniorDesigner||isDesignerRole(m.role))).map(m=>{
                   const active = parseJ(post.assigned_to_extra||"[]").includes(m.email);
                   return (
                     <button key={m.email} onClick={()=>toggleExtraAssigneeLive(m.email)} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderRadius:7,border:"none",background:active?"var(--accent)22":"transparent",cursor:"pointer",textAlign:"left"}}>
                       <Avatar name={m.name} size={20} role={m.role}/>
                       <span style={{fontSize:12,fontWeight:600,color:"var(--text)",flex:1}}>{m.name}</span>
+                      {isSeniorDesigner&&<span role="button" onClick={e=>{e.stopPropagation(); onEdit&&onEdit({...post, assigned_to:m.email, design_assigned_to:m.email});}} style={{fontSize:10,fontWeight:700,color:"var(--accent)",padding:"2px 8px",border:"1px solid var(--accent)",borderRadius:99}}>Make main designer</span>}
                       {active&&<Ico d={Icons.check} size={13} stroke="var(--accent)"/>}
                     </button>
                   );
@@ -10928,7 +10938,7 @@ No markdown, no explanation.`;
                 )}
               </div>
             </div>
-            ) : currentUser?.role==="graphic_designer" ? (
+            ) : isDesignerRole(currentUser?.role) ? (
               <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden",display:"flex",flexDirection:"column"}}>
                 <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
                   <h3 style={{fontWeight:700,fontSize:14}}>Design Shortcuts</h3>
@@ -13151,7 +13161,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
   const [confirmDelete,setConfirmDelete] = useState(false);
   const [showAddMenu,setShowAddMenu] = useState(false);
   const [showLogins,setShowLogins] = useState(false);
-  const [brainSubTab,setBrainSubTab] = useState(deepLinkContactReportId ? "contact_reports" : (currentUser?.role==="graphic_designer" ? "brand_guidelines" : "profile"));
+  const [brainSubTab,setBrainSubTab] = useState(deepLinkContactReportId ? "contact_reports" : (isDesignerRole(currentUser?.role) ? "brand_guidelines" : "profile"));
   const cProjects = projects.filter(p=>p.client_id===client.id||p.client_name===client.name);
   // Client Requests have no project yet (assigned when moved to Brief) —
   // match those directly by client_id/client_name too, not just via project.
@@ -13165,7 +13175,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
   const isAdmin = currentUser?.role==="admin";
   // Designers need the client's Brand Guidelines to actually design on-brand
   // — they otherwise have no access to the Settings/brain tab at all.
-  const canSeeBrandGuidelines = isPriv || currentUser?.role==="graphic_designer";
+  const canSeeBrandGuidelines = isPriv || isDesignerRole(currentUser?.role);
   const clientBriefs = (monthlyBriefs||[]).filter(b=>b.client_id===client.id);
   const pendingBriefCount = clientBriefs.filter(b=>b.status==="pending").length;
   const cMessages = (customerMessages||[]).filter(m=>m.client_id===client.id);
@@ -19902,6 +19912,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
                           <option value="account_executive">Account Executive</option>
                           <option value="content_creator">Content Creator</option>
                           <option value="graphic_designer">Graphic Designer</option>
+                          <option value="senior_graphic_designer">Senior Graphic Designer</option>
                           <option value="accountant">Accountant</option>
                           <option value="office_boy">Office Boy</option>
                         </>
@@ -22763,6 +22774,7 @@ function InviteUserModal({onClose, onSubmit, clients, team, initial}) {
                           <option value="account_executive">Account Executive</option>
                   <option value="content_creator">Content Creator</option>
                   <option value="graphic_designer">Graphic Designer</option>
+                          <option value="senior_graphic_designer">Senior Graphic Designer</option>
                   <option value="accountant">Accountant</option>
                   <option value="office_boy">Office Boy</option>
                 </>
@@ -38124,7 +38136,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   // order the team list happens to be in.
   const isAdminViewer = currentUser?.role==="admin";
   const TIMELINE_EXCLUDED_NAMES = ["mohamed", "shady", "somaia"];
-  const ROLE_SORT_ORDER = ["content_creator","graphic_designer","account_manager","account_director","account_executive","business_development"];
+  const ROLE_SORT_ORDER = ["content_creator","graphic_designer","senior_graphic_designer","account_manager","account_director","account_executive","business_development"];
   const timelineMembers = (team||[])
     .filter(m=>m.status!=="inactive")
     .filter(m=>isAdminViewer || !["hr","accountant","office_boy","admin"].includes(m.role))
@@ -41723,7 +41735,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       ]:[]),
       // Standalone client-picker Brand Guidelines view — graphic designers
       // need brand references without needing full Clients section access.
-      ...(currentUser?.role==="graphic_designer"?[
+      ...(isDesignerRole(currentUser?.role)?[
         {key:"brand_guidelines_tool", label:"Brand Guidelines", ico:Icons.palette||Icons.sparkle},
       ]:[]),
       ...(isAdmin?[
@@ -42603,6 +42615,7 @@ const QUICK_REPLIES = {
   ],
 };
 
+QUICK_REPLIES.senior_graphic_designer = QUICK_REPLIES.graphic_designer;
 const WELCOME_MESSAGES = {
   admin: "Hi I'm Pro — your AI assistant inside SocialFlow. I can create tasks, projects, clients, calendar plans, and more. Just tell me what to do.",
   account_manager: "Hi I'm Pro. I can help you manage clients, generate calendar plans, assign tasks, and run your campaigns. What do you need?",
@@ -42614,17 +42627,18 @@ const WELCOME_MESSAGES = {
 };
 
 // ── Pro — permission check for actions ──
+WELCOME_MESSAGES.senior_graphic_designer = WELCOME_MESSAGES.graphic_designer;
 const CHATBOT_ACTION_ROLES = {
-  create_task: ["admin","account_manager","account_director","account_executive","content_creator","graphic_designer"],
+  create_task: ["admin","account_manager","account_director","account_executive","content_creator","graphic_designer","senior_graphic_designer"],
   create_project: ["admin","account_manager","account_director","account_executive"],
   create_client: ["admin","account_manager","account_director","account_executive"],
   update_client: ["admin","account_manager","account_director","account_executive"],
   create_lead: ["admin","account_manager","account_director","account_executive"],
   create_invoice: ["admin","accountant"],
-  update_task_stage: ["admin","account_manager","account_director","account_executive","content_creator","graphic_designer"],
+  update_task_stage: ["admin","account_manager","account_director","account_executive","content_creator","graphic_designer","senior_graphic_designer"],
   update_task_caption: ["admin","account_manager","account_director","account_executive","content_creator"],
   assign_task: ["admin","account_manager","account_director","account_executive"],
-  add_comment: ["admin","account_manager","account_director","account_executive","content_creator","graphic_designer"],
+  add_comment: ["admin","account_manager","account_director","account_executive","content_creator","graphic_designer","senior_graphic_designer"],
   send_approval: ["admin","account_manager","account_director","account_executive"],
   create_calendar: ["admin","account_manager","account_director","account_executive"],
   delete_task: ["admin","account_manager","account_director","account_executive"],
@@ -51465,7 +51479,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         {page==="assets"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"assets.manage"))&&<AssetsPage assets={data.assets} projects={data.projects} clients={data.clients} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} currentUser={currentUser}/>}
         {page==="image_generator"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"assets.manage"))&&<ImageGeneratorPage clients={data.clients} projects={data.projects} onAddAsset={addAsset}/>}
         {page==="video_generator"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"assets.manage"))&&<VideoGeneratorPage clients={data.clients} projects={data.projects} onAddAsset={addAsset}/>}
-        {page==="brand_guidelines_tool"&&(currentUser?.role==="admin"||currentUser?.role==="graphic_designer")&&<BrandGuidelinesToolPage clients={data.clients} clientKnowledge={data.clientKnowledge||[]} onSaveKnowledge={saveClientKnowledge}/>}
+        {page==="brand_guidelines_tool"&&(currentUser?.role==="admin"||isDesignerRole(currentUser?.role))&&<BrandGuidelinesToolPage clients={data.clients} clientKnowledge={data.clientKnowledge||[]} onSaveKnowledge={saveClientKnowledge}/>}
         {page==="templates"&&<TemplatesPage templates={data.templates}/>}
         {page==="quotes"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"finance.quotes")||hasPerm(currentUser,rolePermsMap,"finance.full"))&&(
           <QuotesPage
