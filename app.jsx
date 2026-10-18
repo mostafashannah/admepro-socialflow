@@ -923,7 +923,9 @@ const getAssigneeForStage = (stage, teamMembers) => {
   return active.find(m => m.role === roleNeeded) || active.find(m => stageRoleMatches(roleNeeded, m.role));
 };
 // The Design stage accepts both Graphic Designer and Senior Graphic Designer.
-const stageRoleMatches = (roleNeeded, role) => role === roleNeeded || (roleNeeded === "graphic_designer" && role === "senior_graphic_designer");
+const stageRoleMatches = (roleNeeded, role) => role === roleNeeded
+  || (roleNeeded === "graphic_designer" && role === "senior_graphic_designer")
+  || (roleNeeded === "account_manager" && (role === "account_director" || role === "account_executive"));
 
 // `assigned_to` is deliberately overwritten every time a post moves into a
 // review/approval stage (see WORKFLOW_ASSIGNMENTS above) — it always means
