@@ -6686,6 +6686,14 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
     onAddComment(post.id, `Forwarded "${forwardedName}" to client`, currentUser, null, "internal");
   };
 
+  // Reverse of the forward-to-client hand-offs: copies a client-thread
+  // comment (text and/or attachment) into the internal Activity thread.
+  const pushCommentToActivity = (c) => {
+    const att = c.file_url ? {file_url:c.file_url, file_name:c.file_name, file_type:c.file_type||"file"} : null;
+    const text = (c.content && !/^📎 Attachment/.test(c.content)) ? c.content : (c.file_name ? `Attached: ${c.file_name}` : "📎 Attachment");
+    onAddComment(post.id, `↩ From client thread (${c.author_name||"client"}): ${text}`, currentUser, att, "internal");
+  };
+
   // Same forward-to-client hand-off as forwardAttachmentToClient above, but
   // for a design/media asset from the Media/Attachments grid (design_assets)
   // instead of a comment attachment — same rename-with-sequence-number
@@ -7977,6 +7985,9 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                         <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"System"}</span>
                         <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date||c.created_at)}</span>
+                        {onAddComment && (currentUser?.role==="admin" || ["account_manager","account_director","account_executive"].includes(currentUser?.role)) && (
+                          <button onClick={()=>{ if(confirm("Copy this client comment to the internal Activity comments?")) pushCommentToActivity(c); }} title="Push to Activity comments" style={{background:"none",border:"1px solid var(--border2)",borderRadius:99,color:"var(--text2)",cursor:"pointer",padding:"1px 8px",fontSize:10,fontWeight:700}}>→ Activity</button>
+                        )}
                         {onDeleteComment && (currentUser?.email===c.author_email || currentUser?.role==="admin" || ["account_manager","account_director","account_executive"].includes(currentUser?.role)) && (
                           <button onClick={()=>{ if(confirm(c.file_url?"Delete this comment? Its attachment will be deleted too.":"Delete this comment?")) onDeleteComment(c); }} title="Delete comment" style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",padding:2,display:"flex"}}>
                             <Ico d={Icons.trash||Icons.x} size={12} stroke="var(--text3)"/>
