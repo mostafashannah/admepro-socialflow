@@ -226,6 +226,8 @@ const ROLES = {
   content_creator: { label: "Content Creator", color: "#8b5cf6" },
   graphic_designer:{ label: "Graphic Designer",color: "#f59e0b" },
   senior_graphic_designer:{ label: "Senior Graphic Designer",color: "#d97706" },
+  video_editor:{ label: "Video Editor",color: "#ec4899" },
+  senior_video_editor:{ label: "Senior Video Editor",color: "#be185d" },
   accountant: { label: "Accountant", color: "#8b5cf6" },
   office_boy: { label: "Office Boy", color: "#6b7280" },
   client_admin: { label: "Client Admin", color: "#0ea5e9" },
@@ -237,7 +239,7 @@ const ROLES = {
 // which controls system permissions and must stay one of the fixed
 // functional roles. Quick-pick suggestions; the field also accepts any
 // free-typed value.
-const TEAM_TITLES = ["Creative","Senior Creative","Creative Director","Content Creator","Senior Content Creator","Graphic Designer","Senior Graphic Designer","AI Visual Specialist","Art Director","Account Manager","Senior Account Manager","Account Director"];
+const TEAM_TITLES = ["Creative","Senior Creative","Creative Director","Content Creator","Senior Content Creator","Graphic Designer","Senior Graphic Designer","Video Editor","Senior Video Editor","AI Visual Specialist","Art Director","Account Manager","Senior Account Manager","Account Director"];
 
 // Egypt's fixed-date national holidays — same month/day every year, so
 // these can be generated automatically. Islamic holidays (Eid al-Fitr,
@@ -324,8 +326,11 @@ function StorageUsageBar({usedBytes, limitBytes}) {
 const CLIENT_ROLES = ["client_admin","client_member"];
 // Senior Graphic Designer does everything a Graphic Designer does, plus can
 // assign any designer on the team to a task.
-const isDesignerRole = r => r==="graphic_designer" || r==="senior_graphic_designer";
-const INTERNAL_ROLES = ["admin","hr","account_manager","account_director","account_executive","business_development","content_creator","graphic_designer","senior_graphic_designer","accountant","office_boy"];
+// Graphic design + video editing form one design team: identical permissions;
+// the two "senior" roles can additionally assign anyone on that team.
+const DESIGN_TEAM_ROLES = ["graphic_designer","senior_graphic_designer","video_editor","senior_video_editor"];
+const isDesignerRole = r => DESIGN_TEAM_ROLES.includes(r);
+const INTERNAL_ROLES = ["admin","hr","account_manager","account_director","account_executive","business_development","content_creator","graphic_designer","senior_graphic_designer","video_editor","senior_video_editor","accountant","office_boy"];
 
 // Granular permissions the Roles & Permissions settings page can toggle per
 // role. "admin" always implicitly has every permission regardless of what's
@@ -369,6 +374,8 @@ const DEFAULT_ROLE_PERMISSIONS = {
   content_creator: ["assets.manage"],
   graphic_designer: ["assets.manage"],
   senior_graphic_designer: ["assets.manage"],
+  video_editor: ["assets.manage"],
+  senior_video_editor: ["assets.manage"],
   accountant: ["finance.quotes","finance.full"],
 };
 // Converts the flat role_permissions rows fetched from the API into
@@ -495,7 +502,7 @@ function canAdvanceStageAsNonManager(currentUser, post, nextKey) {
 // listed here (e.g. account_manager) keep the old "counts once it reaches
 // Scheduled/Published" behavior, since their responsibility spans the
 // whole pipeline rather than one stage.
-const ROLE_OWNED_STAGE = { content_creator: "content_creation", graphic_designer: "design", senior_graphic_designer: "design" };
+const ROLE_OWNED_STAGE = { content_creator: "content_creation", graphic_designer: "design", senior_graphic_designer: "design", video_editor: "design", senior_video_editor: "design" };
 // A task still sitting in someone's own stage past its due date, with no
 // due-date extension and not yet handed off, is a real accountability gap
 // — they didn't finish their part on their own timeline. Counted separately
@@ -975,7 +982,7 @@ const getAssigneeForStage = (stage, teamMembers) => {
 };
 // The Design stage accepts both Graphic Designer and Senior Graphic Designer.
 const stageRoleMatches = (roleNeeded, role) => role === roleNeeded
-  || (roleNeeded === "graphic_designer" && role === "senior_graphic_designer")
+  || (roleNeeded === "graphic_designer" && isDesignerRole(role))
   || (roleNeeded === "account_manager" && (role === "account_director" || role === "account_executive"));
 
 // `assigned_to` is deliberately overwritten every time a post moves into a
@@ -6264,7 +6271,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   const isManager = ["admin","account_manager","account_director","account_executive"].includes(currentUser?.role);
   // A senior designer can choose which designers work a task — only the
   // assignee picker opens up, none of the other manager controls.
-  const isSeniorDesigner = currentUser?.role==="senior_graphic_designer";
+  const isSeniorDesigner = ["senior_graphic_designer","senior_video_editor"].includes(currentUser?.role);
   const canAssignPeople = isManager || isSeniorDesigner;
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
@@ -20008,6 +20015,8 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
                           <option value="content_creator">Content Creator</option>
                           <option value="graphic_designer">Graphic Designer</option>
                           <option value="senior_graphic_designer">Senior Graphic Designer</option>
+                          <option value="video_editor">Video Editor</option>
+                          <option value="senior_video_editor">Senior Video Editor</option>
                           <option value="accountant">Accountant</option>
                           <option value="office_boy">Office Boy</option>
                         </>
@@ -22870,6 +22879,8 @@ function InviteUserModal({onClose, onSubmit, clients, team, initial}) {
                   <option value="content_creator">Content Creator</option>
                   <option value="graphic_designer">Graphic Designer</option>
                           <option value="senior_graphic_designer">Senior Graphic Designer</option>
+                          <option value="video_editor">Video Editor</option>
+                          <option value="senior_video_editor">Senior Video Editor</option>
                   <option value="accountant">Accountant</option>
                   <option value="office_boy">Office Boy</option>
                 </>
@@ -38231,7 +38242,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   // order the team list happens to be in.
   const isAdminViewer = currentUser?.role==="admin";
   const TIMELINE_EXCLUDED_NAMES = ["mohamed", "shady", "somaia"];
-  const ROLE_SORT_ORDER = ["content_creator","graphic_designer","senior_graphic_designer","account_manager","account_director","account_executive","business_development"];
+  const ROLE_SORT_ORDER = ["content_creator","graphic_designer","senior_graphic_designer","video_editor","senior_video_editor","account_manager","account_director","account_executive","business_development"];
   const timelineMembers = (team||[])
     .filter(m=>m.status!=="inactive")
     .filter(m=>isAdminViewer || !["hr","accountant","office_boy","admin"].includes(m.role))
@@ -42711,6 +42722,8 @@ const QUICK_REPLIES = {
 };
 
 QUICK_REPLIES.senior_graphic_designer = QUICK_REPLIES.graphic_designer;
+QUICK_REPLIES.video_editor = QUICK_REPLIES.graphic_designer;
+QUICK_REPLIES.senior_video_editor = QUICK_REPLIES.graphic_designer;
 const WELCOME_MESSAGES = {
   admin: "Hi I'm Pro — your AI assistant inside SocialFlow. I can create tasks, projects, clients, calendar plans, and more. Just tell me what to do.",
   account_manager: "Hi I'm Pro. I can help you manage clients, generate calendar plans, assign tasks, and run your campaigns. What do you need?",
@@ -42723,17 +42736,19 @@ const WELCOME_MESSAGES = {
 
 // ── Pro — permission check for actions ──
 WELCOME_MESSAGES.senior_graphic_designer = WELCOME_MESSAGES.graphic_designer;
+WELCOME_MESSAGES.video_editor = WELCOME_MESSAGES.graphic_designer;
+WELCOME_MESSAGES.senior_video_editor = WELCOME_MESSAGES.graphic_designer;
 const CHATBOT_ACTION_ROLES = {
-  create_task: ["admin","account_manager","account_director","account_executive","content_creator","graphic_designer","senior_graphic_designer"],
+  create_task: ["admin","account_manager","account_director","account_executive","content_creator","graphic_designer","senior_graphic_designer","video_editor","senior_video_editor"],
   create_project: ["admin","account_manager","account_director","account_executive"],
   create_client: ["admin","account_manager","account_director","account_executive"],
   update_client: ["admin","account_manager","account_director","account_executive"],
   create_lead: ["admin","account_manager","account_director","account_executive"],
   create_invoice: ["admin","accountant"],
-  update_task_stage: ["admin","account_manager","account_director","account_executive","content_creator","graphic_designer","senior_graphic_designer"],
+  update_task_stage: ["admin","account_manager","account_director","account_executive","content_creator","graphic_designer","senior_graphic_designer","video_editor","senior_video_editor"],
   update_task_caption: ["admin","account_manager","account_director","account_executive","content_creator"],
   assign_task: ["admin","account_manager","account_director","account_executive"],
-  add_comment: ["admin","account_manager","account_director","account_executive","content_creator","graphic_designer","senior_graphic_designer"],
+  add_comment: ["admin","account_manager","account_director","account_executive","content_creator","graphic_designer","senior_graphic_designer","video_editor","senior_video_editor"],
   send_approval: ["admin","account_manager","account_director","account_executive"],
   create_calendar: ["admin","account_manager","account_director","account_executive"],
   delete_task: ["admin","account_manager","account_director","account_executive"],
