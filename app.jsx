@@ -6039,7 +6039,14 @@ function renderBoldSegments(text, keyPrefix="") {
     if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
       return <strong key={keyPrefix+i}>{part.slice(2, -2)}</strong>;
     }
-    return part;
+    // Make links real, copyable, clickable links.
+    return part.split(/(https?:\/\/[^\s<>"']+)/g).map((seg, j) => {
+      if (/^https?:\/\//.test(seg)) {
+        const m = seg.match(/^(.*?)([.,;:!?)\]]*)$/);
+        return <React.Fragment key={keyPrefix+i+"-"+j}><a href={m[1]} target="_blank" rel="noopener noreferrer" style={{color:"var(--accent)",textDecoration:"underline",wordBreak:"break-all"}}>{m[1]}</a>{m[2]}</React.Fragment>;
+      }
+      return seg;
+    });
   });
 }
 
@@ -6054,7 +6061,13 @@ function briefParagraphs(text) {
   let paras = text.split(/\n{2,}/).map(p=>p.trim()).filter(Boolean);
   if (paras.length <= 1) paras = text.split(/\n/).map(p=>p.trim()).filter(Boolean);
   if (paras.length <= 1) {
-    const sentences = text.match(/[^.!?]+[.!?]+(?:\*\*)?\s*|[^.!?]+$/g) || [text];
+    // Shield URLs from the sentence splitter — their dots ("www.canva.com")
+    // were being treated as sentence ends and re-joined with spaces, which
+    // broke every pasted link.
+    const urls = [];
+    const masked = text.replace(/https?:\/\/[^\s<>"']+/g, u => { urls.push(u); return `\u0001${urls.length-1}\u0002`; });
+    const unmask = t => t.replace(/\u0001(\d+)\u0002/g, (_, n) => urls[+n]);
+    const sentences = (masked.match(/[^.!?]+[.!?]+(?:\*\*)?\s*|[^.!?]+$/g) || [masked]).map(unmask);
     paras = [];
     let buf = [];
     sentences.forEach(s => {
