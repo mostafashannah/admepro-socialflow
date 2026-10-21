@@ -60,7 +60,7 @@ function UploadProgressToast() {
       {items.map(i=>{ const pct = i.total ? Math.min(100,Math.round(i.loaded/i.total*100)) : 0; return (
         <div key={i.id} style={{background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:12,padding:"10px 12px",boxShadow:"0 8px 28px rgba(0,0,0,0.25)"}}>
           <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,fontWeight:600,marginBottom:6}}>
-            <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Uploading {i.name}</span>
+            <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{i.verb||"Uploading"} {i.name}</span>
             <span style={{color:"var(--accent)",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>{pct}%
               {i.cancel&&<button onClick={i.cancel} title="Cancel upload" style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:99,padding:"1px 9px",fontSize:11,fontWeight:700,color:"var(--text2)",cursor:"pointer"}}>Cancel</button>}
             </span>
@@ -70,6 +70,51 @@ function UploadProgressToast() {
     </div>
   );
 }
+// Bundles every media file of a task into one .zip download, with the same
+// floating progress card uploads use (files done / total).
+const downloadAllMedia = async (assets, zipName="media") => {
+  const list = (assets||[]).map(a=>({url:a.url||a.file_url||a.data||"", name:a.name||""})).filter(a=>a.url&&a.url!=="#");
+  if(!list.length) return;
+  if(!window.JSZip) { list.forEach(a=>window.open(a.url,"_blank")); return; }
+  const id = ++uploadProgressStore.seq;
+  const safe = n => String(n).replace(/[^a-zA-Z0-9._ -]/g,"_").trim() || "file";
+  uploadProgressStore.items[id] = {id, name:`${list.length} files (zip)`, loaded:0, total:list.length, cancel:null, verb:"Preparing"};
+  uploadProgressNotify();
+  let cancelled = false;
+  uploadProgressStore.items[id].cancel = () => { cancelled = true; };
+  try {
+    const zip = new window.JSZip();
+    const used = new Set();
+    for(let i=0;i<list.length&&!cancelled;i++){
+      const a = list[i];
+      try {
+        const res = await fetch(a.url);
+        if(!res.ok) throw new Error(String(res.status));
+        const blob = await res.blob();
+        const urlName = decodeURIComponent((a.url.split("?")[0].split("/").pop()||"")).replace(/^\d+_/,"");
+        let name = safe(a.name||urlName||`file-${i+1}`);
+        if(!/\.[a-zA-Z0-9]{2,5}$/.test(name)) { const ext = (urlName.match(/\.[a-zA-Z0-9]{2,5}$/)||[""])[0]; name += ext; }
+        let unique = name, n = 2;
+        while(used.has(unique)) { unique = name.replace(/(\.[^.]*)?$/, m=>` (${n++})${m}`); }
+        used.add(unique);
+        zip.file(unique, blob);
+      } catch(e) { console.warn("zip: skipped", a.url, e); }
+      uploadProgressStore.items[id] = {...uploadProgressStore.items[id], loaded:i+1};
+      uploadProgressNotify();
+    }
+    if(cancelled) return;
+    const out = await zip.generateAsync({type:"blob"});
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(out);
+    link.download = `${safe(zipName)}.zip`;
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(()=>URL.revokeObjectURL(link.href), 10000);
+  } finally {
+    delete uploadProgressStore.items[id];
+    uploadProgressNotify();
+  }
+};
+
 // Upload a file to self-hosted storage (vps-migration/storage.php) — returns public URL
 const uploadToStorage = async (rawFile, folder="uploads") => {
   const file = await convertHeicIfNeeded(rawFile);
@@ -7345,7 +7390,10 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
             const colWidth = isVertical ? "130px" : "150px";
             return (
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                <label style={{fontSize:11,fontWeight:700,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Media</label>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                  <label style={{fontSize:11,fontWeight:700,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Media</label>
+                  {media.length>1&&<button onClick={()=>downloadAllMedia(media, post.title||"media")} style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:99,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer"}}>⬇ Download all ({media.length})</button>}
+                </div>
                 <div style={{display:"grid",gridTemplateColumns:`repeat(auto-fill,minmax(${colWidth},1fr))`,gap:10}}>
                   {media.map((asset,i)=>{
                     const url = asset.url||asset.file_url||asset.data||"";
@@ -23717,7 +23765,10 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                 if(!media.length) return null;
                 return (
                   <div>
-                    <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:8,textTransform:"uppercase",letterSpacing:"0.05em"}}>Media</p>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8}}>
+                      <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Media</p>
+                      {media.length>1&&<button onClick={()=>downloadAllMedia(media, sel.title||"media")} style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:99,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer"}}>⬇ Download all ({media.length})</button>}
+                    </div>
                     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(90px,1fr))",gap:8}}>
                       {media.map((m,i)=>{
                         const isVideo = (m.type||"").startsWith("video") || (m.url||"").match(/\.(mp4|mov|webm|m4v)/i);
