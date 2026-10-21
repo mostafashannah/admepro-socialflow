@@ -35160,6 +35160,122 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
   );
 }
 
+// Next-month cash forecast: income and every expense line projected from the
+// last 3 COMPLETE months of real records, except the fixed lines — salaries
+// (everyone's current salary), rent (latest real amount) — which are taken as
+// they will actually be paid. Every forecast figure is editable.
+function FinanceForecast({monthlyByCategory, ledger=[], partnerInKeys=[], team=[], subscriptions=[], totalOutstanding=0, isMobile}) {
+  const now = new Date();
+  const curKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+  const next = new Date(now.getFullYear(), now.getMonth()+1, 1);
+  const nextKey = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,"0")}`;
+  const nextLabel = next.toLocaleDateString(undefined,{month:"long",year:"numeric"});
+  const nextEnd = new Date(next.getFullYear(), next.getMonth()+1, 0).toISOString().slice(0,10);
+  const allKeys = Object.keys(monthlyByCategory).filter(k=>k<curKey).sort();
+  const histKeys = allKeys.slice(-3);
+  const monthLabel = k => new Date(k+"-01T00:00:00").toLocaleDateString(undefined,{month:"short"});
+  const val = (k,c) => Number(monthlyByCategory[k]?.[c])||0;
+  const avg = c => histKeys.length ? histKeys.reduce((a,k)=>a+val(k,c),0)/histKeys.length : 0;
+  const latestNonZero = c => { for(let i=allKeys.length-1;i>=Math.max(0,allKeys.length-6);i--){ if(val(allKeys[i],c)>0) return val(allKeys[i],c); } return 0; };
+
+  // Salaries: everyone who will be on payroll next month (active now, or
+  // starting on/before the end of next month).
+  const payrollMembers = (team||[]).filter(m=>!CLIENT_ROLES.includes(m.role)&&m.role!=="client"&&Number(m.salary)>0&&(
+    m.status==="active" || (m.pending_start && m.start_date && String(m.start_date).slice(0,10)<=nextEnd)));
+  const salariesTotal = payrollMembers.reduce((a,m)=>a+Number(m.salary),0);
+  const subsMonthly = (subscriptions||[]).filter(sb=>sb.status==="active").reduce((a,sb)=>{
+    const amt = Number(sb.amount)||0, p = String(sb.billing_period||"monthly").toLowerCase();
+    return a + (p.startsWith("year")||p==="annual" ? amt/12 : p.startsWith("quart") ? amt/3 : amt);
+  },0);
+
+  // Income comes from RETAINER clients: those who paid in EVERY one of the
+  // last 3 complete months (a fixed monthly client). Their expected payment is
+  // their average over those months. Everything else that came in (one-off /
+  // irregular payments) is shown but not counted unless you enter a figure.
+  const partnerIn = new Set(partnerInKeys);
+  const perClient = {}; // name -> {monthKey: amount}
+  let irregularTotal = 0;
+  (ledger||[]).filter(l=>l.type==="in"&&!partnerIn.has(l.category)&&l.date).forEach(l=>{
+    const d = new Date(l.date); if(isNaN(d.getTime())) return;
+    const mk = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+    if(!histKeys.includes(mk)) return;
+    const name = l.clientName || l.sub || l.label || "Unknown";
+    if(!perClient[name]) perClient[name] = {};
+    perClient[name][mk] = (perClient[name][mk]||0) + (Number(l.countableAmount)||0);
+  });
+  const retainerNames = Object.keys(perClient).filter(n=>histKeys.length>0&&histKeys.every(k=>(perClient[n][k]||0)>0));
+  Object.keys(perClient).filter(n=>!retainerNames.includes(n)).forEach(n=>{ irregularTotal += histKeys.reduce((a,k)=>a+(perClient[n][k]||0),0); });
+  const irregularAvg = histKeys.length ? irregularTotal/histKeys.length : 0;
+  const retainerLines = retainerNames.sort((a,b)=>histKeys.reduce((x,k)=>x+(perClient[b][k]||0),0)-histKeys.reduce((x,k)=>x+(perClient[a][k]||0),0)).map(n=>({
+    k:"ret:"+n, l:n, type:"in", retainer:true, hist:perClient[n],
+    suggested: histKeys.reduce((a,k)=>a+(perClient[n][k]||0),0)/histKeys.length,
+    note:"retainer — paid every month",
+  }));
+  const lines = [
+    ...retainerLines,
+    {k:"irregular_income", l:"Other / one-off income", type:"in", suggested:0, note:`not counted by default — last ${histKeys.length||0} months averaged EGP ${Math.round(irregularAvg).toLocaleString()}/mo from non-retainer payments${subsMonthly?` · active subscriptions bill ≈ EGP ${Math.round(subsMonthly).toLocaleString()}/mo`:""}`},
+    {k:"salaries", l:"Salaries & Payroll", type:"out", suggested:salariesTotal, note:`${payrollMembers.length} people on payroll × current salary`},
+    {k:"rent", l:"Rent & Utilities", type:"out", suggested:latestNonZero("rent")||avg("rent"), note:"latest recorded amount"},
+    {k:"office_supplies", l:"Office Supplies", type:"out", suggested:avg("office_supplies"), note:"3-month average"},
+    ...EXPENSE_CATEGORIES.filter(c=>!["salaries","rent","office_supplies"].includes(c.k)&&(histKeys.some(h=>val(h,c.k)>0))).map(c=>({k:c.k,l:c.l,type:"out",suggested:avg(c.k),note:"3-month average"})),
+  ];
+  const irregularForMonth = k => Object.keys(perClient).filter(n=>!retainerNames.includes(n)).reduce((a,n)=>a+(perClient[n][k]||0),0);
+  const [over,setOver] = useState({});
+  const [includeOutstanding,setIncludeOutstanding] = useState(false);
+  const amountOf = ln => over[ln.k]!==undefined && over[ln.k]!=="" ? (Number(over[ln.k])||0) : Math.round(ln.suggested);
+  const totalIn = lines.filter(l=>l.type==="in").reduce((a,l)=>a+amountOf(l),0);
+  const outstandingAdd = includeOutstanding ? totalOutstanding : 0;
+  const totalOut = lines.filter(l=>l.type==="out").reduce((a,l)=>a+amountOf(l),0) + outstandingAdd;
+  const net = totalIn - totalOut;
+  const egp = n => `EGP ${Math.round(n).toLocaleString()}`;
+  const hist = k => { const inc=val(k,"income"); const out=Object.entries(monthlyByCategory[k]||{}).filter(([c])=>c!=="income").reduce((a,[,v])=>a+Number(v||0),0); return {inc,out,net:inc-out}; };
+  const cell = {padding:"8px 10px",fontSize:12.5,borderBottom:"1px solid var(--border)"};
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px"}}>
+        <h3 style={{fontSize:16,fontWeight:800}}>Forecast — {nextLabel}</h3>
+        <p style={{fontSize:12,color:"var(--text3)",marginTop:4}}>Income = your retainer clients (paid every month for the last 3 months); expenses and payroll are built from your real records: the last {histKeys.length||0} complete month(s) ({histKeys.map(monthLabel).join(", ")||"none yet"}), plus upcoming payroll. Change any figure to test a scenario.</p>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)",gap:10,marginTop:14}}>
+          <div style={{padding:12,borderRadius:"var(--rs)",background:"var(--surface2)"}}><p style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>FORECAST INCOME</p><p style={{fontSize:20,fontWeight:800,color:"#10b981"}}>{egp(totalIn)}</p></div>
+          <div style={{padding:12,borderRadius:"var(--rs)",background:"var(--surface2)"}}><p style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>FORECAST EXPENSES</p><p style={{fontSize:20,fontWeight:800,color:"#ef4444"}}>{egp(totalOut)}</p></div>
+          <div style={{padding:12,borderRadius:"var(--rs)",background:"var(--surface2)"}}><p style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>FORECAST NET</p><p style={{fontSize:20,fontWeight:800,color:net>=0?"#10b981":"#ef4444"}}>{net<0?"−":""}{egp(Math.abs(net))}</p></div>
+        </div>
+      </div>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",minWidth:560}}>
+          <thead><tr style={{textAlign:"left",fontSize:11,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>
+            <th style={cell}>Line</th>
+            {histKeys.map(k=><th key={k} style={{...cell,textAlign:"right"}}>{monthLabel(k)}</th>)}
+            <th style={{...cell,textAlign:"right"}}>Forecast</th>
+          </tr></thead>
+          <tbody>
+            {lines.map(ln=>(
+              <tr key={ln.k}>
+                <td style={cell}><div style={{fontWeight:700,color:ln.type==="in"?"#10b981":"var(--text)"}}>{ln.l}</div><div style={{fontSize:11,color:"var(--text3)"}}>{ln.note}</div></td>
+                {histKeys.map(k=><td key={k} style={{...cell,textAlign:"right",color:"var(--text2)"}}>{Math.round(ln.retainer ? (ln.hist[k]||0) : ln.k==="irregular_income" ? irregularForMonth(k) : val(k,ln.k)).toLocaleString()}</td>)}
+                <td style={{...cell,textAlign:"right"}}>
+                  <input type="number" value={over[ln.k]!==undefined?over[ln.k]:Math.round(ln.suggested)} onChange={e=>setOver(o=>({...o,[ln.k]:e.target.value}))}
+                    style={{width:110,textAlign:"right",padding:"5px 8px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontWeight:700,fontSize:13}}/>
+                </td>
+              </tr>
+            ))}
+            <tr>
+              <td style={cell} colSpan={1+histKeys.length}><label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:12.5}}><input type="checkbox" checked={includeOutstanding} onChange={e=>setIncludeOutstanding(e.target.checked)}/> Also pay off outstanding installments ({egp(totalOutstanding)} still owed)</label></td>
+              <td style={{...cell,textAlign:"right",fontWeight:700}}>{egp(outstandingAdd)}</td>
+            </tr>
+            <tr style={{background:"var(--surface2)"}}>
+              <td style={{...cell,fontWeight:800}}>Net (income − expenses)</td>
+              {histKeys.map(k=>{ const h=hist(k); return <td key={k} style={{...cell,textAlign:"right",fontWeight:700,color:h.net>=0?"#10b981":"#ef4444"}}>{Math.round(h.net).toLocaleString()}</td>; })}
+              <td style={{...cell,textAlign:"right",fontWeight:800,color:net>=0?"#10b981":"#ef4444"}}>{Math.round(net).toLocaleString()}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p style={{fontSize:11,color:"var(--text3)"}}>Forecasts are estimates. Salaries use each person's current salary (including raises already recorded). One-off items like new equipment or a client paying late aren't predicted — adjust the lines above if you expect them.</p>
+    </div>
+  );
+}
+
 function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,clients=[],financeClientNotes=[],team=[],currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh,onRenameClient,onSaveClientNote,onUpdateClient,activityLogs=[],payrollRuns=[],onDecidePayrollRun}) {
   const {isMobile} = useResponsive();
   const [showAdd,setShowAdd] = useState(false);
@@ -35217,6 +35333,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const openPartnersTab = () => { pushFinanceHistory({view:"partners"}); setView("partners"); };
   const openPayrollTab = () => { pushFinanceHistory({view:"payroll"}); setView("payroll"); };
   const openAiTab = () => { pushFinanceHistory({view:"ai"}); setView("ai"); };
+  const openForecastTab = () => { pushFinanceHistory({view:"forecast"}); setView("forecast"); };
   const openOverviewTab = () => { pushFinanceHistory({view:"overview"}); setView("overview"); };
   const openOutstandingTab = () => { pushFinanceHistory({view:"outstanding"}); setView("outstanding"); };
   const openAddTransaction = () => {
@@ -35603,7 +35720,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
 
       {/* View tabs */}
       <div style={{display:"flex",flexDirection:"row",flexWrap:"wrap",gap:6,width:"100%",minHeight:36,paddingBottom:2,borderBottom:"1px solid var(--border, #e5e7eb)"}}>
-        {[["overview","Overview",openOverviewTab],["clients","Clients",openClientsTab],["partners","Partners",openPartnersTab],["payroll","Payroll",openPayrollTab],["outstanding","Outstanding",openOutstandingTab],["ai","AI",openAiTab]].map(([k,l,fn])=>(
+        {[["overview","Overview",openOverviewTab],["clients","Clients",openClientsTab],["partners","Partners",openPartnersTab],["payroll","Payroll",openPayrollTab],["outstanding","Outstanding",openOutstandingTab],["forecast","Forecast",openForecastTab],["ai","AI",openAiTab]].map(([k,l,fn])=>(
           <button key={k} type="button" onClick={fn} style={{display:"inline-block",flexShrink:0,whiteSpace:"nowrap",padding:"9px 18px",fontSize:13,fontWeight:600,background:"transparent",borderWidth:"0 0 2px 0",borderStyle:"solid",borderColor:view===k?"var(--accent, #d90b2c)":"transparent",color:view===k?"var(--accent, #d90b2c)":"var(--text2, #6b7280)",cursor:"pointer"}}>{l}</button>
         ))}
       </div>
@@ -35698,6 +35815,8 @@ No markdown, no explanation.`;
             </div>
           )}
         </div>
+      ) : view==="forecast" ? (
+        <FinanceForecast monthlyByCategory={monthlyByCategory} ledger={ledger} partnerInKeys={PARTNERS.map(p=>p.inKey)} team={team} subscriptions={subscriptions} totalOutstanding={totalOutstanding} isMobile={isMobile}/>
       ) : view==="payroll" ? (
         selectedPayrollMember ? (() => {
           const row = payrollRows.find(r=>r.key===selectedPayrollMember);
