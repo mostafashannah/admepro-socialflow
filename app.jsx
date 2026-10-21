@@ -6103,8 +6103,39 @@ function BriefText({text, style}) {
 // required field is filled).
 // ════════════════════════════════════════════════════════════════
 const PLAN_ITEM_STAGE_KEYS = ["content_creation","design","internal_review","client_approval","approved","rejected","on_hold"];
-function PlanItemCard({item,team,onUpdate,onSplit}) {
+function PlanItemCard({item,team,onUpdate,onSplit,clientId,clientName,planTitle}) {
   const [uploading,setUploading] = useState(false);
+  const [genBusy,setGenBusy] = useState(false);
+  const [genNote,setGenNote] = useState("");
+  // Same writer the Calendar Plan generator uses for a single idea: Sara,
+  // grounded in the client brain, filling caption + text on visual + hashtags.
+  const generateWithSara = async () => {
+    setGenBusy(true);
+    const kind = item.kind||"static";
+    const kindGuide = kind==="story" ? "This is ephemeral, very short and casual (1 punchy line, no hashtags needed)." : kind==="reel" ? "This is a Reel caption — also give the hook for the first 3 seconds." : "This is a normal short-form social post (image/carousel caption).";
+    const note = genNote.trim();
+    try {
+      const aiRes = await agentAI("content_creator", `Plan item: ${item.title}`, `You are Sara, a senior content creator working under Pro's supervision. Review the ENTIRE client brain below before writing. Write the content for ONE "${kind}" post in the plan "${planTitle||""}":
+${clientBrainBlock(clientId, clientName)}
+Platform: ${item.platform||(item.platforms||[])[0]||"instagram"}
+Post title: ${item.title}
+${item.description?`Brief: ${item.description}`:""}
+${item.caption?`Current caption (improve or replace): ${item.caption}`:""}
+${note?`FEEDBACK FROM THE TEAM — apply this: ${note}`:""}
+
+${kindGuide}
+
+Return ONLY valid JSON (no markdown): {"caption":"...","hashtags":"...","text_on_visual":"..."${kind==="reel"?',"hook":"..."':""}} (text_on_visual = the short catchy headline (max 8 words) overlaid on the design itself, different from the caption).`, 800);
+      const match = aiRes.match(/\{[\s\S]*\}/);
+      if(!match) throw new Error("No JSON in Sara's response");
+      const idea = JSON.parse(match[0]);
+      onUpdate({caption:idea.caption||item.caption||"", hashtags:idea.hashtags??item.hashtags??"", text_on_visual:idea.text_on_visual??item.text_on_visual??"", ...(kind==="reel"?{reel_hook:idea.hook??item.reel_hook??""}:{})});
+      setGenNote("");
+    } catch(e) {
+      alert("Sara couldn't write that post: " + (e?.message||"unknown error").slice(0,200));
+    }
+    setGenBusy(false);
+  };
   const media = item.media||{};
   const assignee = team?.find(t=>t.email===item.assigned_to);
   const isSplit = !!item.split_post_id;
@@ -6156,6 +6187,21 @@ function PlanItemCard({item,team,onUpdate,onSplit}) {
         <div style={{display:"flex",gap:8,marginBottom:10}}>
           <input type="date" value={item.scheduled_date||""} onChange={e=>onUpdate({scheduled_date:e.target.value})} style={{flex:1,fontSize:12,padding:"6px 8px",borderRadius:8,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)"}}/>
           <input type="time" value={item.scheduled_time||""} onChange={e=>onUpdate({scheduled_time:e.target.value})} style={{flex:1,fontSize:12,padding:"6px 8px",borderRadius:8,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)"}}/>
+        </div>
+
+        {/* Assignee + copy — same fields a regular post task has, plus Sara */}
+        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:10}}>
+          <select value={item.assigned_to||""} onChange={e=>onUpdate({assigned_to:e.target.value})} style={{fontSize:12,padding:"6px 8px",borderRadius:8,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)"}}>
+            <option value="">Assign to…</option>
+            {(team||[]).filter(m=>m.status!=="inactive"&&!CLIENT_ROLES.includes(m.role)&&m.role!=="client").map(m=><option key={m.email} value={m.email}>{m.name} — {(ROLES[m.role]?.label)||m.role}</option>)}
+          </select>
+          <input value={item.text_on_visual||""} onChange={e=>onUpdate({text_on_visual:e.target.value})} placeholder="Text on visual (headline that sits on the design)" style={{fontSize:12,padding:"6px 8px",borderRadius:8,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)"}}/>
+          <textarea value={item.caption||""} onChange={e=>onUpdate({caption:e.target.value})} placeholder="Caption" rows={3} style={{fontSize:12,padding:"6px 8px",borderRadius:8,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)",resize:"vertical",fontFamily:"inherit"}}/>
+          <input value={item.hashtags||""} onChange={e=>onUpdate({hashtags:e.target.value})} placeholder="#hashtags" style={{fontSize:12,padding:"6px 8px",borderRadius:8,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)"}}/>
+          <div style={{display:"flex",gap:6}}>
+            <input value={genNote} onChange={e=>setGenNote(e.target.value)} placeholder="Optional note for Sara (angle, tone…)" style={{flex:1,fontSize:12,padding:"6px 8px",borderRadius:8,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)"}}/>
+            <button onClick={generateWithSara} disabled={genBusy} style={{fontSize:12,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"none",background:"var(--accent)",color:"#fff",cursor:genBusy?"default":"pointer",opacity:genBusy?0.6:1,whiteSpace:"nowrap"}}>{genBusy?"Sara is writing…":"✨ Generate with Sara"}</button>
+          </div>
         </div>
 
         {/* Media — shape depends on kind */}
@@ -6247,7 +6293,7 @@ function PlanItemsEditor({post,team,onUpdateItem,onSplitItem}) {
         <span style={{fontSize:12,color:"var(--text3)"}}>{splitCount}/{items.length} split off</span>
       </div>
       {items.map(item=>(
-        <PlanItemCard key={item.id} item={item} team={team}
+        <PlanItemCard key={item.id} item={item} team={team} clientId={post.client_id} clientName={post.client_name} planTitle={post.title}
           onUpdate={patch=>onUpdateItem(item.id,patch)}
           onSplit={()=>onSplitItem(item.id)}/>
       ))}
