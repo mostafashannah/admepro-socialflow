@@ -35160,85 +35160,136 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
   );
 }
 
-// Next-month cash forecast: income and every expense line projected from the
-// last 3 COMPLETE months of real records, except the fixed lines — salaries
-// (everyone's current salary), rent (latest real amount) — which are taken as
-// they will actually be paid. Every forecast figure is editable.
-function FinanceForecast({monthlyByCategory, ledger=[], partnerInKeys=[], team=[], subscriptions=[], totalOutstanding=0, isMobile}) {
+// Cash forecast for any month (default: this month). Income comes from RETAINER
+// clients (paid in every one of the 3 complete months before the chosen month);
+// payroll is everyone's actual current salary; rent is the latest recorded
+// amount; other lines are 3-month averages; scheduled installments due that
+// month are added; partner withdrawals are opt-in. Every figure is editable.
+function FinanceForecast({monthlyByCategory, ledger=[], partnerInKeys=[], team=[], subscriptions=[], expenses=[], outstandingPayments=[], outstandingPaidByExpense={}, isMobile}) {
   const now = new Date();
-  const curKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
-  const next = new Date(now.getFullYear(), now.getMonth()+1, 1);
-  const nextKey = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,"0")}`;
-  const nextLabel = next.toLocaleDateString(undefined,{month:"long",year:"numeric"});
-  const nextEnd = new Date(next.getFullYear(), next.getMonth()+1, 0).toISOString().slice(0,10);
-  const allKeys = Object.keys(monthlyByCategory).filter(k=>k<curKey).sort();
+  const mkKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+  const curKey = mkKey(now);
+  const [selKey,setSelKey] = useState(curKey);
+  const shiftMonth = (key, delta) => { const [y,m] = key.split("-").map(Number); return mkKey(new Date(y, m-1+delta, 1)); };
+  const selDate = new Date(selKey+"-01T00:00:00");
+  const selLabel = selDate.toLocaleDateString(undefined,{month:"long",year:"numeric"});
+  const selEnd = new Date(selDate.getFullYear(), selDate.getMonth()+1, 0).toISOString().slice(0,10);
+  const monthsAhead = (selDate.getFullYear()-now.getFullYear())*12 + (selDate.getMonth()-now.getMonth()); // 0 = this month
+  const isPastOrCurrent = monthsAhead<=0;
+
+  // History = the 3 complete months before the chosen month (never the current, unfinished one).
+  const limitKey = selKey<curKey ? selKey : curKey;
+  const allKeys = Object.keys(monthlyByCategory).filter(k=>k<limitKey).sort();
   const histKeys = allKeys.slice(-3);
   const monthLabel = k => new Date(k+"-01T00:00:00").toLocaleDateString(undefined,{month:"short"});
   const val = (k,c) => Number(monthlyByCategory[k]?.[c])||0;
   const avg = c => histKeys.length ? histKeys.reduce((a,k)=>a+val(k,c),0)/histKeys.length : 0;
   const latestNonZero = c => { for(let i=allKeys.length-1;i>=Math.max(0,allKeys.length-6);i--){ if(val(allKeys[i],c)>0) return val(allKeys[i],c); } return 0; };
 
-  // Salaries: everyone who will be on payroll next month (active now, or
-  // starting on/before the end of next month).
   const payrollMembers = (team||[]).filter(m=>!CLIENT_ROLES.includes(m.role)&&m.role!=="client"&&Number(m.salary)>0&&(
-    m.status==="active" || (m.pending_start && m.start_date && String(m.start_date).slice(0,10)<=nextEnd)));
+    (m.status==="active"&&!m.pending_start) || (m.pending_start && m.start_date && String(m.start_date).slice(0,10)<=selEnd)));
   const salariesTotal = payrollMembers.reduce((a,m)=>a+Number(m.salary),0);
   const subsMonthly = (subscriptions||[]).filter(sb=>sb.status==="active").reduce((a,sb)=>{
     const amt = Number(sb.amount)||0, p = String(sb.billing_period||"monthly").toLowerCase();
     return a + (p.startsWith("year")||p==="annual" ? amt/12 : p.startsWith("quart") ? amt/3 : amt);
   },0);
 
-  // Income comes from RETAINER clients: those who paid in EVERY one of the
-  // last 3 complete months (a fixed monthly client). Their expected payment is
-  // their average over those months. Everything else that came in (one-off /
-  // irregular payments) is shown but not counted unless you enter a figure.
+  // Retainer clients
   const partnerIn = new Set(partnerInKeys);
-  const perClient = {}; // name -> {monthKey: amount}
-  let irregularTotal = 0;
+  const perClient = {};
   (ledger||[]).filter(l=>l.type==="in"&&!partnerIn.has(l.category)&&l.date).forEach(l=>{
     const d = new Date(l.date); if(isNaN(d.getTime())) return;
-    const mk = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+    const mk = mkKey(d);
     if(!histKeys.includes(mk)) return;
     const name = l.clientName || l.sub || l.label || "Unknown";
     if(!perClient[name]) perClient[name] = {};
     perClient[name][mk] = (perClient[name][mk]||0) + (Number(l.countableAmount)||0);
   });
   const retainerNames = Object.keys(perClient).filter(n=>histKeys.length>0&&histKeys.every(k=>(perClient[n][k]||0)>0));
-  Object.keys(perClient).filter(n=>!retainerNames.includes(n)).forEach(n=>{ irregularTotal += histKeys.reduce((a,k)=>a+(perClient[n][k]||0),0); });
-  const irregularAvg = histKeys.length ? irregularTotal/histKeys.length : 0;
-  const retainerLines = retainerNames.sort((a,b)=>histKeys.reduce((x,k)=>x+(perClient[b][k]||0),0)-histKeys.reduce((x,k)=>x+(perClient[a][k]||0),0)).map(n=>({
+  const irregularForMonth = k => Object.keys(perClient).filter(n=>!retainerNames.includes(n)).reduce((a,n)=>a+(perClient[n][k]||0),0);
+  const irregularAvg = histKeys.length ? histKeys.reduce((a,k)=>a+irregularForMonth(k),0)/histKeys.length : 0;
+  const retainerLines = [...retainerNames].sort((a,b)=>histKeys.reduce((x,k)=>x+(perClient[b][k]||0),0)-histKeys.reduce((x,k)=>x+(perClient[a][k]||0),0)).map(n=>({
     k:"ret:"+n, l:n, type:"in", retainer:true, hist:perClient[n],
     suggested: histKeys.reduce((a,k)=>a+(perClient[n][k]||0),0)/histKeys.length,
     note:"retainer — paid every month",
   }));
+
+  // Scheduled installments due in the chosen month: monthly = total ÷ months;
+  // it's due while installments remain (counting payments already made), and
+  // for the CURRENT month only if not already paid this month.
+  const paidThisMonth = {};
+  (outstandingPayments||[]).forEach(p=>{ if(p.date && mkKey(new Date(p.date))===curKey) paidThisMonth[p.expense_id] = (paidThisMonth[p.expense_id]||0)+Number(p.amount||0); });
+  const installmentLines = [];
+  let teamOwedRemaining = 0;
+  (expenses||[]).filter(isUnsettledOutstanding).forEach(e=>{
+    const total = Number(e.outstanding_total_payable ?? e.amount) || 0;
+    const paid = Math.min(outstandingPaidByExpense[e.id]||0, total);
+    const remaining = Math.max(0,total-paid);
+    if(e.outstanding_kind==="installment") {
+      const months = Number(e.outstanding_months)||1;
+      const monthly = total/months;
+      if(monthly<=0||remaining<=0) return;
+      const left = Math.ceil(remaining/monthly - 0.0001);
+      const paidCurrent = (paidThisMonth[e.id]||0) >= monthly*0.999;
+      if(monthsAhead<0) return;
+      // Not yet paid this month: installments fall on offsets 0..left-1.
+      // Already paid this month: the remaining ones fall on offsets 1..left.
+      const due = paidCurrent ? (monthsAhead>=1 && monthsAhead<=left) : (monthsAhead<left);
+      if(due)
+        installmentLines.push({k:"inst:"+e.id, l:`Installment — ${e.description||"Fawry"}`, type:"out", installment:true, suggested:Math.min(monthly,remaining), note:`${left} installment${left===1?"":"s"} left · EGP ${Math.round(remaining).toLocaleString()} remaining`});
+    } else if(e.outstanding_kind==="team_member") teamOwedRemaining += remaining;
+  });
+
+  const partnerCats = EXPENSE_CATEGORIES.filter(c=>c.k.startsWith("partner_"));
+  const [includePartners,setIncludePartners] = useState(false);
+  const [includeTeamOwed,setIncludeTeamOwed] = useState(false);
   const lines = [
     ...retainerLines,
-    {k:"irregular_income", l:"Other / one-off income", type:"in", suggested:0, note:`not counted by default — last ${histKeys.length||0} months averaged EGP ${Math.round(irregularAvg).toLocaleString()}/mo from non-retainer payments${subsMonthly?` · active subscriptions bill ≈ EGP ${Math.round(subsMonthly).toLocaleString()}/mo`:""}`},
-    {k:"salaries", l:"Salaries & Payroll", type:"out", suggested:salariesTotal, note:`${payrollMembers.length} people on payroll × current salary`},
+    {k:"irregular_income", l:"Other / one-off income", type:"in", suggested:0, note:`not counted by default — ${histKeys.length||0}-month average from non-retainer payments is EGP ${Math.round(irregularAvg).toLocaleString()}/mo${subsMonthly?` · active subscriptions bill ≈ EGP ${Math.round(subsMonthly).toLocaleString()}/mo`:""}`},
+    {k:"salaries", l:"Salaries & Payroll", type:"out", suggested:salariesTotal, note:`${payrollMembers.length} active team members × actual salary`},
     {k:"rent", l:"Rent & Utilities", type:"out", suggested:latestNonZero("rent")||avg("rent"), note:"latest recorded amount"},
     {k:"office_supplies", l:"Office Supplies", type:"out", suggested:avg("office_supplies"), note:"3-month average"},
-    ...EXPENSE_CATEGORIES.filter(c=>!["salaries","rent","office_supplies"].includes(c.k)&&(histKeys.some(h=>val(h,c.k)>0))).map(c=>({k:c.k,l:c.l,type:"out",suggested:avg(c.k),note:"3-month average"})),
+    ...EXPENSE_CATEGORIES.filter(c=>!["salaries","rent","office_supplies"].includes(c.k)&&!c.k.startsWith("partner_")&&histKeys.some(h=>val(h,c.k)>0)).map(c=>({k:c.k,l:c.l,type:"out",suggested:avg(c.k),note:"3-month average"})),
+    ...(includePartners ? partnerCats.filter(c=>histKeys.some(h=>val(h,c.k)>0)).map(c=>({k:c.k,l:c.l,type:"out",suggested:avg(c.k),note:"3-month average (optional)"})) : []),
+    ...installmentLines,
   ];
-  const irregularForMonth = k => Object.keys(perClient).filter(n=>!retainerNames.includes(n)).reduce((a,n)=>a+(perClient[n][k]||0),0);
   const [over,setOver] = useState({});
-  const [includeOutstanding,setIncludeOutstanding] = useState(false);
   const amountOf = ln => over[ln.k]!==undefined && over[ln.k]!=="" ? (Number(over[ln.k])||0) : Math.round(ln.suggested);
   const totalIn = lines.filter(l=>l.type==="in").reduce((a,l)=>a+amountOf(l),0);
-  const outstandingAdd = includeOutstanding ? totalOutstanding : 0;
-  const totalOut = lines.filter(l=>l.type==="out").reduce((a,l)=>a+amountOf(l),0) + outstandingAdd;
+  const teamOwedAdd = includeTeamOwed ? teamOwedRemaining : 0;
+  const totalOut = lines.filter(l=>l.type==="out").reduce((a,l)=>a+amountOf(l),0) + teamOwedAdd;
   const net = totalIn - totalOut;
+  const installmentTotal = installmentLines.reduce((a,l)=>a+amountOf(l),0);
   const egp = n => `EGP ${Math.round(n).toLocaleString()}`;
+  const actualFor = ln => {
+    if(!isPastOrCurrent) return null;
+    if(ln.retainer) return Object.keys(perClient).length ? (ledger||[]).filter(l=>l.type==="in"&&l.date&&mkKey(new Date(l.date))===selKey&&(l.clientName||l.sub||l.label||"Unknown")===ln.l).reduce((a,l)=>a+(Number(l.countableAmount)||0),0) : 0;
+    if(ln.k==="irregular_income") return Math.max(0, val(selKey,"income") - retainerLines.reduce((a,r)=>a+((ledger||[]).filter(l=>l.type==="in"&&l.date&&mkKey(new Date(l.date))===selKey&&(l.clientName||l.sub||l.label||"Unknown")===r.l).reduce((x,l)=>x+(Number(l.countableAmount)||0),0)),0));
+    if(ln.installment) return null;
+    return val(selKey, ln.k);
+  };
   const hist = k => { const inc=val(k,"income"); const out=Object.entries(monthlyByCategory[k]||{}).filter(([c])=>c!=="income").reduce((a,[,v])=>a+Number(v||0),0); return {inc,out,net:inc-out}; };
   const cell = {padding:"8px 10px",fontSize:12.5,borderBottom:"1px solid var(--border)"};
+  const navBtn = {width:32,height:32,borderRadius:"50%",border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer",fontSize:16,lineHeight:1};
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px"}}>
-        <h3 style={{fontSize:16,fontWeight:800}}>Forecast — {nextLabel}</h3>
-        <p style={{fontSize:12,color:"var(--text3)",marginTop:4}}>Income = your retainer clients (paid every month for the last 3 months); expenses and payroll are built from your real records: the last {histKeys.length||0} complete month(s) ({histKeys.map(monthLabel).join(", ")||"none yet"}), plus upcoming payroll. Change any figure to test a scenario.</p>
-        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)",gap:10,marginTop:14}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <button onClick={()=>{ setSelKey(k=>shiftMonth(k,-1)); setOver({}); }} style={navBtn} title="Previous month">‹</button>
+          <h3 style={{fontSize:16,fontWeight:800,minWidth:150,textAlign:"center"}}>Forecast — {selLabel}</h3>
+          <button onClick={()=>{ setSelKey(k=>shiftMonth(k,1)); setOver({}); }} style={navBtn} title="Next month">›</button>
+          {selKey!==curKey&&<button onClick={()=>{ setSelKey(curKey); setOver({}); }} style={{fontSize:12,fontWeight:700,padding:"5px 12px",borderRadius:99,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer"}}>This month</button>}
+        </div>
+        <p style={{fontSize:12,color:"var(--text3)",marginTop:8}}>Income = retainer clients who paid in each of the last {histKeys.length||0} complete month(s) ({histKeys.map(monthLabel).join(", ")||"none yet"}). Payroll uses actual salaries of your active team. Change any figure to test a scenario.</p>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(4,1fr)",gap:10,marginTop:14}}>
           <div style={{padding:12,borderRadius:"var(--rs)",background:"var(--surface2)"}}><p style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>FORECAST INCOME</p><p style={{fontSize:20,fontWeight:800,color:"#10b981"}}>{egp(totalIn)}</p></div>
           <div style={{padding:12,borderRadius:"var(--rs)",background:"var(--surface2)"}}><p style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>FORECAST EXPENSES</p><p style={{fontSize:20,fontWeight:800,color:"#ef4444"}}>{egp(totalOut)}</p></div>
+          <div style={{padding:12,borderRadius:"var(--rs)",background:"var(--surface2)"}}><p style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>UPCOMING INSTALLMENTS</p><p style={{fontSize:20,fontWeight:800,color:"#f59e0b"}}>{egp(installmentTotal)}</p></div>
           <div style={{padding:12,borderRadius:"var(--rs)",background:"var(--surface2)"}}><p style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>FORECAST NET</p><p style={{fontSize:20,fontWeight:800,color:net>=0?"#10b981":"#ef4444"}}>{net<0?"−":""}{egp(Math.abs(net))}</p></div>
+        </div>
+        <div style={{display:"flex",gap:18,flexWrap:"wrap",marginTop:12}}>
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:12.5}}><input type="checkbox" checked={includePartners} onChange={e=>setIncludePartners(e.target.checked)}/> Include partner withdrawals</label>
+          {teamOwedRemaining>0&&<label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:12.5}}><input type="checkbox" checked={includeTeamOwed} onChange={e=>setIncludeTeamOwed(e.target.checked)}/> Include amounts owed to team members ({egp(teamOwedRemaining)})</label>}
         </div>
       </div>
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflowX:"auto"}}>
@@ -35246,32 +35297,32 @@ function FinanceForecast({monthlyByCategory, ledger=[], partnerInKeys=[], team=[
           <thead><tr style={{textAlign:"left",fontSize:11,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>
             <th style={cell}>Line</th>
             {histKeys.map(k=><th key={k} style={{...cell,textAlign:"right"}}>{monthLabel(k)}</th>)}
+            {isPastOrCurrent&&<th style={{...cell,textAlign:"right"}}>{selKey===curKey?"So far":"Actual"}</th>}
             <th style={{...cell,textAlign:"right"}}>Forecast</th>
           </tr></thead>
           <tbody>
-            {lines.map(ln=>(
+            {lines.map(ln=>{ const act = actualFor(ln); return (
               <tr key={ln.k}>
-                <td style={cell}><div style={{fontWeight:700,color:ln.type==="in"?"#10b981":"var(--text)"}}>{ln.l}</div><div style={{fontSize:11,color:"var(--text3)"}}>{ln.note}</div></td>
-                {histKeys.map(k=><td key={k} style={{...cell,textAlign:"right",color:"var(--text2)"}}>{Math.round(ln.retainer ? (ln.hist[k]||0) : ln.k==="irregular_income" ? irregularForMonth(k) : val(k,ln.k)).toLocaleString()}</td>)}
+                <td style={cell}><div style={{fontWeight:700,color:ln.type==="in"?"#10b981":ln.installment?"#f59e0b":"var(--text)"}}>{ln.l}</div><div style={{fontSize:11,color:"var(--text3)"}}>{ln.note}</div></td>
+                {histKeys.map(k=><td key={k} style={{...cell,textAlign:"right",color:"var(--text2)"}}>{Math.round(ln.retainer ? (ln.hist[k]||0) : ln.k==="irregular_income" ? irregularForMonth(k) : ln.installment ? 0 : val(k,ln.k)).toLocaleString()}</td>)}
+                {isPastOrCurrent&&<td style={{...cell,textAlign:"right",color:"var(--text2)"}}>{act===null?"—":Math.round(act).toLocaleString()}</td>}
                 <td style={{...cell,textAlign:"right"}}>
                   <input type="number" value={over[ln.k]!==undefined?over[ln.k]:Math.round(ln.suggested)} onChange={e=>setOver(o=>({...o,[ln.k]:e.target.value}))}
                     style={{width:110,textAlign:"right",padding:"5px 8px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontWeight:700,fontSize:13}}/>
                 </td>
               </tr>
-            ))}
-            <tr>
-              <td style={cell} colSpan={1+histKeys.length}><label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:12.5}}><input type="checkbox" checked={includeOutstanding} onChange={e=>setIncludeOutstanding(e.target.checked)}/> Also pay off outstanding installments ({egp(totalOutstanding)} still owed)</label></td>
-              <td style={{...cell,textAlign:"right",fontWeight:700}}>{egp(outstandingAdd)}</td>
-            </tr>
+            ); })}
+            {teamOwedAdd>0&&<tr><td style={cell} colSpan={1+histKeys.length+(isPastOrCurrent?1:0)}>Owed to team members</td><td style={{...cell,textAlign:"right",fontWeight:700}}>{egp(teamOwedAdd)}</td></tr>}
             <tr style={{background:"var(--surface2)"}}>
               <td style={{...cell,fontWeight:800}}>Net (income − expenses)</td>
               {histKeys.map(k=>{ const h=hist(k); return <td key={k} style={{...cell,textAlign:"right",fontWeight:700,color:h.net>=0?"#10b981":"#ef4444"}}>{Math.round(h.net).toLocaleString()}</td>; })}
+              {isPastOrCurrent&&(()=>{ const h=hist(selKey); return <td style={{...cell,textAlign:"right",fontWeight:700,color:h.net>=0?"#10b981":"#ef4444"}}>{Math.round(h.net).toLocaleString()}</td>; })()}
               <td style={{...cell,textAlign:"right",fontWeight:800,color:net>=0?"#10b981":"#ef4444"}}>{Math.round(net).toLocaleString()}</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p style={{fontSize:11,color:"var(--text3)"}}>Forecasts are estimates. Salaries use each person's current salary (including raises already recorded). One-off items like new equipment or a client paying late aren't predicted — adjust the lines above if you expect them.</p>
+      <p style={{fontSize:11,color:"var(--text3)"}}>Forecasts are estimates. Installments are each Fawry/instalment plan's monthly amount while payments remain. One-off items like new equipment or a client paying late aren't predicted — adjust the lines above if you expect them.</p>
     </div>
   );
 }
@@ -35816,7 +35867,7 @@ No markdown, no explanation.`;
           )}
         </div>
       ) : view==="forecast" ? (
-        <FinanceForecast monthlyByCategory={monthlyByCategory} ledger={ledger} partnerInKeys={PARTNERS.map(p=>p.inKey)} team={team} subscriptions={subscriptions} totalOutstanding={totalOutstanding} isMobile={isMobile}/>
+        <FinanceForecast monthlyByCategory={monthlyByCategory} ledger={ledger} partnerInKeys={PARTNERS.map(p=>p.inKey)} team={team} subscriptions={subscriptions} expenses={expenses} outstandingPayments={outstandingPayments} outstandingPaidByExpense={outstandingPaidByExpense} isMobile={isMobile}/>
       ) : view==="payroll" ? (
         selectedPayrollMember ? (() => {
           const row = payrollRows.find(r=>r.key===selectedPayrollMember);
