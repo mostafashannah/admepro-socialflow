@@ -1913,18 +1913,13 @@ const pushCommentToActivity=c=>{const att=c.file_url?{file_url:c.file_url,file_n
 // instead of a comment attachment — same rename-with-sequence-number
 // convention and internal activity log entry.
 const forwardDesignAssetToClient=asset=>{var _match2;const url=asset.url||asset.data;if(!url)return;const forwardedCount=postComments.filter(pc=>pc.audience==="client"&&pc.file_url).length;const ext=((_match2=(asset.name||url||"").match(/\.[a-zA-Z0-9]+$/))===null||_match2===void 0?void 0:_match2[0])||"";const baseName=(post.title||post.name||"Attachment").trim();const forwardedName=`${baseName} ${forwardedCount+1}${ext}`;onAddComment(post.id,"📎 Attachment (forwarded)",currentUser,{file_url:url,file_name:forwardedName,file_type:"file"},"client");onAddComment(post.id,`Forwarded "${forwardedName}" to client`,currentUser,null,"internal");};// Comments only ever carry ONE attachment each at the DB level
-// (Comment.file_url is a single column, not an array) — any number of
-// picked files get uploaded here, each posted as its own comment the
-// MOMENT its own upload finishes (not staged waiting for a manual Send).
-// That's deliberate: onAddComment/onEdit are stable App-level functions,
-// not tied to this modal's lifecycle, so a file picked here keeps
-// uploading and correctly attaches itself to the task even if you close
-// this task and open another one before it finishes — closing the modal
-// only unmounts the UI, it doesn't cancel the in-flight upload fetch.
-const handleCommentFile=async fileList=>{const files=Array.from(fileList||[]);if(!files.length)return;setAttaching(true);const postId=post.id,postForAssets=post;await Promise.all(files.map(async file=>{try{const url=await uploadToStorage(file,"comments");const att={file_url:url,file_name:file.name,file_type:file.type.startsWith("video")?"video":file.type.startsWith("image")?"image":"file"};await onAddComment(postId,"📎 Attachment",currentUser,att,"internal");// Mirrors handleRemoveDesignAsset's counterpart — puts the file in
-// the persistent Attachments section too, not just buried in the
-// Activity feed, same as the old stage-then-Send flow did.
-onEdit&&onEdit({...postForAssets,design_assets:[...(postForAssets.design_assets||[]),{url:att.file_url,name:att.file_name,type:att.file_type}]});}catch(e){alert(`"${file.name}" failed to upload: ${(e===null||e===void 0?void 0:e.message)||"unknown error"}`);}}));setAttaching(false);};const removeCommentAttachment=i=>setCommentAttachments(prev=>prev.filter((_,idx)=>idx!==i));const sendComment=async()=>{if(!comment.trim()&&!commentAttachments.length)return;setSending(true);// First attachment rides along with the typed text (or a placeholder if
+// (Comment.file_url is a single column, not an array). Picked files are
+// uploaded and STAGED above the comment box; Send posts the typed text
+// together with the first file as one comment (extra files follow as their
+// own attachment-only comments — see sendComment).
+const handleCommentFile=async fileList=>{const files=Array.from(fileList||[]);if(!files.length)return;setAttaching(true);// Staged, not posted: the file shows as a preview above the comment box
+// so the typed text and the image go out together as ONE comment on Send.
+await Promise.all(files.map(async file=>{try{const url=await uploadToStorage(file,"comments");const att={file_url:url,file_name:file.name,file_type:file.type.startsWith("video")?"video":file.type.startsWith("image")?"image":"file"};setCommentAttachments(prev=>[...prev,att]);}catch(e){alert(`"${file.name}" failed to upload: ${(e===null||e===void 0?void 0:e.message)||"unknown error"}`);}}));setAttaching(false);};const removeCommentAttachment=i=>setCommentAttachments(prev=>prev.filter((_,idx)=>idx!==i));const sendComment=async()=>{if(!comment.trim()&&!commentAttachments.length)return;setSending(true);// First attachment rides along with the typed text (or a placeholder if
 // there's no text); any extra attachments go out as their own
 // attachment-only comments right after, same as attaching them one at a
 // time would have.
