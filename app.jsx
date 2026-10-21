@@ -35177,10 +35177,12 @@ function FinanceForecast({monthlyByCategory, ledger=[], partnerInKeys=[], team=[
   const monthsAhead = (selDate.getFullYear()-now.getFullYear())*12 + (selDate.getMonth()-now.getMonth()); // 0 = this month
   const isPastOrCurrent = monthsAhead<=0;
 
-  // History = the 3 complete months before the chosen month (never the current, unfinished one).
-  const limitKey = selKey<curKey ? selKey : curKey;
-  const allKeys = Object.keys(monthlyByCategory).filter(k=>k<limitKey).sort();
-  const histKeys = allKeys.slice(-3);
+  // History = the 3 calendar months right before the chosen month (so for
+  // November: Aug, Sep, Oct — including the current month's figures so far),
+  // skipping any month earlier than the first month with records.
+  const allKeys = Object.keys(monthlyByCategory).filter(k=>k<selKey).sort();
+  const firstKey = allKeys[0];
+  const histKeys = [shiftMonth(selKey,-3),shiftMonth(selKey,-2),shiftMonth(selKey,-1)].filter(k=>firstKey&&k>=firstKey);
   const monthLabel = k => new Date(k+"-01T00:00:00").toLocaleDateString(undefined,{month:"short"});
   const val = (k,c) => Number(monthlyByCategory[k]?.[c])||0;
   const avg = c => histKeys.length ? histKeys.reduce((a,k)=>a+val(k,c),0)/histKeys.length : 0;
@@ -35245,7 +35247,7 @@ function FinanceForecast({monthlyByCategory, ledger=[], partnerInKeys=[], team=[
   const [includeTeamOwed,setIncludeTeamOwed] = useState(false);
   const lines = [
     ...retainerLines,
-    {k:"irregular_income", l:"Other / one-off income", type:"in", suggested:0, note:`not counted by default — ${histKeys.length||0}-month average from non-retainer payments is EGP ${Math.round(irregularAvg).toLocaleString()}/mo${subsMonthly?` · active subscriptions bill ≈ EGP ${Math.round(subsMonthly).toLocaleString()}/mo`:""}`},
+    {k:"irregular_income", l:"Other / one-off income", type:"in", suggested:irregularAvg, note:`${histKeys.length||0}-month average of non-retainer payments (set to 0 to exclude)${subsMonthly?` · active subscriptions bill ≈ EGP ${Math.round(subsMonthly).toLocaleString()}/mo`:""}`},
     {k:"salaries", l:"Salaries & Payroll", type:"out", suggested:salariesTotal, note:`${payrollMembers.length} active team members × actual salary`},
     {k:"rent", l:"Rent & Utilities", type:"out", suggested:latestNonZero("rent")||avg("rent"), note:"latest recorded amount"},
     {k:"office_supplies", l:"Office Supplies", type:"out", suggested:avg("office_supplies"), note:"3-month average"},
@@ -35280,7 +35282,7 @@ function FinanceForecast({monthlyByCategory, ledger=[], partnerInKeys=[], team=[
           <button onClick={()=>{ setSelKey(k=>shiftMonth(k,1)); setOver({}); }} style={navBtn} title="Next month">›</button>
           {selKey!==curKey&&<button onClick={()=>{ setSelKey(curKey); setOver({}); }} style={{fontSize:12,fontWeight:700,padding:"5px 12px",borderRadius:99,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer"}}>This month</button>}
         </div>
-        <p style={{fontSize:12,color:"var(--text3)",marginTop:8}}>Income = retainer clients who paid in each of the last {histKeys.length||0} complete month(s) ({histKeys.map(monthLabel).join(", ")||"none yet"}). Payroll uses actual salaries of your active team. Change any figure to test a scenario.</p>
+        <p style={{fontSize:12,color:"var(--text3)",marginTop:8}}>Income = retainer clients who paid in each of the last {histKeys.length||0} month(s) ({histKeys.map(monthLabel).join(", ")||"none yet"}). Payroll uses actual salaries of your active team. Change any figure to test a scenario.</p>
         <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(4,1fr)",gap:10,marginTop:14}}>
           <div style={{padding:12,borderRadius:"var(--rs)",background:"var(--surface2)"}}><p style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>FORECAST INCOME</p><p style={{fontSize:20,fontWeight:800,color:"#10b981"}}>{egp(totalIn)}</p></div>
           <div style={{padding:12,borderRadius:"var(--rs)",background:"var(--surface2)"}}><p style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>FORECAST EXPENSES</p><p style={{fontSize:20,fontWeight:800,color:"#ef4444"}}>{egp(totalOut)}</p></div>
