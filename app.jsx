@@ -8720,12 +8720,19 @@ Return ONLY valid JSON (no markdown):
                   {uploading&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
                   {!!f.media.length&&(
                     <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
-                      {f.media.map(m=>(
-                        <div key={m.url} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 8px",borderRadius:8,background:"var(--surface2)",fontSize:11}}>
-                          <span style={{maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name}</span>
-                          <button onClick={()=>removeMedia(m.url)} style={{border:"none",background:"none",cursor:"pointer",color:"var(--text3)",fontWeight:700}}>×</button>
-                        </div>
-                      ))}
+                      {f.media.map(m=>{
+                        const isVid = (m.type||"").startsWith("video") || /\.(mp4|mov|webm|m4v)(\?|$)/i.test(m.url||"");
+                        const isImg = !isVid && ((m.type||"").startsWith("image") || /\.(png|jpe?g|gif|webp|avif|heic|svg)(\?|$)/i.test(m.url||""));
+                        return (
+                          <div key={m.url} title={m.name} style={{position:"relative",width:64,height:64,borderRadius:8,overflow:"hidden",border:"1px solid var(--border2)",background:"var(--surface2)",flexShrink:0}}>
+                            {isImg ? <img src={m.url} alt={m.name||""} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                              : isVid ? <video src={m.url+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                              : <div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,padding:4}}><Ico d={Icons.upload} size={16} stroke="var(--text3)"/><span style={{fontSize:8,color:"var(--text3)",maxWidth:56,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name}</span></div>}
+                            {isVid&&<span style={{position:"absolute",left:3,bottom:3,fontSize:8,fontWeight:800,background:"#000000aa",color:"#fff",borderRadius:4,padding:"0 4px"}}>VIDEO</span>}
+                            <button onClick={()=>removeMedia(m.url)} title="Remove" style={{position:"absolute",top:2,right:2,width:18,height:18,borderRadius:"50%",border:"none",background:"rgba(0,0,0,0.65)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,lineHeight:1,padding:0}}>×</button>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                   <AssetPickerModal open={showMediaPicker} assets={assets} multiple onClose={()=>setShowMediaPicker(false)}
