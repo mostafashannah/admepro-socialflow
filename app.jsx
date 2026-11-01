@@ -40344,11 +40344,14 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
       if(pdfFile !== asFile || isExternal || hasNoExt) {
         const cv_url = await uploadToStorage(pdfFile, "job-applications/email");
         await ue("JobApplication", app.id, {cv_url});
-        await load();
+        // Refresh just this one row (the old code re-downloaded EVERY
+        // application, twice, before the open application could update —
+        // slow enough to look like the window was stuck loading).
         if(selectedApp?.id===app.id) {
-          const refreshed = (await qe("JobApplication",{})).entities?.find(a=>a.id===app.id);
+          const refreshed = (await qe("JobApplication",{id:app.id}).catch(()=>({entities:[]}))).entities?.[0];
           if(refreshed) setSelectedApp(refreshed);
         }
+        load();
         converted = true;
       }
     } catch(e) { console.error("handleConvertCvToPdf failed:", e); }
