@@ -54,14 +54,14 @@ function useUploadPct() {
 }
 // Build number shown on every screen — read from the ?v= on this very script
 // tag (index.html), so it always matches what was actually deployed.
-const APP_VERSION = (()=>{ try { const el = document.querySelector('script[src*="app.js"]'); const m = el && /[?&]v=([^&]+)/.exec(el.getAttribute("src")||""); return m ? m[1] : ""; } catch(e){ return ""; } })();
+const BUILD_NUMBER = (()=>{ try { const el = document.querySelector('script[src*="app.js"]'); const m = el && /[?&]v=([^&]+)/.exec(el.getAttribute("src")||""); return m ? m[1] : ""; } catch(e){ return ""; } })();
 function VersionBadge() {
-  if(!APP_VERSION) return null;
+  if(!BUILD_NUMBER) return null;
   return (
     <button onClick={()=>{ try{ navigator.serviceWorker?.getRegistrations?.().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{}); }catch(e){} window.location.reload(); }}
       title="Build version — click to reload the latest"
       style={{position:"fixed",left:8,bottom:6,zIndex:50,background:"transparent",border:"none",padding:"2px 6px",fontSize:10,fontWeight:700,color:"var(--text3)",opacity:0.65,cursor:"pointer",letterSpacing:"0.04em"}}>
-      v{APP_VERSION}
+      build {BUILD_NUMBER}
     </button>
   );
 }
@@ -1977,7 +1977,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.504";
+const APP_VERSION = "beta 5.504" + (BUILD_NUMBER ? ` · build ${BUILD_NUMBER}` : "");
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
