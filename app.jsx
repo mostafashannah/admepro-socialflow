@@ -55,16 +55,6 @@ function useUploadPct() {
 // Build number shown on every screen — read from the ?v= on this very script
 // tag (index.html), so it always matches what was actually deployed.
 const BUILD_NUMBER = (()=>{ try { const el = document.querySelector('script[src*="app.js"]'); const m = el && /[?&]v=([^&]+)/.exec(el.getAttribute("src")||""); return m ? m[1] : ""; } catch(e){ return ""; } })();
-function VersionBadge() {
-  if(!BUILD_NUMBER) return null;
-  return (
-    <button onClick={()=>{ try{ navigator.serviceWorker?.getRegistrations?.().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{}); }catch(e){} window.location.reload(); }}
-      title="Build version — click to reload the latest"
-      style={{position:"fixed",left:8,bottom:6,zIndex:50,background:"transparent",border:"none",padding:"2px 6px",fontSize:10,fontWeight:700,color:"var(--text3)",opacity:0.65,cursor:"pointer",letterSpacing:"0.04em"}}>
-      build {BUILD_NUMBER}
-    </button>
-  );
-}
 function UploadProgressToast() {
   const items = useUploadProgress();
   if(!items.length) return null;
@@ -52470,4 +52460,4 @@ class ErrorBoundary extends React.Component {
 }
 
 const __root=ReactDOM.createRoot(document.getElementById("root"));
-__root.render(React.createElement(ErrorBoundary,null,React.createElement(App),React.createElement(UploadProgressToast),React.createElement(VersionBadge)));
+__root.render(React.createElement(ErrorBoundary,null,React.createElement(App),React.createElement(UploadProgressToast)));
