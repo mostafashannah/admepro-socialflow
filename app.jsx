@@ -25389,6 +25389,9 @@ function OfferResponsePage({token}) {
       const app = res.entities?.[0];
       if(!app) { setNotFound(true); setLoading(false); return; }
       setApplication(app);
+      // Opening the link again after answering just shows that answer
+      // (the link stays valid) instead of "invalid or already used".
+      if(app.offer_candidate_response) setResponse(app.offer_candidate_response);
       setLoading(false);
     })();
   },[token]);
@@ -25396,7 +25399,7 @@ function OfferResponsePage({token}) {
   const submitResponse = async (kind, negotiationLetter) => {
     setSubmitting(true);
     try {
-      const patch = {offer_candidate_response: kind, offer_negotiation_letter: negotiationLetter||null, offer_responded_at: new Date().toISOString(), offer_token: null};
+      const patch = {offer_candidate_response: kind, offer_negotiation_letter: negotiationLetter||null, offer_responded_at: new Date().toISOString()};
       // Accepting/declining moves the pipeline status automatically — a
       // decline at this stage is deliberately its own status
       // (rejected_after_offer), not the same "Rejected" used earlier in
@@ -39799,6 +39802,26 @@ function InterviewSchedulingSection({application, onSendTimes, sending, onConfir
 // few company-policy points (laptop, vacation/WFH allowance) — filled in
 // once, then optionally emailed to the candidate as a formatted offer.
 function OfferSection({application, opening, onSave, saving, onSend, sending, onUpdateStatus}) {
+  const [regenBusy, setRegenBusy] = useState(false);
+  // New token = new working link, without touching the offer terms or the
+  // candidate's earlier answer. Copied to the clipboard; optionally re-emailed.
+  const regenerateLink = async () => {
+    setRegenBusy(true);
+    try {
+      const token = uid().replace("local_","") + uid().replace("local_","");
+      const saved = await ue("JobApplication", application.id, {offer_token: token});
+      if(saved===null) { alert("Couldn't save the new link — please try again."); return; }
+      const url = window.location.origin + "/careers/offer?token=" + token;
+      try { await navigator.clipboard.writeText(url); } catch(e) {}
+      let emailed = false;
+      if(application.candidate_email && confirm(`New offer link created and copied:\n${url}\n\nAlso email it to ${application.candidate_email} now?`)) {
+        const ok = await sendCareersEmail(application.candidate_email, `Your Admepro offer link — ${(application.candidate_name||"").split(" ")[0]||"hello"}`, offerSentEmail(application.candidate_name, {title:application.offer_title||application.job_title||"", salary:application.offer_salary, probation_months:application.offer_probation_months, post_probation_salary:application.offer_post_probation_salary, start_date:application.offer_start_date, vacation_days_annual:application.offer_vacation_days_annual, wfh_days_monthly:application.offer_wfh_days_monthly, laptop_provided:application.offer_laptop_provided, employment_type:application.offer_employment_type, work_arrangement:application.offer_work_arrangement, notes:application.offer_notes}, url), "Admepro Careers").catch(()=>false);
+        emailed = true;
+        alert(ok ? "Email sent." : "The email failed to send — the link is still copied to your clipboard.");
+      }
+      if(!emailed) prompt("New offer link (copy it):", url);
+    } finally { setRegenBusy(false); }
+  };
   const [form, setForm] = useState({
     title: application.offer_title || opening?.title || application.job_title || "",
     salary: application.offer_salary || "",
@@ -39904,6 +39927,11 @@ function OfferSection({application, opening, onSave, saving, onSend, sending, on
         <button onClick={()=>onSave(application, form)} disabled={saving} style={{padding:"7px 14px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:saving?"not-allowed":"pointer"}}>
           {saving?"Saving…":"Save Offer Details"}
         </button>
+        {application.offer_sent_at&&(
+          <button onClick={regenerateLink} disabled={regenBusy} title="Create a fresh offer link (the old one stops working), copy it, and optionally email it again" style={{padding:"7px 14px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:regenBusy?"not-allowed":"pointer"}}>
+            {regenBusy?"Working…":"🔗 Regenerate offer link"}
+          </button>
+        )}
         <button onClick={()=>onSend(application, form)} disabled={sending||!(noProbation?form.post_probation_salary:form.salary)||!form.start_date} style={{padding:"7px 14px",borderRadius:8,background:"#a855f7",border:"none",fontSize:12,fontWeight:700,color:"#fff",cursor:sending?"not-allowed":"pointer"}}>
           {sending?"Sending…":"Send Offer Email"}
         </button>
