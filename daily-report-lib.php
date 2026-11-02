@@ -11,7 +11,7 @@ function drDefaults(): array {
         'enabled' => 0,
         'send_time' => '19:00',
         'days' => [7, 1, 2, 3, 4], // ISO weekdays: Sun..Thu (Fri/Sat weekend)
-        'sections' => ['tasks_done' => true, 'tasks_open' => true, 'insights' => true, 'applications' => true],
+        'sections' => ['tasks_done' => true, 'tasks_open' => true, 'posting' => true, 'insights' => true, 'applications' => true],
         'client_ids' => [],   // empty = every account with Facebook/Instagram insights
         'recipients' => [],   // team-member emails; empty = every active admin
         'window_hours' => 24,
@@ -107,6 +107,32 @@ function drBuildReport(PDO $pdo, array $s): string {
         foreach ($overdue as $r) { $w = $r['who'] ?: 'Unassigned'; $byWho[$w] = ($byWho[$w] ?? 0) + 1; }
         arsort($byWho);
         foreach (array_slice($byWho, 0, 8, true) as $w => $n) $out[] = "• {$w}: {$n} overdue";
+    }
+
+    if (!empty($sec['posting'])) {
+        // Published in the window, scheduled for today / tomorrow, and any failed publish.
+        $st = $pdo->prepare("SELECT client_name, platform FROM posts WHERE stage = 'published' AND published_at >= (NOW() - INTERVAL {$h} HOUR)");
+        $st->execute();
+        $pubBy = [];
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) { $c = $r['client_name'] ?: 'Unknown'; $pubBy[$c] = ($pubBy[$c] ?? 0) + 1; }
+        arsort($pubBy);
+        $tomorrow = (clone $now)->modify('+1 day')->format('Y-m-d');
+        $sc = $pdo->prepare("SELECT client_name, platform, scheduled_date, scheduled_time FROM posts WHERE stage = 'scheduled' AND LEFT(scheduled_date,10) IN (:t, :n) ORDER BY scheduled_date, scheduled_time");
+        $sc->execute([':t' => $today, ':n' => $tomorrow]);
+        $schedToday = []; $schedTomorrow = 0;
+        foreach ($sc->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            if (substr($r['scheduled_date'], 0, 10) === $today) { $c = $r['client_name'] ?: 'Unknown'; $schedToday[$c] = ($schedToday[$c] ?? 0) + 1; }
+            else $schedTomorrow++;
+        }
+        arsort($schedToday);
+        $fl = $pdo->prepare("SELECT client_name, title FROM posts WHERE publish_error IS NOT NULL AND publish_error <> '' AND stage <> 'published' ORDER BY created_at DESC LIMIT 6");
+        $fl->execute();
+        $failed = $fl->fetchAll(PDO::FETCH_ASSOC);
+        $out[] = "";
+        $out[] = "📮 *Posting* — " . array_sum($pubBy) . " published · " . array_sum($schedToday) . " scheduled today · {$schedTomorrow} tomorrow";
+        foreach (array_slice($pubBy, 0, 8, true) as $c => $n) $out[] = "• {$c}: {$n} published";
+        foreach (array_slice($schedToday, 0, 6, true) as $c => $n) $out[] = "• {$c}: {$n} going out today";
+        foreach ($failed as $r) $out[] = "⚠️ Failed to publish: " . ($r['client_name'] ?: '') . " — " . mb_substr((string)$r['title'], 0, 40);
     }
 
     if (!empty($sec['insights'])) {
