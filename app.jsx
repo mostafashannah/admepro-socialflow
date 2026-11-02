@@ -1242,6 +1242,7 @@ const SB_TABLE = {
   PushSubscription:"push_subscriptions",
   CustomerMessage:"customer_messages",
   ReplyBotSetting:"reply_bot_settings",
+  DailyReportSettings:"daily_report_settings",
   RolePermission:"role_permissions",
   LeaveRequest:"leave_requests",
   AttendanceRecord:"attendance_records",
@@ -1291,6 +1292,7 @@ const SB_SCHEMA = {
   // single notification-prefs save was silently failing.
   notification_prefs: ["user_email","all_disabled","mentions_only","daily_digest","task_assigned","task_stage_changed","task_due_soon","task_overdue","task_mention","task_comment","project_created","project_task_added","project_deadline_updated","post_approved","post_rejected","client_approval_required","invoice_created","payment_received","subscription_renewal","user_invited","access_approved","access_rejected","permissions_updated","recruitment_new_application","recruitment_task_submitted","recruitment_reschedule_request"],
   customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","attachment_url","sent_by","thread_status","draft_status","external_id"],
+  daily_report_settings: ["enabled","send_time","days","sections","client_ids","recipients","window_hours","last_sent_date"],
   reply_bot_settings: ["client_id","client_name","enabled","mode","channels","tone","brain","dont_do","fallback_message","updated_by","external_bot","external_webhook_url","external_api_key"],
   pro_chat_sessions: ["user_email","client_id","title","messages","shared_with","is_shared_copy"],
 };
@@ -31570,6 +31572,89 @@ function ContractPolicySettingsPanel({appSettings, onSaveSettings}) {
 // ════════════════════════════════════════════════════════════════
 // SETTINGS PAGE
 // ════════════════════════════════════════════════════════════════
+// Settings > Daily Report — what the WhatsApp daily report contains and when it goes out.
+function DailyReportSettings() {
+  const DAYS = [[1,"Mon"],[2,"Tue"],[3,"Wed"],[4,"Thu"],[5,"Fri"],[6,"Sat"],[7,"Sun"]];
+  const SECTIONS = [["tasks_done","Work completed","Who finished which steps (by person and account)"],["tasks_open","Overdue & due today","Open tasks that are late, per person"],["insights","Account insights","Followers and 7-day reach per account"],["applications","New applications","New candidates + how many await review"]];
+  const [loading,setLoading] = useState(true);
+  const [rowId,setRowId] = useState(null);
+  const [f,setF] = useState({enabled:false,send_time:"19:00",days:[7,1,2,3,4],sections:{tasks_done:true,tasks_open:true,insights:true,applications:true},client_ids:[],recipients:[],window_hours:24,last_sent_date:null});
+  const [team,setTeam] = useState([]);
+  const [clients,setClients] = useState([]);
+  const [saving,setSaving] = useState(false);
+  const [msg,setMsg] = useState("");
+  const [preview,setPreview] = useState(null);
+  const [busy,setBusy] = useState("");
+  const parse = (v,fb) => { try { const x = typeof v==="string" ? JSON.parse(v) : v; return x ?? fb; } catch(e){ return fb; } };
+  useEffect(()=>{
+    (async()=>{
+      const [r,t,c] = await Promise.all([qe("DailyReportSettings",{}).catch(()=>({entities:[]})), qe("TeamMember",{},null,300).catch(()=>({entities:[]})), qe("Client",{},null,300).catch(()=>({entities:[]}))]);
+      setTeam((t.entities||[]).filter(m=>m.status==="active"&&m.whatsapp_number));
+      setClients((c.entities||[]).filter(x=>x.status!=="inactive"));
+      const row = (r.entities||[])[0];
+      if(row) { setRowId(row.id); setF({enabled:!!Number(row.enabled), send_time:row.send_time||"19:00", days:parse(row.days,[7,1,2,3,4]), sections:{tasks_done:true,tasks_open:true,insights:true,applications:true,...parse(row.sections,{})}, client_ids:parse(row.client_ids,[]), recipients:parse(row.recipients,[]), window_hours:Number(row.window_hours)||24, last_sent_date:row.last_sent_date}); }
+      setLoading(false);
+    })();
+  },[]);
+  const toggleIn = (key,val) => setF(p=>({...p,[key]:p[key].includes(val)?p[key].filter(x=>x!==val):[...p[key],val]}));
+  const payload = () => ({enabled:f.enabled?1:0, send_time:f.send_time, days:JSON.stringify(f.days), sections:JSON.stringify(f.sections), client_ids:JSON.stringify(f.client_ids), recipients:JSON.stringify(f.recipients), window_hours:f.window_hours});
+  const save = async () => {
+    setSaving(true); setMsg("");
+    try {
+      if(rowId) { const r = await ue("DailyReportSettings", rowId, payload()); if(r===null) throw new Error("save failed"); }
+      else { const r = await ce("DailyReportSettings",[payload()]); const id = r?.entities?.[0]?.id; if(!id) throw new Error("save failed"); setRowId(id); }
+      setMsg("Saved ✓");
+    } catch(e) { setMsg("Couldn't save — has the migration been run? (daily_report_settings table)"); }
+    setSaving(false);
+  };
+  const call = async (action) => {
+    setBusy(action); setMsg("");
+    try {
+      const res = await fetch(window.location.origin+"/daily-report-send.php",{method:"POST",headers:{"Content-Type":"application/json",apikey:SB_KEY},body:JSON.stringify({action,settings:{sections:f.sections,client_ids:f.client_ids,recipients:f.recipients,window_hours:f.window_hours}})});
+      const out = await res.json();
+      if(!res.ok) throw new Error(out.error||"failed");
+      if(action==="preview") setPreview(out); else setMsg(`Sent to ${out.sent_to} recipient(s)${out.recipients?.length?": "+out.recipients.join(", "):""}`);
+    } catch(e) { setMsg("Error: "+e.message); }
+    setBusy("");
+  };
+  const chip = (on) => ({padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:600,cursor:"pointer",border:`1px solid ${on?"var(--accent)":"var(--border2)"}`,background:on?"var(--accent)":"transparent",color:on?"#fff":"var(--text2)"});
+  const card = {background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px",display:"flex",flexDirection:"column",gap:10};
+  if(loading) return <div style={{padding:30}}><Spinner size={20}/></div>;
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14,maxWidth:760}}>
+      <div style={card}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+          <div><h3 style={{fontSize:16,fontWeight:800}}>WhatsApp Daily Report</h3><p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>A summary sent to WhatsApp at the time you choose.{f.last_sent_date?` Last sent: ${String(f.last_sent_date).slice(0,10)}.`:""}</p></div>
+          <label style={{display:"flex",alignItems:"center",gap:8,fontWeight:700,fontSize:13,cursor:"pointer"}}><input type="checkbox" checked={f.enabled} onChange={e=>setF(p=>({...p,enabled:e.target.checked}))}/> {f.enabled?"On":"Off"}</label>
+        </div>
+        <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"center"}}>
+          <label style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>Send at (Cairo time) <input type="time" value={f.send_time} onChange={e=>setF(p=>({...p,send_time:e.target.value}))} style={{marginLeft:8,padding:"6px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)"}}/></label>
+          <label style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>Covers the last <select value={f.window_hours} onChange={e=>setF(p=>({...p,window_hours:Number(e.target.value)}))} style={{marginLeft:6,padding:"6px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)"}}>{[12,24,48,72].map(h=><option key={h} value={h}>{h} hours</option>)}</select></label>
+        </div>
+        <div><p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",marginBottom:6}}>Send on</p><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{DAYS.map(([n,l])=><button key={n} onClick={()=>toggleIn("days",n)} style={chip(f.days.includes(n))}>{l}</button>)}</div></div>
+      </div>
+      <div style={card}>
+        <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase"}}>What's in the report</p>
+        {SECTIONS.map(([k,l,d])=>(<label key={k} style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer"}}><input type="checkbox" style={{marginTop:3}} checked={!!f.sections[k]} onChange={e=>setF(p=>({...p,sections:{...p.sections,[k]:e.target.checked}}))}/><span><strong style={{fontSize:13}}>{l}</strong><br/><span style={{fontSize:11,color:"var(--text3)"}}>{d}</span></span></label>))}
+        {f.sections.insights&&(<div><p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",margin:"6px 0"}}>Which accounts for insights</p>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><button onClick={()=>setF(p=>({...p,client_ids:[]}))} style={chip(f.client_ids.length===0)}>All accounts</button>{clients.map(c=><button key={c.id} onClick={()=>toggleIn("client_ids",c.id)} style={chip(f.client_ids.includes(c.id))}>{c.name}</button>)}</div></div>)}
+      </div>
+      <div style={card}>
+        <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase"}}>Who receives it</p>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><button onClick={()=>setF(p=>({...p,recipients:[]}))} style={chip(f.recipients.length===0)}>All admins</button>{team.map(m=><button key={m.id} onClick={()=>toggleIn("recipients",m.email)} style={chip(f.recipients.includes(m.email))}>{m.name}</button>)}</div>
+        <p style={{fontSize:11,color:"var(--text3)"}}>Only team members with a WhatsApp number can receive it.</p>
+      </div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+        <Btn onClick={save} disabled={saving}>{saving?"Saving…":"Save"}</Btn>
+        <Btn variant="secondary" onClick={()=>call("preview")} disabled={!!busy}>{busy==="preview"?"Building…":"Preview"}</Btn>
+        <Btn variant="secondary" onClick={()=>{ if(confirm("Send the report to WhatsApp right now?")) call("send"); }} disabled={!!busy}>{busy==="send"?"Sending…":"Send now"}</Btn>
+        {msg&&<span style={{fontSize:12,color:"var(--text2)"}}>{msg}</span>}
+      </div>
+      {preview&&(<div style={card}><p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase"}}>Preview{preview.recipients?.length?` — goes to ${preview.recipients.join(", ")}`:" — no recipient has a WhatsApp number"}</p><pre style={{whiteSpace:"pre-wrap",fontFamily:"inherit",fontSize:13,margin:0}}>{preview.text}</pre></div>)}
+    </div>
+  );
+}
+
 function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, integrationLogs, onAddIntegration, onUpdateIntegration, onDeleteIntegration, onRetryIntegration, emailSettings, onSaveEmailSettings, team, posts, clients, timelogs, perfLogs, accentColor, brandingAssets, onSaveBrandingAssets, wallpaper, emailLogs, activityLogs, onRefreshLogs, systemSessions, onRefreshSessions, assets, onFindDuplicateAssets, onRemoveDuplicateAssets, onBackfillSaraMemory, backfillRunning}) {
   const [settingsTab, setSettingsTab] = usePersistentState("sf_tab_settings","branding");
   const [f,setF] = useState({
@@ -31637,7 +31722,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 
       {/* Tab nav */}
       <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexWrap:"nowrap",overflowX:"auto"}}>
-        {[["branding","Branding"],["integrations","Integrations"],["email","Email"],["ai_model","AI Agents"],["durations","Task Estimates"],["contract","Contract & Policy"],["flags","Feature Flags"],["storage","Storage"],["syslog","System Log"]].map(([k,l])=>(
+        {[["branding","Branding"],["integrations","Integrations"],["email","Email"],["ai_model","AI Agents"],["durations","Task Estimates"],["contract","Contract & Policy"],["flags","Feature Flags"],["daily_report","Daily Report"],["storage","Storage"],["syslog","System Log"]].map(([k,l])=>(
           <button key={k} onClick={()=>setSettingsTab(k)} style={{padding:"9px 20px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${settingsTab===k?"var(--accent)":"transparent"}`,color:settingsTab===k?"var(--accent)":"var(--text2)",transition:"all 0.15s",display:"flex",alignItems:"center",gap:6,position:"relative"}}>
             {l}
             {k==="syslog"&&(activityLogs||[]).filter(a=>a.status==="error").length>0&&(
@@ -31785,6 +31870,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
       )}
 
       {/* ── SYSTEM LOG TAB ── */}
+      {settingsTab==="daily_report"&&<DailyReportSettings/>}
       {settingsTab==="syslog"&&<SystemLogPage activityLogs={activityLogs} systemSessions={systemSessions} currentUser={currentUser} team={team} onRefresh={()=>{ onRefreshLogs&&onRefreshLogs(); onRefreshSessions&&onRefreshSessions(); }}/>}
 
       {/* ── STORAGE TAB ── */}
