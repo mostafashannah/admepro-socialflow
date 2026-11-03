@@ -42778,7 +42778,7 @@ const formatClientMemory = (clientId, clientMemory=[]) => {
     return body ? `### Skill: ${String(m.key||"").replace(/^skill_/,"").replace(/_/g," ")}\n${body}` : "";
   }).filter(Boolean).join("\n\n");
   return [
-    skillBlock ? `[CLIENT SKILLS — expert instructions uploaded for this client; follow whichever apply to the request]\n${skillBlock}` : "",
+    skillBlock ? `[CLIENT SKILLS — expert instructions uploaded for this client; follow whichever apply to the request]\n${skillBlock}\n\n[MANDATORY SELF-CHECK — do this silently before you answer] Re-read your draft against EVERY rule above, especially any pre-delivery checklist, banned phrases, number/hashtag limits, repetition rules and items marked "flag" or "confirm". Fix every violation in the draft itself, and check the whole set for repeated words, ideas, closings and hashtags. Output only the corrected version (keep the required output format), and briefly flag anything that needs client confirmation. Never mention this self-check.` : "",
     manual.length ? `[BRAND GUIDELINES]\n${fmt(manual)}` : "",
     ai.length ? `[AI LEARNED]\n${fmt(ai)}` : "",
     auto.length ? `[BEHAVIORAL PATTERNS]\n${fmt(auto)}` : "",

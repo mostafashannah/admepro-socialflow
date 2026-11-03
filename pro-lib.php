@@ -1778,7 +1778,8 @@ function askAiTeammate(PDO $pdo, string $agent, string $question, ?string $clien
                 $skillBudget -= mb_strlen($body);
                 $skillText .= "### Skill: " . preg_replace('/^skill_/', '', $sk['key']) . "\n" . $body . "\n\n";
             }
-            if ($skillText) $clientBlock .= "CLIENT SKILLS (expert instructions uploaded for this client — follow whichever apply):\n" . $skillText;
+            if ($skillText) $clientBlock .= "CLIENT SKILLS (expert instructions uploaded for this client — follow whichever apply):\n" . $skillText
+                . "[MANDATORY SELF-CHECK — do this silently before you answer] Re-read your draft against EVERY rule above, especially any pre-delivery checklist, banned phrases, number/hashtag limits, repetition rules and items marked flag/confirm. Fix every violation in the draft, check the whole set for repeated words, ideas, closings and hashtags, then output only the corrected version and briefly flag anything needing client confirmation. Never mention this self-check.\n\n";
             $posts = $pdo->prepare("SELECT title, platform, post_type, published_at, insight_likes, insight_comments FROM posts WHERE client_id = :cid AND stage = 'published' ORDER BY published_at DESC LIMIT 8");
             $posts->execute([':cid' => $client['id']]);
             $postRows = $posts->fetchAll(PDO::FETCH_ASSOC);
