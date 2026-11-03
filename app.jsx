@@ -46516,7 +46516,7 @@ RULES:
   };
 
   // ── File attachments: images (vision), PDFs (document), text files (inlined) ──
-  const ATTACH_MAX_MB = {image:5, pdf:15, text:2};
+  const ATTACH_MAX_MB = {image:5, pdf:15, text:2, office:10};
   const readFileAsDataURL = (file) => new Promise((resolve,reject)=>{
     const r = new FileReader();
     r.onload = ()=>resolve(r.result);
@@ -46537,7 +46537,31 @@ RULES:
       const isImage = /^image\/(png|jpeg|jpg|webp|gif)$/i.test(file.type);
       const isPdf = file.type==="application/pdf";
       const isText = /^text\//.test(file.type) || /\.(txt|csv|md|json)$/i.test(file.name);
+      const isExcel = /\.(xlsx|xlsm|xls)$/i.test(file.name);
+      const isWord = /\.docx$/i.test(file.name);
       try {
+        if(isExcel || isWord){
+          if(file.size > ATTACH_MAX_MB.office*1024*1024){ addBotMsg(` "${file.name}" is over ${ATTACH_MAX_MB.office}MB — use a smaller file.`,"error"); continue; }
+          const buf = await file.arrayBuffer();
+          let text = "";
+          if(isExcel){
+            if(!window.XLSX) throw new Error("Excel reader not loaded — refresh the page and try again");
+            const wb = window.XLSX.read(buf, {type:"array"});
+            text = wb.SheetNames.map(n=>{
+              const ws = wb.Sheets[n];
+              const csv = window.XLSX.utils.sheet_to_csv(ws, {blankrows:false}).trim();
+              return csv ? `### Sheet: ${n}\n${csv}` : "";
+            }).filter(Boolean).join("\n\n");
+          } else {
+            if(!window.mammoth) throw new Error("Word reader not loaded — refresh the page and try again");
+            text = (await window.mammoth.extractRawText({arrayBuffer:buf})).value||"";
+          }
+          text = text.trim();
+          if(!text){ addBotMsg(` "${file.name}" looks empty — nothing to read.`,"error"); continue; }
+          const LIMIT = 60000;
+          next.push({id:uid(), name:file.name, kind:"text", text: text.length>LIMIT ? text.slice(0,LIMIT)+`\n\n[…file continues — only the first ${LIMIT.toLocaleString()} characters were sent]` : text});
+          continue;
+        }
         if(isImage){
           if(file.size > ATTACH_MAX_MB.image*1024*1024){ addBotMsg(` "${file.name}" is over ${ATTACH_MAX_MB.image}MB — use a smaller image.`,"error"); continue; }
           const dataUrl = await readFileAsDataURL(file);
@@ -46551,7 +46575,7 @@ RULES:
           const text = await readFileAsText(file);
           next.push({id:uid(), name:file.name, kind:"text", text:text.slice(0,20000)});
         } else {
-          addBotMsg(` "${file.name}" isn't a supported file type yet — try an image, PDF, or text/CSV file.`,"error");
+          addBotMsg(` "${file.name}" isn't a supported file type yet — try an image, PDF, Word (.docx), Excel (.xlsx) or text/CSV file.`,"error");
         }
       } catch(e){ addBotMsg(` Couldn't read "${file.name}".`,"error"); }
     }
@@ -46657,6 +46681,7 @@ RULES:
     // stays bounded (most recent uploads win).
     const RESEND_DOC_CAP = 6;
     let resent = 0;
+    let textResent = 0; // only the 2 newest earlier text/Excel/Word files go back in full
     const history = allMsgs
       .filter(m=>(m.content && typeof m.content==="string") || (m.attachments||[]).length)
       .filter(m=>!m.pendingAction && !m.meta)
@@ -46667,7 +46692,10 @@ RULES:
         let textContent = truncMsg(stripActionBlocks(m.content||""));
         const pastDocs = !isCurrent ? (m.attachments||[]).filter(a=>a.kind==="image"||a.kind==="pdf") : [];
         const pastText = !isCurrent ? (m.attachments||[]).filter(a=>a.kind==="text") : [];
-        if(pastText.length) textContent = (textContent||"") + pastText.map(a=>`\n\n[Attached file: ${a.name}]\n${a.text}`).join("");
+        if(pastText.length) textContent = (textContent||"") + pastText.map(a=>{
+          const full = textResent < 2; textResent++;
+          return `\n\n[Attached file: ${a.name}]\n${full ? a.text : (a.text||"").slice(0,3000)+((a.text||"").length>3000?"\n[…earlier file shortened — re-attach it if you need the rest]":"")}`;
+        }).join("");
         if(isCurrent && textAttachmentsInline) textContent = (textContent||"") + textAttachmentsInline;
         let blocks = isCurrent ? visionBlocks : [];
         if(!isCurrent && pastDocs.length && resent < RESEND_DOC_CAP){
@@ -46901,7 +46929,7 @@ RULES:
           setDragOverComposer(false);
           if(e.dataTransfer.files && e.dataTransfer.files.length) handleFilesSelected(e.dataTransfer.files);
         }}>
-        <input ref={fileInputRef} type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain,text/csv,text/markdown,application/json,.txt,.csv,.md,.json"
+        <input ref={fileInputRef} type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain,text/csv,text/markdown,application/json,.txt,.csv,.md,.json,.xlsx,.xlsm,.xls,.docx"
           style={{display:"none"}}
           onChange={e=>{ handleFilesSelected(e.target.files); e.target.value=""; }}/>
         {isMobile && (
