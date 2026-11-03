@@ -1413,6 +1413,8 @@ async function de(entityName, id) {
 // Default model for every AI agent (Pro, Sara, Yahia, Mai, ...). ai-proxy.php and
 // pro-lib.php fall back to claude-sonnet-4-6 automatically if the API rejects it.
 const DEFAULT_AI_MODEL = "claude-sonnet-5-5";
+const AI_MODEL_LABELS = {"claude-sonnet-5-5":"Claude Sonnet 5.5","claude-sonnet-4-6":"Claude Sonnet 4.6","claude-haiku-4-5-20251001":"Claude Haiku 4.5","claude-opus-4-8":"Claude Opus 4.8","claude-fable-5":"Claude Fable 5","gpt-5.1":"GPT-5.1"};
+const aiModelLabel = (id) => AI_MODEL_LABELS[id] || id || "";
 const AI_ENDPOINT = window.location.origin + "/ai-proxy.php";
 const OPENAI_ENDPOINT = window.location.origin + "/openai-proxy.php";
 const FREEPIK_ENDPOINT = window.location.origin + "/freepik-proxy.php";
@@ -46047,6 +46049,7 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   // same thread, just whichever teammate is "in the room" right now.
   // Remembered across refreshes (and per browser) so the teammate you were
   // chatting with is still the one answering afterwards.
+  const [lastModelUsed, setLastModelUsed] = useState(null);
   const [storedPersona, setActivePersona] = usePersistentState("sf_pro_persona","pro");
   const activePersona = ["pro","sara","mai"].includes(storedPersona) ? storedPersona : "pro";
   const messagesEndRef = useRef(null);
@@ -46741,7 +46744,7 @@ RULES:
       const {d, model:usedModel} = await callProModel(m => ({
         model:m, max_tokens:speedTokens(aiPrefs.speed,16000), system:sysPrompt, messages:apiHistory, tools:[{type:"web_search_20250305", name:"web_search", max_uses:3}],
       }), aiPrefs);
-      trackAIUsage(d.usage, usedModel);
+      trackAIUsage(d.usage, usedModel); setLastModelUsed(usedModel);
       const botText = (d.content?.map(b=>b.text||"").join("")||"").trim() || "I'm not sure — could you rephrase?";
 
       // Strip action block from display
@@ -46859,6 +46862,9 @@ RULES:
         {[["pro","Pro"],["sara","Sara"],["mai","Mai"]].map(([key,label])=>(
           <button key={key} onClick={()=>setActivePersona(key)} style={{fontSize:11.5,fontWeight:700,padding:"4px 12px",borderRadius:20,border:"none",cursor:"pointer",background:activePersona===key?"var(--accent)":"var(--surface2)",color:activePersona===key?"#fff":"var(--text2)"}}>{label}</button>
         ))}
+        <span title="Model answering in this chat" style={{fontSize:10.5,fontWeight:700,color:"var(--text2)",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:99,padding:"3px 10px",whiteSpace:"nowrap"}}>
+          {(()=>{ const cfgModel = getAIPrefs().model; const used = lastModelUsed || cfgModel; return <>🧠 {aiModelLabel(used)}{lastModelUsed && lastModelUsed!==cfgModel ? " (fallback)" : ""}</>; })()}
+        </span>
         {activePersona==="sara" && <span style={{fontSize:10.5,color:"var(--text3)"}}>Sara — content, captions, and ideas, same live data & actions as Pro.</span>}
         {activePersona==="mai" && <span style={{fontSize:10.5,color:"var(--text3)"}}>Mai — client status and account questions, same live data & actions as Pro.</span>}
       </div>
