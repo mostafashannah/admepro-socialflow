@@ -46045,7 +46045,10 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   // different identity/expertise framing. Unlike the old raw-GPT toggle,
   // switching persona does NOT start a separate conversation — it's the
   // same thread, just whichever teammate is "in the room" right now.
-  const [activePersona, setActivePersona] = useState("pro");
+  // Remembered across refreshes (and per browser) so the teammate you were
+  // chatting with is still the one answering afterwards.
+  const [storedPersona, setActivePersona] = usePersistentState("sf_pro_persona","pro");
+  const activePersona = ["pro","sara","mai"].includes(storedPersona) ? storedPersona : "pro";
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);

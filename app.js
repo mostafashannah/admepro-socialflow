@@ -6104,7 +6104,9 @@ const[pendingActions,setPendingActions]=useState({});const[showHistory,setShowHi
 // different identity/expertise framing. Unlike the old raw-GPT toggle,
 // switching persona does NOT start a separate conversation — it's the
 // same thread, just whichever teammate is "in the room" right now.
-const[activePersona,setActivePersona]=useState("pro");const messagesEndRef=useRef(null);const inputRef=useRef(null);const fileInputRef=useRef(null);useEffect(()=>{const el=inputRef.current;if(!el)return;el.style.height="auto";el.style.height=Math.min(el.scrollHeight,120)+"px";},[input]);const role=(currentUser===null||currentUser===void 0?void 0:currentUser.role)||"admin";const name=(currentUser===null||currentUser===void 0||(_currentUser$name2=currentUser.name)===null||_currentUser$name2===void 0?void 0:_currentUser$name2.split(" ")[0])||"there";const{isMobile}=useResponsive();// Initialise welcome message. A real page load (refresh/new tab) always
+// Remembered across refreshes (and per browser) so the teammate you were
+// chatting with is still the one answering afterwards.
+const[storedPersona,setActivePersona]=usePersistentState("sf_pro_persona","pro");const activePersona=["pro","sara","mai"].includes(storedPersona)?storedPersona:"pro";const messagesEndRef=useRef(null);const inputRef=useRef(null);const fileInputRef=useRef(null);useEffect(()=>{const el=inputRef.current;if(!el)return;el.style.height="auto";el.style.height=Math.min(el.scrollHeight,120)+"px";},[input]);const role=(currentUser===null||currentUser===void 0?void 0:currentUser.role)||"admin";const name=(currentUser===null||currentUser===void 0||(_currentUser$name2=currentUser.name)===null||_currentUser$name2===void 0?void 0:_currentUser$name2.split(" ")[0])||"there";const{isMobile}=useResponsive();// Initialise welcome message. A real page load (refresh/new tab) always
 // starts a brand-new conversation; in-app navigation back to Pro Home
 // resumes whatever was active.
 useEffect(()=>{if(!currentUser)return;// Every real page load (refresh / new tab) opens a FRESH blank Pro chat rather
