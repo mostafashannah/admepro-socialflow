@@ -1848,8 +1848,8 @@ function callClaude(array $payload) {
     curl_close($ch);
     // If the account rejects a newer model id (400/404 mentioning the model),
     // retry once on the previous known-good Sonnet instead of failing every AI call.
-    if (($status === 400 || $status === 404) && ($payload['model'] ?? '') === 'claude-sonnet-5-5'
-        && preg_match('/model/i', (string)$res)) {
+    if (($status === 400 || $status === 404 || $status === 422) && ($payload['model'] ?? '') === 'claude-sonnet-5-5'
+       ) {
         error_log('[callClaude] claude-sonnet-5-5 rejected — falling back to claude-sonnet-4-6: ' . substr((string)$res, 0, 200));
         $payload['model'] = 'claude-sonnet-4-6';
         return callClaude($payload);

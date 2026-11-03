@@ -70,7 +70,7 @@ curl_close($ch);
 [$res, $status, $err] = sfAnthropicCall($body, $ANTHROPIC_KEY);
 // If the account rejects a newer model id, retry once on the previous
 // known-good Sonnet instead of failing every AI call in the app.
-if (!$err && ($status === 400 || $status === 404) && ($body['model'] ?? '') === 'claude-sonnet-5-5' && preg_match('/model/i', (string)$res)) {
+if (!$err && ($status === 400 || $status === 404 || $status === 422) && ($body['model'] ?? '') === 'claude-sonnet-5-5') {
   error_log("[ai-proxy] claude-sonnet-5-5 rejected — falling back to claude-sonnet-4-6: " . substr((string)$res, 0, 300));
   $body['model'] = 'claude-sonnet-4-6';
   [$res, $status, $err] = sfAnthropicCall($body, $ANTHROPIC_KEY);

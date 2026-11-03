@@ -1878,19 +1878,30 @@ function getAIPrefs() {
 // against the configured secondary model, same behavior as agentAI()'s
 // fallback for the sub-agents.
 async function callProModel(makeBody, aiPrefs) {
-  const tryModel = async (m) => {
-    const res = await fetch(AI_ENDPOINT, {method:"POST", headers:AI_HEADERS, body: JSON.stringify(makeBody(m))});
-    const d = await res.json();
-    if(d.error || !res.ok) {
-      const err = new Error((d.error&&(d.error.message||d.error))||`API error ${res.status}`);
-      err.status = res.status;
-      throw err;
-    }
-    return {d, model:m};
+  const tryModel = async (m, timeoutMs=0) => {
+    const ctl = timeoutMs ? new AbortController() : null;
+    const timer = ctl ? setTimeout(()=>ctl.abort(), timeoutMs) : null;
+    try {
+      const res = await fetch(AI_ENDPOINT, {method:"POST", headers:AI_HEADERS, body: JSON.stringify(makeBody(m)), signal: ctl?.signal});
+      const d = await res.json();
+      if(d.error || !res.ok) {
+        const err = new Error((d.error&&(d.error.message||d.error))||`API error ${res.status}`);
+        err.status = res.status;
+        throw err;
+      }
+      return {d, model:m};
+    } finally { if(timer) clearTimeout(timer); }
   };
+  // Previous known-good Sonnet — used if the newer default errors out or stalls,
+  // so a model problem can never leave a chat silently stuck.
+  const LEGACY_MODEL = "claude-sonnet-4-6";
   try {
-    return await tryModel(aiPrefs.model);
+    return await tryModel(aiPrefs.model, aiPrefs.model===DEFAULT_AI_MODEL ? 90000 : 0);
   } catch(e) {
+    if(aiPrefs.model===DEFAULT_AI_MODEL && (e?.name==="AbortError" || [400,404,422].includes(e?.status))) {
+      console.warn("[Pro] "+DEFAULT_AI_MODEL+" failed ("+(e?.message||e)+") — retrying on "+LEGACY_MODEL);
+      return await tryModel(LEGACY_MODEL, 0);
+    }
     if(aiPrefs.fallbackModel && aiPrefs.fallbackModel!==aiPrefs.model && AI_OVERLOAD_STATUSES.has(e.status)) {
       return await tryModel(aiPrefs.fallbackModel);
     }
