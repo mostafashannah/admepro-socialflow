@@ -188,7 +188,7 @@ function generateBotReply(PDO $pdo, string $clientId, string $clientName, string
     // product reel) — without it, the bot only ever saw the comment text in isolation.
     $captionLine = $postCaption ? "Caption of the post/reel this comment is on:\n\"{$postCaption}\"\n\n" : '';
     $payload = [
-        'model' => 'claude-sonnet-4-6',
+        'model' => 'claude-sonnet-5-5',
         'max_tokens' => 400,
         'system' => $system,
         'messages' => [['role' => 'user', 'content' => "{$nameLine}{$captionLine}Conversation so far:\n{$convo}\n\n{$label}"]],
@@ -324,7 +324,7 @@ function storeBotMessage(PDO $pdo, $clientId, $clientName, $channel, $customerId
 // any API error so a glitch never spams the Leads page.
 function isInterestedInOurServices(string $text) {
     $payload = [
-        'model' => 'claude-sonnet-4-6',
+        'model' => 'claude-sonnet-5-5',
         'max_tokens' => 10,
         'system' => "You classify inbound messages sent to a social media marketing agency's own Facebook/Instagram/WhatsApp account. "
                   . "Reply with exactly one word: YES if the message shows interest in hiring the agency or its services "
@@ -346,7 +346,7 @@ function isInterestedInOurServices(string $text) {
 // text — admins want "what are they asking about", not a transcript.
 function summarizeLeadInquiry(string $combinedText) {
     $payload = [
-        'model' => 'claude-sonnet-4-6',
+        'model' => 'claude-sonnet-5-5',
         'max_tokens' => 150,
         'system' => "You summarize an inbound conversation to a social media marketing agency from a potential lead. "
                   . "Write a brief, at most 4 short lines, covering what they're asking about / interested in and any "
@@ -526,7 +526,7 @@ function classifyClientContact(string $clientName, string $combinedText) {
         ? "\n\nSpecial case for admepro's own inbox: someone asking to hire admepro as their marketing/social media agency — including phrasing like \"looking for a marketing partner\", \"interested in collaborating\", or \"send us your portfolio/profile\" — is a LEAD (they want to buy admepro's services), NOT a service_provider, even though that wording sounds two-way. Only classify as service_provider if they're clearly offering THEIR OWN distinct service/product TO admepro (a freelancer, supplier, or another agency pitching admepro)."
         : "";
     $payload = [
-        'model' => 'claude-sonnet-4-6',
+        'model' => 'claude-sonnet-5-5',
         'max_tokens' => 200,
         'system' => "You classify inbound messages sent to {$clientName}'s social media / WhatsApp inbox. "
                   . "Reply with EXACTLY this format and nothing else:\n"

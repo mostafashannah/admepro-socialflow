@@ -41,7 +41,8 @@ if(!$body){
   exit;
 }
 
-$payload = json_encode($body);
+function sfAnthropicCall(array $body, string $key) {
+  $payload = json_encode($body);
 
 $ch = curl_init("https://api.anthropic.com/v1/messages");
 curl_setopt_array($ch, [
@@ -54,7 +55,7 @@ curl_setopt_array($ch, [
   CURLOPT_TIMEOUT        => 300,
   CURLOPT_CONNECTTIMEOUT => 10,
   CURLOPT_HTTPHEADER     => [
-    "x-api-key: $ANTHROPIC_KEY",
+    "x-api-key: $key",
     "anthropic-version: 2023-06-01",
     "Content-Type: application/json",
   ],
@@ -63,6 +64,17 @@ $res    = curl_exec($ch);
 $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 $err    = curl_error($ch);
 curl_close($ch);
+
+  return [$res, $status, $err];
+}
+[$res, $status, $err] = sfAnthropicCall($body, $ANTHROPIC_KEY);
+// If the account rejects a newer model id, retry once on the previous
+// known-good Sonnet instead of failing every AI call in the app.
+if (!$err && ($status === 400 || $status === 404) && ($body['model'] ?? '') === 'claude-sonnet-5-5' && preg_match('/model/i', (string)$res)) {
+  error_log("[ai-proxy] claude-sonnet-5-5 rejected — falling back to claude-sonnet-4-6: " . substr((string)$res, 0, 300));
+  $body['model'] = 'claude-sonnet-4-6';
+  [$res, $status, $err] = sfAnthropicCall($body, $ANTHROPIC_KEY);
+}
 
 if($err){ http_response_code(500); echo json_encode(["error"=>"cURL error: $err"]); exit; }
 if($status < 200 || $status >= 300){

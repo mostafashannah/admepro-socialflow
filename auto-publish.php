@@ -289,7 +289,7 @@ function sara_learn_from_publish(PDO $pdo, array $post, string $platform): void 
         $ch = curl_init("https://api.anthropic.com/v1/messages");
         curl_setopt_array($ch, [
             CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => json_encode(['model' => 'claude-sonnet-4-6', 'max_tokens' => 400, 'messages' => [['role' => 'user', 'content' => $prompt]]]),
+            CURLOPT_POSTFIELDS => json_encode(['model' => 'claude-sonnet-5-5', 'max_tokens' => 400, 'messages' => [['role' => 'user', 'content' => $prompt]]]),
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => 30,
             CURLOPT_CONNECTTIMEOUT => 10,

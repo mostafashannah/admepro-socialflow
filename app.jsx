@@ -1410,6 +1410,9 @@ async function de(entityName, id) {
   }
 }
 // ── AI endpoint — always use proxy on server ──
+// Default model for every AI agent (Pro, Sara, Yahia, Mai, ...). ai-proxy.php and
+// pro-lib.php fall back to claude-sonnet-4-6 automatically if the API rejects it.
+const DEFAULT_AI_MODEL = "claude-sonnet-5-5";
 const AI_ENDPOINT = window.location.origin + "/ai-proxy.php";
 const OPENAI_ENDPOINT = window.location.origin + "/openai-proxy.php";
 const FREEPIK_ENDPOINT = window.location.origin + "/freepik-proxy.php";
@@ -1731,7 +1734,7 @@ ${AI_REVIEW_JSON_SHAPE}
     const r = await fetchWithTimeout(AI_ENDPOINT, {
       method:"POST", headers:AI_HEADERS,
       body: JSON.stringify({
-        model:"claude-sonnet-4-6", max_tokens:1500, system:sys,
+        model:DEFAULT_AI_MODEL, max_tokens:1500, system:sys,
         messages:[{role:"user", content:[
           cvContent,
           {type:"text", text:"Review this CV and return the JSON described in the system prompt."},
@@ -1769,7 +1772,7 @@ Return ONLY JSON in this exact shape:
     const r = await fetchWithTimeout(AI_ENDPOINT, {
       method:"POST", headers:AI_HEADERS,
       body: JSON.stringify({
-        model:"claude-sonnet-4-6", max_tokens:1500, system:sys,
+        model:DEFAULT_AI_MODEL, max_tokens:1500, system:sys,
         messages:[{role:"user", content:[
           cvContent,
           {type:"text", text:"Review this CV, pick the best-fit open position, and return the JSON described in the system prompt."},
@@ -1854,7 +1857,7 @@ function getAIPrefs() {
   // ("did not match the expected pattern" — not a valid/launched alias on
   // this account), which broke every Pro/Sara/Mai chat send. Switchable
   // from Settings → AI & Tokens.
-  let model = "claude-sonnet-4-6", speed = "medium", fallbackModel = "";
+  let model = DEFAULT_AI_MODEL, speed = "medium", fallbackModel = "";
   // Anyone who loaded the app during the brief window "claude-sonnet-5"/
   // "claude-opus-5" were the default has that invalid id cached in their
   // own browser as an explicit preference — auto-correct it back rather
@@ -1862,7 +1865,8 @@ function getAIPrefs() {
   const KNOWN_BAD_MODEL_IDS = new Set(["claude-sonnet-5", "claude-opus-5"]);
   try {
     const stored = localStorage.getItem("sf_ai_model");
-    model = (stored && !KNOWN_BAD_MODEL_IDS.has(stored)) ? stored : model;
+    // The old default (Sonnet 4.6) is upgraded to the new default everywhere.
+    model = (stored && !KNOWN_BAD_MODEL_IDS.has(stored) && stored!=="claude-sonnet-4-6") ? stored : model;
     speed = localStorage.getItem("sf_ai_speed") || speed;
     fallbackModel = localStorage.getItem("sf_ai_fallback_model") || "";
     if (fallbackModel && KNOWN_BAD_MODEL_IDS.has(fallbackModel)) fallbackModel = "";
@@ -1906,6 +1910,7 @@ function speedTokens(speed, base) {
 const AI_MODEL_PRICES = {
   "claude-haiku-4-5-20251001": [1.00, 5.00],
   "claude-sonnet-4-6": [3.00, 15.00],
+  "claude-sonnet-5-5": [3.00, 15.00], // estimate — same tier as Sonnet 4.6
   "claude-opus-4-8": [5.00, 25.00],
   "claude-fable-5": [10.00, 50.00],
   "gpt-5.1": [1.25, 10.00],
@@ -2598,7 +2603,7 @@ const ai = async (prompt, maxTokens=1000) => {
   const r = await fetch(AI_ENDPOINT, {
     method:"POST",
     headers: AI_HEADERS,
-    body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:maxTokens, messages:[{role:"user",content:prompt}] })
+    body: JSON.stringify({ model:DEFAULT_AI_MODEL, max_tokens:maxTokens, messages:[{role:"user",content:prompt}] })
   });
   if(!r.ok) {
     const errText = await r.text();
@@ -2616,7 +2621,7 @@ const aiSearch = async (prompt, maxTokens=1000) => {
   const r = await fetch(AI_ENDPOINT, {
     method:"POST",
     headers: AI_HEADERS,
-    body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:maxTokens, messages:[{role:"user",content:prompt}], tools:[{type:"web_search_20250305", name:"web_search", max_uses:3}] })
+    body: JSON.stringify({ model:DEFAULT_AI_MODEL, max_tokens:maxTokens, messages:[{role:"user",content:prompt}], tools:[{type:"web_search_20250305", name:"web_search", max_uses:3}] })
   });
   if(!r.ok) {
     const errText = await r.text();
@@ -2693,7 +2698,7 @@ function getAgentCfg(agentId){
 const AI_OVERLOAD_STATUSES = new Set([429, 500, 502, 503, 529]);
 const agentAI = async (agentId, taskLabel, prompt, maxTokens=1000, imageUrl=null, extraBlocks=null) => {
   const cfg = getAgentCfg(agentId);
-  const model = cfg.model || "claude-sonnet-4-6";
+  const model = cfg.model || DEFAULT_AI_MODEL;
   const fallbackModel = (cfg.fallback_model||"").trim();
   const skills = (cfg.skills||"").trim();
   const def = AI_AGENT_DEFS.find(a=>a.id===agentId);
@@ -10749,7 +10754,7 @@ No markdown, no explanation.`;
 
       const r = await fetch(AI_ENDPOINT,{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:800,messages:[{role:"user",content:prompt}]})
+        body:JSON.stringify({model:DEFAULT_AI_MODEL,max_tokens:800,messages:[{role:"user",content:prompt}]})
       });
       const d = await r.json();
       const raw=(d.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
@@ -32017,14 +32022,14 @@ function StaticAgentLogSection({agentId, logs}) {
   );
 }
 function AgentCard({def, cfg, models, onSave, logs, onBackfill, backfillRunning}) {
-  const [model,setModel] = useState(cfg?.model||"claude-sonnet-4-6");
+  const [model,setModel] = useState(cfg?.model||DEFAULT_AI_MODEL);
   const [fallbackModel,setFallbackModel] = useState(cfg?.fallback_model||"");
   const [skills,setSkills] = useState(cfg?.skills||"");
   const [avatarUrl,setAvatarUrl] = useState(cfg?.avatar_url||"");
   const [uploadingAvatar,setUploadingAvatar] = useState(false);
   const [saved,setSaved] = useState(false);
   const [showLog,setShowLog] = useState(false);
-  useEffect(()=>{ setModel(cfg?.model||"claude-sonnet-4-6"); setFallbackModel(cfg?.fallback_model||""); setSkills(cfg?.skills||""); setAvatarUrl(cfg?.avatar_url||""); },[cfg?.model,cfg?.fallback_model,cfg?.skills,cfg?.avatar_url]);
+  useEffect(()=>{ setModel(cfg?.model||DEFAULT_AI_MODEL); setFallbackModel(cfg?.fallback_model||""); setSkills(cfg?.skills||""); setAvatarUrl(cfg?.avatar_url||""); },[cfg?.model,cfg?.fallback_model,cfg?.skills,cfg?.avatar_url]);
   const save = async () => {
     await onSave(def.id, {model, fallback_model:fallbackModel, skills, avatar_url:avatarUrl});
     setSaved(true); setTimeout(()=>setSaved(false),2500);
@@ -32116,7 +32121,7 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
   const [usage, setUsage] = useState(null);
   const [usageOpenAI, setUsageOpenAI] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [model, setModel] = useState(() => { try{ return localStorage.getItem("sf_ai_model")||"claude-sonnet-4-6"; }catch(e){return "claude-sonnet-4-6";} });
+  const [model, setModel] = useState(() => { try{ return (localStorage.getItem("sf_ai_model")&&localStorage.getItem("sf_ai_model")!=="claude-sonnet-4-6")?localStorage.getItem("sf_ai_model"):DEFAULT_AI_MODEL; }catch(e){return "claude-sonnet-4-6";} });
   const [fallbackModel, setFallbackModel] = useState(() => { try{ return localStorage.getItem("sf_ai_fallback_model")||""; }catch(e){return "";} });
   const [speed, setSpeed] = useState(() => { try{ return localStorage.getItem("sf_ai_speed")||"medium"; }catch(e){return "medium";} });
   const [saved, setSaved] = useState(false);
@@ -32165,6 +32170,7 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
 
   const MODELS = [
     {id:"claude-haiku-4-5-20251001", name:"Claude Haiku 4.5", tier:"Fast & cheap", input:1.00, output:5.00, ctx:"200K"},
+    {id:"claude-sonnet-5-5", name:"Claude Sonnet 5.5", tier:"Newest Sonnet (default)", input:3.00, output:15.00, ctx:"1M"},
     {id:"claude-sonnet-4-6", name:"Claude Sonnet 4.6", tier:"Balanced", input:3.00, output:15.00, ctx:"1M"},
     {id:"claude-opus-4-8", name:"Claude Opus 4.8", tier:"Most capable", input:5.00, output:25.00, ctx:"1M"},
     {id:"claude-fable-5", name:"Claude Fable 5", tier:"Frontier", input:10.00, output:50.00, ctx:"1M"},
@@ -32268,6 +32274,11 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
         </div>
       </div>
 
+      <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",padding:"12px 16px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14}}>
+        <div style={{flex:1,minWidth:200}}><p style={{fontWeight:700,fontSize:13}}>Use Claude Sonnet 5.5 for every AI agent</p><p style={{fontSize:11.5,color:"var(--text3)",marginTop:2}}>Sets Sara, Yahia, Mai and the other agents — plus Pro on this device — to the newest Sonnet in one click.</p></div>
+        <Btn size="sm" onClick={async()=>{ if(!confirm("Switch all AI agents to Claude Sonnet 5.5?")) return; for(const d of AI_AGENT_DEFS.filter(a=>a.id!=="pro")) { await saveAgent(d.id, {...(agentsCfg[d.id]||{}), model:DEFAULT_AI_MODEL}); } try{ localStorage.setItem("sf_ai_model", DEFAULT_AI_MODEL); }catch(e){} setModel(DEFAULT_AI_MODEL); alert("All agents now use Claude Sonnet 5.5."); }}>Switch all to Sonnet 5.5</Btn>
+      </div>
+
       {AI_AGENT_DEFS.filter(a=>a.id!=="pro").map(def=>(
         <AgentCard key={def.id} def={def} cfg={agentsCfg[def.id]} models={MODELS} onSave={saveAgent} logs={activityLogs}
           onBackfill={def.id==="content_creator"?onBackfillSaraMemory:null} backfillRunning={backfillRunning}/>
@@ -32291,7 +32302,7 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
         </div>
         <p style={{fontSize:12,color:"var(--text2)",marginTop:12,lineHeight:1.5}}>
           Runs independently of Pro and Sara — triggered directly by an inbound DM webhook, not by anyone opening a chat.
-          Its model is fixed at <code style={{background:"var(--surface2)",padding:"1px 6px",borderRadius:4}}>claude-sonnet-4-6</code> and
+          Its model is fixed at <code style={{background:"var(--surface2)",padding:"1px 6px",borderRadius:4}}>{DEFAULT_AI_MODEL}</code> and
           isn't affected by the Model/Speed settings below (those are Pro-only).
         </p>
         <p style={{fontSize:12,color:"var(--text2)",marginTop:8,lineHeight:1.5}}>
@@ -32339,8 +32350,8 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
                 <p style={{fontWeight:700,fontSize:13,color:"var(--text)"}}>{m.name}</p>
                 <p style={{fontSize:11,color:"var(--text3)"}}>{m.tier} · {m.ctx} context · ${m.input}/M in · ${m.output}/M out</p>
               </div>
-              {m.id==="claude-sonnet-4-6"&&<span style={{padding:"2px 8px",borderRadius:99,background:"#10b98122",color:"#10b981",fontSize:10,fontWeight:700}}>Default</span>}
-              {m.id==="claude-sonnet-4-6"&&<span style={{padding:"2px 8px",borderRadius:99,background:"#6366f122",color:"#6366f1",fontSize:10,fontWeight:700}}>Recommended</span>}
+              {m.id==="claude-sonnet-5-5"&&<span style={{padding:"2px 8px",borderRadius:99,background:"#10b98122",color:"#10b981",fontSize:10,fontWeight:700}}>Default</span>}
+              {m.id==="claude-sonnet-5-5"&&<span style={{padding:"2px 8px",borderRadius:99,background:"#6366f122",color:"#6366f1",fontSize:10,fontWeight:700}}>Recommended</span>}
             </div>
           ))}
         </div>
@@ -35906,7 +35917,7 @@ Return ONLY a JSON array of 4-6 objects:
 No markdown, no explanation.`;
                 const r = await fetch(AI_ENDPOINT,{
                   method:"POST",headers:{"Content-Type":"application/json"},
-                  body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,messages:[{role:"user",content:prompt}]})
+                  body:JSON.stringify({model:DEFAULT_AI_MODEL,max_tokens:1000,messages:[{role:"user",content:prompt}]})
                 });
                 const d = await r.json();
                 const raw=(d.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
@@ -48611,14 +48622,14 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
       const res = await fetch(AI_ENDPOINT, {
         method:"POST", headers:AI_HEADERS,
         body: JSON.stringify({
-          model:"claude-sonnet-4-6", max_tokens:1600, system:sys,
+          model:DEFAULT_AI_MODEL, max_tokens:1600, system:sys,
           messages:[{role:"user", content:`Research ${client.name}${client.website?` — ${client.website}`:""} thoroughly, not just the homepage.`}],
           tools:[{type:"web_search_20250305", name:"web_search", max_uses:12}],
         }),
       });
       const d = await res.json();
       if(d.error) throw new Error(d.error.message||"AI API error");
-      trackAIUsage(d.usage, "claude-sonnet-4-6");
+      trackAIUsage(d.usage, DEFAULT_AI_MODEL);
       const raw = (d.content?.map(b=>b.text||"").join("")||"").trim();
       const m = raw.match(/\{[\s\S]*\}/);
       if(!m) throw new Error("No structured result returned");
@@ -50363,7 +50374,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         // like the other generation paths), any leftover fence markers or
         // truncation threw immediately, landing silently in the catch
         // below with "analyzed" never getting set to true.
-        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:2000,
+        body:JSON.stringify({model:DEFAULT_AI_MODEL,max_tokens:2000,
           messages:[{role:"user",content:analysisPrompt}]})
       });
       const d2 = await r.json();

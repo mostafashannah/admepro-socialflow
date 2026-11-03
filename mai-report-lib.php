@@ -237,7 +237,7 @@ function maiStartReportSession(PDO $pdo, array $am, $reportType) {
             . "Write ONLY the WhatsApp message, nothing else.";
     }
 
-    [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 300, 'system' => maiPersonaSystem(), 'messages' => [['role' => 'user', 'content' => $userMsg]]]);
+    [$status, $data] = callClaude(['model' => 'claude-sonnet-5-5', 'max_tokens' => 300, 'system' => maiPersonaSystem(), 'messages' => [['role' => 'user', 'content' => $userMsg]]]);
     $opener = '';
     if ($status >= 200 && $status < 300) {
         foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $opener .= $block['text']; }
@@ -311,7 +311,7 @@ function maiContinueReportSession(PDO $pdo, array $session, $incomingText) {
         . "Return ONLY this JSON (no markdown, no other text):\n"
         . '{"reply":"the next WhatsApp message to send her","checklist_done":["item_key",...],"client_memory":[{"client_name":"...","key":"...","value":"..."}],"lead_updates":[{"lead_name":"...","note":"what she told you happened with this lead","status":"new|contacted|follow_up|negotiation|closed_won|closed_lost or omit if unchanged"}],"complete":true|false}';
 
-    [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 500, 'system' => $sys, 'messages' => [['role' => 'user', 'content' => 'Continue the conversation now, following the instructions exactly.']]]);
+    [$status, $data] = callClaude(['model' => 'claude-sonnet-5-5', 'max_tokens' => 500, 'system' => $sys, 'messages' => [['role' => 'user', 'content' => 'Continue the conversation now, following the instructions exactly.']]]);
     $raw = '';
     if ($status >= 200 && $status < 300) {
         foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $raw .= $block['text']; }
@@ -449,7 +449,7 @@ function maiSendAdminDigest(PDO $pdo, $reportType) {
         . "get at most one grouped line (e.g. \"X and Y are all good\"), never individual praise paragraphs. STRICT LIMIT: under 500 characters total. "
         . "No markdown headers or bullet lists — short lines, WhatsApp style.";
     $userMsg = "Today's " . ($reportType === 'morning' ? 'morning' : 'end-of-day') . " check-in results:\n" . implode("\n", $lines) . "\n\nWrite the summary now.";
-    [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 400, 'system' => $sys, 'messages' => [['role' => 'user', 'content' => $userMsg]]]);
+    [$status, $data] = callClaude(['model' => 'claude-sonnet-5-5', 'max_tokens' => 400, 'system' => $sys, 'messages' => [['role' => 'user', 'content' => $userMsg]]]);
     $summary = '';
     if ($status >= 200 && $status < 300) {
         foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $summary .= $block['text']; }

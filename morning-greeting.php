@@ -36,7 +36,7 @@ foreach ($members as $m) {
     $userMsg = "Team member: {$firstName}\nToday's open tasks:\n{$list}";
 
     [$status, $data] = callClaude([
-        'model' => 'claude-sonnet-4-6',
+        'model' => 'claude-sonnet-5-5',
         'max_tokens' => 300,
         'system' => $system,
         'messages' => [['role' => 'user', 'content' => $userMsg]],

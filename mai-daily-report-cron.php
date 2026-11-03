@@ -257,7 +257,7 @@ foreach ($clients as $client) {
                 . "what's underperforming, and one concrete recommendation\",\"takeaway\":\"ONE short punchy sentence, under 15 words, "
                 . "no jargon — this exact sentence gets texted to a teammate on WhatsApp, so it must stand alone and make sense with zero "
                 . "other context\"}";
-            [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 600, 'messages' => [['role' => 'user', 'content' => $prompt]]]);
+            [$status, $data] = callClaude(['model' => 'claude-sonnet-5-5', 'max_tokens' => 600, 'messages' => [['role' => 'user', 'content' => $prompt]]]);
             $raw = '';
             if ($status >= 200 && $status < 300) {
                 foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $raw .= $block['text']; }
@@ -308,7 +308,7 @@ foreach ($clients as $client) {
                 . "\n\nReturn ONLY a JSON array scoring EVERY memory fact above by importance right now, 1 (low) to 5 (critical — "
                 . "e.g. an explicit brand rule, a recent urgent request, a hard constraint) — format: "
                 . "[{\"key\":\"exact_key_from_above\",\"priority\":1-5}]. Nothing else, no explanation.";
-            [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 800, 'messages' => [['role' => 'user', 'content' => $prompt]]]);
+            [$status, $data] = callClaude(['model' => 'claude-sonnet-5-5', 'max_tokens' => 800, 'messages' => [['role' => 'user', 'content' => $prompt]]]);
             $text = '';
             if ($status >= 200 && $status < 300) {
                 foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $text .= $block['text']; }
@@ -378,7 +378,7 @@ foreach ($clients as $client) {
             // keywords+priorities+dos+donts+target_audience response — it
             // regularly cut off mid-object, which the regex below correctly
             // refuses as invalid JSON (silently skipping the whole refresh).
-            [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 1800, 'messages' => [['role' => 'user', 'content' => $kbPrompt]]]);
+            [$status, $data] = callClaude(['model' => 'claude-sonnet-5-5', 'max_tokens' => 1800, 'messages' => [['role' => 'user', 'content' => $kbPrompt]]]);
             $kbRaw = '';
             if ($status >= 200 && $status < 300) {
                 foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $kbRaw .= $block['text']; }
@@ -486,7 +486,7 @@ foreach ($recipientFindings as $email => $entry) {
     // real API blip a second chance before giving up, and logging the
     // actual status/error means a persistent failure is diagnosable instead
     // of just "the report looked ugly today" with no trail.
-    $claudeArgs = ['model' => 'claude-sonnet-4-6', 'max_tokens' => 700, 'system' => $maiWaSystem, 'messages' => [['role' => 'user', 'content' => $userMsg]]];
+    $claudeArgs = ['model' => 'claude-sonnet-5-5', 'max_tokens' => 700, 'system' => $maiWaSystem, 'messages' => [['role' => 'user', 'content' => $userMsg]]];
     [$status, $data, $raw] = callClaude($claudeArgs);
     if ($status < 200 || $status >= 300) {
         logMaiActivity($pdo, "WhatsApp report generation failed (attempt 1) — {$email}", "HTTP {$status}: " . mb_substr((string) $raw, 0, 500), 'error');

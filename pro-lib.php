@@ -1809,7 +1809,7 @@ function askAiTeammate(PDO $pdo, string $agent, string $question, ?string $clien
     }
 
     $prompt = $p['persona'] . $clientBlock . "\n\nQUESTION: " . $question;
-    [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 500, 'messages' => [['role' => 'user', 'content' => $prompt]]]);
+    [$status, $data] = callClaude(['model' => 'claude-sonnet-5-5', 'max_tokens' => 500, 'messages' => [['role' => 'user', 'content' => $prompt]]]);
     $text = '';
     if ($status >= 200 && $status < 300) {
         foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $text .= $block['text']; }
@@ -1835,6 +1835,14 @@ function callClaude(array $payload) {
     $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $err = curl_error($ch);
     curl_close($ch);
+    // If the account rejects a newer model id (400/404 mentioning the model),
+    // retry once on the previous known-good Sonnet instead of failing every AI call.
+    if (($status === 400 || $status === 404) && ($payload['model'] ?? '') === 'claude-sonnet-5-5'
+        && preg_match('/model/i', (string)$res)) {
+        error_log('[callClaude] claude-sonnet-5-5 rejected — falling back to claude-sonnet-4-6: ' . substr((string)$res, 0, 200));
+        $payload['model'] = 'claude-sonnet-4-6';
+        return callClaude($payload);
+    }
     recordAiCallResult('Anthropic', $status, (string)$res);
     return [$status, json_decode($res, true), $res];
 }
@@ -2206,7 +2214,7 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
     $lastContactReportResult = null;
     $contactReportAttempted = false;
     for ($turn = 0; $turn < 4; $turn++) {
-        $payload = ['model' => 'claude-sonnet-4-6', 'max_tokens' => 500, 'system' => $system, 'messages' => $messages];
+        $payload = ['model' => 'claude-sonnet-5-5', 'max_tokens' => 500, 'system' => $system, 'messages' => $messages];
         if ($tools) $payload['tools'] = $tools;
 
         [$status, $data, $raw] = callClaude($payload);

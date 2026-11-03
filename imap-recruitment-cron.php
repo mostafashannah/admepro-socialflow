@@ -142,7 +142,7 @@ function ai_review_cv($pdoRef, $applicationId, $cvContent, $jobTitle, $jobDescri
         . '"score" is 0-100, reflecting fit for THIS role specifically (not a generic CV quality score).';
 
     $payload = json_encode([
-        "model" => "claude-sonnet-4-6", "max_tokens" => 1500, "system" => $sys,
+        "model" => "claude-sonnet-5-5", "max_tokens" => 1500, "system" => $sys,
         "messages" => [["role" => "user", "content" => [
             $cvContent,
             ["type" => "text", "text" => "Review this CV and return the JSON described in the system prompt."],
