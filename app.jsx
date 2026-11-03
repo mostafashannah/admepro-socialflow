@@ -46863,7 +46863,7 @@ RULES:
           <button key={key} onClick={()=>setActivePersona(key)} style={{fontSize:11.5,fontWeight:700,padding:"4px 12px",borderRadius:20,border:"none",cursor:"pointer",background:activePersona===key?"var(--accent)":"var(--surface2)",color:activePersona===key?"#fff":"var(--text2)"}}>{label}</button>
         ))}
         <span title="Model answering in this chat" style={{fontSize:10.5,fontWeight:700,color:"var(--text2)",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:99,padding:"3px 10px",whiteSpace:"nowrap"}}>
-          {(()=>{ const cfgModel = getAIPrefs().model; const used = lastModelUsed || cfgModel; return <>🧠 {aiModelLabel(used)}{lastModelUsed && lastModelUsed!==cfgModel ? " (fallback)" : ""}</>; })()}
+          {(()=>{ const cfgModel = getAIPrefs().model; const used = lastModelUsed || cfgModel; return <>{aiModelLabel(used)}{lastModelUsed && lastModelUsed!==cfgModel ? " (fallback)" : ""}</>; })()}
         </span>
         {activePersona==="sara" && <span style={{fontSize:10.5,color:"var(--text3)"}}>Sara — content, captions, and ideas, same live data & actions as Pro.</span>}
         {activePersona==="mai" && <span style={{fontSize:10.5,color:"var(--text3)"}}>Mai — client status and account questions, same live data & actions as Pro.</span>}
