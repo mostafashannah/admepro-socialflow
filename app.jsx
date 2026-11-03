@@ -12027,7 +12027,7 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
   );
 }
 
-function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onSaveKnowledge,allPosts,clientMemory=[],contactReports=[]}) {
+function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onSaveKnowledge,allPosts,clientMemory=[],contactReports=[],onUpsertMemory,onDeleteMemory}) {
   const [sub,setSub] = useState("profile");
   const [docName,setDocName] = useState("");
   const [docType,setDocType] = useState("notes");
@@ -12260,6 +12260,12 @@ Based on ALL of the above, return ONLY valid JSON with these exact keys:
                 ):<p style={{color:"var(--text3)",fontSize:13}}>No skills extracted yet</p>}
               </div>
 
+              {/* Claude skills uploaded for this client */}
+              <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:18}}>
+                <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:12}}>Claude Skills</p>
+                <ClientSkillsSection client={client} clientMemory={clientMemory} onUpsert={onUpsertMemory} onDelete={onDeleteMemory}/>
+              </div>
+
               {/* Edit form */}
               {editing?(
                 <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:14}}>
@@ -12413,21 +12419,9 @@ const MEMORY_KEYS = [
   {key:"custom", label:"Custom Note", hint:"Any other important detail"},
 ];
 
-function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUser}) {
-  const [adding, setAdding] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState({key:"brand_tone", customKey:"", value:""});
-
-  // Mai (the AI Account Executive) reviews this list daily and assigns a
-  // priority (1-5) to each fact based on what actually matters right now
-  // for this client — sorting by it here means the important stuff (a
-  // hard brand rule, an urgent recent request) surfaces first instead of
-  // just whatever was saved most recently. mai_daily_report entries are a
-  // separate log, not curated facts, so they're excluded here.
-  const myMem = clientMemory.filter(m=>m.client_id===client?.id && m.type!=="mai_daily_report")
-    .sort((a,b)=>(b.priority||0)-(a.priority||0));
-  const manual = myMem.filter(m=>m.type==="manual");
-  const skillMem = myMem.filter(m=>m.type==="skill");
+// Upload / list Claude skills for a client (stored in client memory as type "skill").
+function ClientSkillsSection({client, clientMemory=[], onUpsert, onDelete}) {
+  const skillMem = (clientMemory||[]).filter(m=>m.client_id===client?.id && m.type==="skill");
   const [skillBusy,setSkillBusy] = useState(false);
   const [skillMsg,setSkillMsg] = useState("");
   const [openSkillId,setOpenSkillId] = useState(null);
@@ -12473,6 +12467,54 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
     const d = fm && /^description:\s*(.+)$/mi.exec(fm[1]);
     return {desc:(d&&d[1])||"", name:((fm&&/^name:\s*(.+)$/mi.exec(fm[1]))||[])[1]||m.key.replace(/^skill_/,"").replace(/_/g," ")};
   };
+  return (
+    <>
+      <div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+          <h4 style={{fontSize:13,fontWeight:700,color:"#f59e0b"}}>Skills</h4>
+          <span style={{fontSize:11,color:"var(--text3)",background:"var(--surface2)",borderRadius:99,padding:"1px 8px",border:"1px solid var(--border)"}}>{skillMem.length}</span>
+          <label style={{marginLeft:"auto",display:"inline-flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:skillBusy?"default":"pointer",opacity:skillBusy?0.6:1}}>
+            <Ico d={Icons.upload} size={13}/>{skillBusy?"Reading…":"Upload Skill"}
+            <input type="file" accept=".zip,.skill,.md,.txt" hidden disabled={skillBusy} onChange={e=>{handleSkillFile(e.target.files?.[0]); e.target.value="";}}/>
+          </label>
+        </div>
+        <p style={{fontSize:11.5,color:"var(--text3)",marginBottom:8}}>Export a skill from Claude (.zip / .skill, or its SKILL.md) and upload it — every AI agent working on this client (Sara, Yahia, Mai, Pro) will follow it when it's relevant.</p>
+        {skillMsg&&<p style={{fontSize:12,color:skillMsg.startsWith("Couldn't")?"#ef4444":"#10b981",marginBottom:8}}>{skillMsg}</p>}
+        {skillMem.length===0
+          ? <p style={{fontSize:12,color:"var(--text3)",fontStyle:"italic",padding:"4px 0"}}>No skills uploaded yet.</p>
+          : <div style={{display:"flex",flexDirection:"column",gap:8}}>{skillMem.map(m=>{ const meta=skillMeta(m); const open=openSkillId===m.id; return (
+            <div key={m.id} style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:10,padding:"10px 14px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{fontSize:13,fontWeight:700}}>{meta.name}</p>
+                  {meta.desc&&<p style={{fontSize:11.5,color:"var(--text3)",marginTop:2}}>{meta.desc.slice(0,200)}</p>}
+                  <p style={{fontSize:10,color:"var(--text3)",marginTop:3}}>{Math.round((m.value||"").length/1000)}k characters{m.updated_at?` · ${new Date(m.updated_at).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}`:""}</p>
+                </div>
+                <button onClick={()=>setOpenSkillId(open?null:m.id)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,fontWeight:600,color:"var(--accent)"}}>{open?"Hide":"View"}</button>
+                <button onClick={()=>{ if(confirm(`Remove the skill "${meta.name}" from this client?`)) onDelete(m.id); }} style={{background:"none",border:"none",cursor:"pointer",color:"var(--accent)",padding:4}}><Ico d={Icons.trash} size={13}/></button>
+              </div>
+              {open&&<pre style={{whiteSpace:"pre-wrap",fontFamily:"inherit",fontSize:12,color:"var(--text2)",marginTop:8,maxHeight:320,overflowY:"auto",borderTop:"1px solid var(--border)",paddingTop:8}}>{m.value}</pre>}
+            </div>); })}</div>}
+      </div>
+
+    </>
+  );
+}
+
+function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUser}) {
+  const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState({key:"brand_tone", customKey:"", value:""});
+
+  // Mai (the AI Account Executive) reviews this list daily and assigns a
+  // priority (1-5) to each fact based on what actually matters right now
+  // for this client — sorting by it here means the important stuff (a
+  // hard brand rule, an urgent recent request) surfaces first instead of
+  // just whatever was saved most recently. mai_daily_report entries are a
+  // separate log, not curated facts, so they're excluded here.
+  const myMem = clientMemory.filter(m=>m.client_id===client?.id && m.type!=="mai_daily_report")
+    .sort((a,b)=>(b.priority||0)-(a.priority||0));
+  const manual = myMem.filter(m=>m.type==="manual");
   const aiMem = myMem.filter(m=>m.type==="ai");
   const autoMem= myMem.filter(m=>m.type==="auto");
 
@@ -12589,34 +12631,7 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
         <span><strong>Priority order:</strong> Manual &gt; AI Learned &gt; Auto — manual entries always override AI or auto patterns in content generation.</span>
       </div>
 
-      {/* Skills — exported from Claude, used on every AI request for this client */}
-      <div>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
-          <h4 style={{fontSize:13,fontWeight:700,color:"#f59e0b"}}>Skills</h4>
-          <span style={{fontSize:11,color:"var(--text3)",background:"var(--surface2)",borderRadius:99,padding:"1px 8px",border:"1px solid var(--border)"}}>{skillMem.length}</span>
-          <label style={{marginLeft:"auto",display:"inline-flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:skillBusy?"default":"pointer",opacity:skillBusy?0.6:1}}>
-            <Ico d={Icons.upload} size={13}/>{skillBusy?"Reading…":"Upload Skill"}
-            <input type="file" accept=".zip,.skill,.md,.txt" hidden disabled={skillBusy} onChange={e=>{handleSkillFile(e.target.files?.[0]); e.target.value="";}}/>
-          </label>
-        </div>
-        <p style={{fontSize:11.5,color:"var(--text3)",marginBottom:8}}>Export a skill from Claude (.zip / .skill, or its SKILL.md) and upload it — every AI agent working on this client (Sara, Yahia, Mai, Pro) will follow it when it's relevant.</p>
-        {skillMsg&&<p style={{fontSize:12,color:skillMsg.startsWith("Couldn't")?"#ef4444":"#10b981",marginBottom:8}}>{skillMsg}</p>}
-        {skillMem.length===0
-          ? <p style={{fontSize:12,color:"var(--text3)",fontStyle:"italic",padding:"4px 0"}}>No skills uploaded yet.</p>
-          : <div style={{display:"flex",flexDirection:"column",gap:8}}>{skillMem.map(m=>{ const meta=skillMeta(m); const open=openSkillId===m.id; return (
-            <div key={m.id} style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:10,padding:"10px 14px"}}>
-              <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <p style={{fontSize:13,fontWeight:700}}>{meta.name}</p>
-                  {meta.desc&&<p style={{fontSize:11.5,color:"var(--text3)",marginTop:2}}>{meta.desc.slice(0,200)}</p>}
-                  <p style={{fontSize:10,color:"var(--text3)",marginTop:3}}>{Math.round((m.value||"").length/1000)}k characters{m.updated_at?` · ${new Date(m.updated_at).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}`:""}</p>
-                </div>
-                <button onClick={()=>setOpenSkillId(open?null:m.id)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,fontWeight:600,color:"var(--accent)"}}>{open?"Hide":"View"}</button>
-                <button onClick={()=>{ if(confirm(`Remove the skill "${meta.name}" from this client?`)) onDelete(m.id); }} style={{background:"none",border:"none",cursor:"pointer",color:"var(--accent)",padding:4}}><Ico d={Icons.trash} size={13}/></button>
-              </div>
-              {open&&<pre style={{whiteSpace:"pre-wrap",fontFamily:"inherit",fontSize:12,color:"var(--text2)",marginTop:8,maxHeight:320,overflowY:"auto",borderTop:"1px solid var(--border)",paddingTop:8}}>{m.value}</pre>}
-            </div>); })}</div>}
-      </div>
+      <ClientSkillsSection client={client} clientMemory={clientMemory} onUpsert={onUpsert} onDelete={onDelete}/>
 
       {/* Sections */}
       <Section title="Brand Guidelines" icon="" color="#3b82f6" items={manual} emptyMsg="No manual guidelines yet. Add brand tone, do's & don'ts, and audience info."/>
@@ -18732,7 +18747,7 @@ function ClientBrainTab({client, knowledge, clientKnowledge, documents, currentU
         ))}
       </div>
       {sub==="profile"&&(
-        <IntelligenceTab client={client} knowledge={knowledge} documents={documents} currentUser={currentUser} onUploadDoc={onUploadDoc} onSaveKnowledge={onSaveKnowledge} allPosts={cPosts} clientMemory={clientMemory||[]} contactReports={contactReports.filter(r=>r.client_id===client.id)}/>
+        <IntelligenceTab client={client} knowledge={knowledge} documents={documents} currentUser={currentUser} onUploadDoc={onUploadDoc} onSaveKnowledge={onSaveKnowledge} allPosts={cPosts} clientMemory={clientMemory||[]} contactReports={contactReports.filter(r=>r.client_id===client.id)} onUpsertMemory={onUpsertMemory} onDeleteMemory={onDeleteMemory}/>
       )}
       {sub==="memory"&&(
         <ClientMemoryTab client={client} clientMemory={clientMemory||[]} onUpsert={onUpsertMemory} onDelete={onDeleteMemory} currentUser={currentUser}/>
