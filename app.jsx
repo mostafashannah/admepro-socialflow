@@ -12427,6 +12427,52 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
   const myMem = clientMemory.filter(m=>m.client_id===client?.id && m.type!=="mai_daily_report")
     .sort((a,b)=>(b.priority||0)-(a.priority||0));
   const manual = myMem.filter(m=>m.type==="manual");
+  const skillMem = myMem.filter(m=>m.type==="skill");
+  const [skillBusy,setSkillBusy] = useState(false);
+  const [skillMsg,setSkillMsg] = useState("");
+  const [openSkillId,setOpenSkillId] = useState(null);
+  // Reads a Claude skill export: a .zip/.skill (SKILL.md plus reference files)
+  // or a bare SKILL.md, and stores it as ONE memory entry for this client.
+  const handleSkillFile = async (file) => {
+    if(!file) return;
+    setSkillBusy(true); setSkillMsg("");
+    try {
+      let text = "";
+      const lower = file.name.toLowerCase();
+      if(lower.endsWith(".md")||lower.endsWith(".txt")) {
+        text = await file.text();
+      } else {
+        if(!window.JSZip) throw new Error("zip reader not loaded — refresh the page and try again");
+        const zip = await window.JSZip.loadAsync(await file.arrayBuffer());
+        const names = Object.keys(zip.files).filter(n=>!zip.files[n].dir);
+        const skillPath = names.find(n=>/(^|\/)skill\.md$/i.test(n));
+        if(!skillPath) throw new Error("No SKILL.md found inside this file — is it a Claude skill export?");
+        const root = skillPath.slice(0, skillPath.length-"SKILL.md".length);
+        text = await zip.files[skillPath].async("string");
+        const extras = names.filter(n=>n!==skillPath && n.startsWith(root) && /\.(md|txt|json|csv|ya?ml)$/i.test(n)).sort();
+        for(const n of extras) {
+          const body = await zip.files[n].async("string");
+          text += `\n\n## File: ${n.slice(root.length)}\n${body}`;
+        }
+      }
+      text = text.trim();
+      if(!text) throw new Error("The file is empty");
+      const fm = /^---\s*\n([\s\S]*?)\n---/.exec(text);
+      const nameLine = fm && /^name:\s*(.+)$/mi.exec(fm[1]);
+      const skillName = ((nameLine&&nameLine[1])||file.name.replace(/\.[^.]+$/,"")).trim().replace(/^["']|["']$/g,"");
+      const slug = skillName.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"") || "skill";
+      const MAX = 100000;
+      const trimmed = text.length>MAX;
+      onUpsert(client.id, client.name, `skill_${slug}`, trimmed?text.slice(0,MAX):text, "skill");
+      setSkillMsg(`Added skill "${skillName}"${trimmed?" (trimmed to the first 100,000 characters)":""}.`);
+    } catch(e) { setSkillMsg("Couldn't add skill: "+(e?.message||e)); }
+    setSkillBusy(false);
+  };
+  const skillMeta = (m) => {
+    const fm = /^---\s*\n([\s\S]*?)\n---/.exec(m.value||"");
+    const d = fm && /^description:\s*(.+)$/mi.exec(fm[1]);
+    return {desc:(d&&d[1])||"", name:((fm&&/^name:\s*(.+)$/mi.exec(fm[1]))||[])[1]||m.key.replace(/^skill_/,"").replace(/_/g," ")};
+  };
   const aiMem = myMem.filter(m=>m.type==="ai");
   const autoMem= myMem.filter(m=>m.type==="auto");
 
@@ -12541,6 +12587,35 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
       <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#1e40af",display:"flex",gap:6,alignItems:"center"}}>
         <span></span>
         <span><strong>Priority order:</strong> Manual &gt; AI Learned &gt; Auto — manual entries always override AI or auto patterns in content generation.</span>
+      </div>
+
+      {/* Skills — exported from Claude, used on every AI request for this client */}
+      <div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+          <h4 style={{fontSize:13,fontWeight:700,color:"#f59e0b"}}>Skills</h4>
+          <span style={{fontSize:11,color:"var(--text3)",background:"var(--surface2)",borderRadius:99,padding:"1px 8px",border:"1px solid var(--border)"}}>{skillMem.length}</span>
+          <label style={{marginLeft:"auto",display:"inline-flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:skillBusy?"default":"pointer",opacity:skillBusy?0.6:1}}>
+            <Ico d={Icons.upload} size={13}/>{skillBusy?"Reading…":"Upload Skill"}
+            <input type="file" accept=".zip,.skill,.md,.txt" hidden disabled={skillBusy} onChange={e=>{handleSkillFile(e.target.files?.[0]); e.target.value="";}}/>
+          </label>
+        </div>
+        <p style={{fontSize:11.5,color:"var(--text3)",marginBottom:8}}>Export a skill from Claude (.zip / .skill, or its SKILL.md) and upload it — every AI agent working on this client (Sara, Yahia, Mai, Pro) will follow it when it's relevant.</p>
+        {skillMsg&&<p style={{fontSize:12,color:skillMsg.startsWith("Couldn't")?"#ef4444":"#10b981",marginBottom:8}}>{skillMsg}</p>}
+        {skillMem.length===0
+          ? <p style={{fontSize:12,color:"var(--text3)",fontStyle:"italic",padding:"4px 0"}}>No skills uploaded yet.</p>
+          : <div style={{display:"flex",flexDirection:"column",gap:8}}>{skillMem.map(m=>{ const meta=skillMeta(m); const open=openSkillId===m.id; return (
+            <div key={m.id} style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:10,padding:"10px 14px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{fontSize:13,fontWeight:700}}>{meta.name}</p>
+                  {meta.desc&&<p style={{fontSize:11.5,color:"var(--text3)",marginTop:2}}>{meta.desc.slice(0,200)}</p>}
+                  <p style={{fontSize:10,color:"var(--text3)",marginTop:3}}>{Math.round((m.value||"").length/1000)}k characters{m.updated_at?` · ${new Date(m.updated_at).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}`:""}</p>
+                </div>
+                <button onClick={()=>setOpenSkillId(open?null:m.id)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,fontWeight:600,color:"var(--accent)"}}>{open?"Hide":"View"}</button>
+                <button onClick={()=>{ if(confirm(`Remove the skill "${meta.name}" from this client?`)) onDelete(m.id); }} style={{background:"none",border:"none",cursor:"pointer",color:"var(--accent)",padding:4}}><Ico d={Icons.trash} size={13}/></button>
+              </div>
+              {open&&<pre style={{whiteSpace:"pre-wrap",fontFamily:"inherit",fontSize:12,color:"var(--text2)",marginTop:8,maxHeight:320,overflowY:"auto",borderTop:"1px solid var(--border)",paddingTop:8}}>{m.value}</pre>}
+            </div>); })}</div>}
       </div>
 
       {/* Sections */}
@@ -42662,12 +42737,22 @@ const formatClientMemory = (clientId, clientMemory=[]) => {
   if(!mem.length) return "";
   // Priority: manual > ai > auto
   const priority = {manual:0, ai:1, auto:2};
-  const sorted = [...mem].sort((a,b)=>priority[a.type]-priority[b.type]);
+  const skills = mem.filter(m=>m.type==="skill");
+  const sorted = mem.filter(m=>m.type!=="skill").sort((a,b)=>(priority[a.type]??9)-(priority[b.type]??9));
   const manual = sorted.filter(m=>m.type==="manual");
   const ai = sorted.filter(m=>m.type==="ai");
   const auto = sorted.filter(m=>m.type==="auto");
   const fmt = (arr) => arr.map(m=>` • ${m.key.replace(/_/g," ")}: ${m.value}`).join("\n");
+  // Uploaded Claude skills — full instructions, capped so a few big skills
+  // can't swamp every request (per skill 15k chars, 30k overall).
+  let skillBudget = 30000;
+  const skillBlock = skills.map(m=>{
+    const body = String(m.value||"").slice(0, Math.min(15000, Math.max(0, skillBudget)));
+    skillBudget -= body.length;
+    return body ? `### Skill: ${String(m.key||"").replace(/^skill_/,"").replace(/_/g," ")}\n${body}` : "";
+  }).filter(Boolean).join("\n\n");
   return [
+    skillBlock ? `[CLIENT SKILLS — expert instructions uploaded for this client; follow whichever apply to the request]\n${skillBlock}` : "",
     manual.length ? `[BRAND GUIDELINES]\n${fmt(manual)}` : "",
     ai.length ? `[AI LEARNED]\n${fmt(ai)}` : "",
     auto.length ? `[BEHAVIORAL PATTERNS]\n${fmt(auto)}` : "",

@@ -234,7 +234,7 @@ foreach ($clients as $client) {
         // invisible to the daily analysis, which only ever looked at raw
         // post insight numbers. Without it Mai can't actually reason about
         // WHY something is or isn't working, just report the numbers back.
-        $memStmt = $pdo->prepare("SELECT `key`, value FROM client_memory WHERE client_id = :cid AND type != 'mai_daily_report' ORDER BY priority DESC, updated_at DESC LIMIT 10");
+        $memStmt = $pdo->prepare("SELECT `key`, value FROM client_memory WHERE client_id = :cid AND type NOT IN ('mai_daily_report','skill') ORDER BY priority DESC, updated_at DESC LIMIT 10");
         $memStmt->execute([':cid' => $clientId]);
         $memRows = $memStmt->fetchAll(PDO::FETCH_ASSOC);
         $memBlock = $memRows ? "\n\nKNOWN BRAND/STRATEGY CONTEXT (from uploaded docs, check-ins, notes):\n" . implode("\n", array_map(fn($m) => "- {$m['key']}: {$m['value']}", $memRows)) : '';
@@ -291,7 +291,7 @@ foreach ($clients as $client) {
         }
 
         // ── 3. Memory curation — prioritize existing memory ───────
-        $memRows = $pdo->prepare("SELECT id, `key`, value FROM client_memory WHERE client_id = :cid AND type != 'mai_daily_report' ORDER BY updated_at DESC LIMIT 40");
+        $memRows = $pdo->prepare("SELECT id, `key`, value FROM client_memory WHERE client_id = :cid AND type NOT IN ('mai_daily_report','skill') ORDER BY updated_at DESC LIMIT 40");
         $memRows->execute([':cid' => $clientId]);
         $memRows = $memRows->fetchAll(PDO::FETCH_ASSOC);
 
@@ -340,7 +340,7 @@ foreach ($clients as $client) {
         // genuinely nothing to synthesize from (same guard the in-app
         // button now has) — an empty client shouldn't get a hallucinated
         // profile just because the cron ran.
-        $memAll = $pdo->prepare("SELECT `key`, value FROM client_memory WHERE client_id = :cid ORDER BY priority DESC, updated_at DESC LIMIT 40");
+        $memAll = $pdo->prepare("SELECT `key`, value FROM client_memory WHERE client_id = :cid AND type != 'skill' ORDER BY priority DESC, updated_at DESC LIMIT 40");
         $memAll->execute([':cid' => $clientId]);
         $memAllLines = array_map(fn($m) => "- {$m['key']}: {$m['value']}", $memAll->fetchAll(PDO::FETCH_ASSOC));
 

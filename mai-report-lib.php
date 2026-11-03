@@ -67,7 +67,7 @@ function maiBuildClientContext(PDO $pdo, $accountManagerId) {
     $names = [];
     foreach ($rows as $c) {
         $names[] = $c['name'];
-        $mem = $pdo->prepare("SELECT `key`, value FROM client_memory WHERE client_id = :cid ORDER BY priority DESC, updated_at DESC LIMIT 5");
+        $mem = $pdo->prepare("SELECT `key`, value FROM client_memory WHERE client_id = :cid AND type != 'skill' ORDER BY priority DESC, updated_at DESC LIMIT 5");
         $mem->execute([':cid' => $c['id']]);
         $memRows = $mem->fetchAll(PDO::FETCH_ASSOC);
         $memLines = $memRows ? implode("\n", array_map(fn($m) => "  - {$m['key']}: {$m['value']}", $memRows)) : '  (no memory on file yet)';

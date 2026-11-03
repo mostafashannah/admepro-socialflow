@@ -1764,10 +1764,21 @@ function askAiTeammate(PDO $pdo, string $agent, string $question, ?string $clien
             // whatever an uploaded ChatGPT chat/brand doc extracted
             // (type='document_extract') — key included, not just the bare
             // value, so a heading like "doc_priorities" isn't lost context.
-            $mem = $pdo->prepare("SELECT `key`, value, type FROM client_memory WHERE client_id = :cid ORDER BY priority DESC, updated_at DESC LIMIT 20");
+            $mem = $pdo->prepare("SELECT `key`, value, type FROM client_memory WHERE client_id = :cid AND type != 'skill' ORDER BY priority DESC, updated_at DESC LIMIT 20");
             $mem->execute([':cid' => $client['id']]);
             $memRows = $mem->fetchAll(PDO::FETCH_ASSOC);
             if ($memRows) $clientBlock .= "Known facts (from check-ins, uploaded docs, her own daily analysis, manual notes):\n" . implode("\n", array_map(fn($m) => "- [{$m['type']}] {$m['key']}: {$m['value']}", $memRows)) . "\n";
+            // Uploaded Claude skills for this client (capped so they can't swamp the prompt).
+            $skillStmt = $pdo->prepare("SELECT `key`, value FROM client_memory WHERE client_id = :cid AND type = 'skill' ORDER BY updated_at DESC LIMIT 5");
+            $skillStmt->execute([':cid' => $client['id']]);
+            $skillBudget = 20000; $skillText = '';
+            foreach ($skillStmt->fetchAll(PDO::FETCH_ASSOC) as $sk) {
+                if ($skillBudget <= 0) break;
+                $body = mb_substr((string)$sk['value'], 0, min(10000, $skillBudget));
+                $skillBudget -= mb_strlen($body);
+                $skillText .= "### Skill: " . preg_replace('/^skill_/', '', $sk['key']) . "\n" . $body . "\n\n";
+            }
+            if ($skillText) $clientBlock .= "CLIENT SKILLS (expert instructions uploaded for this client — follow whichever apply):\n" . $skillText;
             $posts = $pdo->prepare("SELECT title, platform, post_type, published_at, insight_likes, insight_comments FROM posts WHERE client_id = :cid AND stage = 'published' ORDER BY published_at DESC LIMIT 8");
             $posts->execute([':cid' => $client['id']]);
             $postRows = $posts->fetchAll(PDO::FETCH_ASSOC);
