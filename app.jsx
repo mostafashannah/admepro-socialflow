@@ -21074,6 +21074,8 @@ function AccountManagerMaiReportsTab({member, onUpdateTeamMember}) {
   const [expandedId, setExpandedId] = useState(null);
   const [clearing, setClearing] = useState(false);
   const enabled = member.mai_checkins_enabled !== 0 && member.mai_checkins_enabled !== "0";
+  // Account Directors get ONE check-in a day (7:30pm) — not the managers' two.
+  const isDirector = member.role === "account_director";
 
   useEffect(()=>{
     let cancelled = false;
@@ -21108,7 +21110,7 @@ function AccountManagerMaiReportsTab({member, onUpdateTeamMember}) {
         <PermSwitch checked={enabled} onChange={toggleEnabled}/>
         <div>
           <p style={{fontSize:13,fontWeight:700}}>{enabled?"Check-ins on":"Check-ins paused"}</p>
-          <p style={{fontSize:11,color:"var(--text3)"}}>{enabled?"Mai texts them every weekday at 12pm and 7pm.":"Mai won't message them until this is switched back on — useful while they're still training."}</p>
+          <p style={{fontSize:11,color:"var(--text3)"}}>{enabled?(isDirector?"Mai texts them once every weekday at 7:30pm.":"Mai texts them every weekday at 12pm and 7pm."):"Mai won't message them until this is switched back on — useful while they're still training."}</p>
         </div>
       </div>
       {missedOnFile>0 && (
@@ -21124,7 +21126,7 @@ function AccountManagerMaiReportsTab({member, onUpdateTeamMember}) {
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       {headerBar}
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:30,textAlign:"center",color:"var(--text2)",fontSize:13}}>
-        No Mai check-ins yet — the morning (12pm) and end-of-day (7pm) WhatsApp check-ins run automatically on weekdays.
+        {isDirector?"No Mai check-ins yet — the single 7:30pm WhatsApp check-in runs automatically on weekdays.":"No Mai check-ins yet — the morning (12pm) and end-of-day (7pm) WhatsApp check-ins run automatically on weekdays."}
       </div>
     </div>
   );
