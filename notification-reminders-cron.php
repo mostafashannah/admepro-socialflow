@@ -236,6 +236,34 @@ if ($mode === 'digest') {
         ];
     };
 
+    // AM check-ins (Mai's morning + end-of-day WhatsApp check-ins with account managers):
+    // today's scores, progress vs the last 7 days, and what keeps getting missed.
+    $amCache = null;
+    $amData = function() use (&$amCache, $rowsOf, $today) {
+        if ($amCache !== null) return $amCache;
+        $since = (new DateTime($today))->modify('-7 day')->format('Y-m-d');
+        $rows = $rowsOf("SELECT account_manager_id, account_manager_name AS name, report_type, report_date, status, score, max_score, checklist
+            FROM mai_report_sessions WHERE report_date >= :s", [':s'=>$since]);
+        $pct = fn($r) => (!empty($r['max_score']) && $r['score'] !== null) ? ((int)$r['score'] / (int)$r['max_score'] * 100) : null;
+        $todayRows = []; $histByAm = []; $missed = [];
+        foreach ($rows as $r) {
+            $d = substr($r['report_date'], 0, 10);
+            $cl = json_decode((string)$r['checklist'], true) ?: [];
+            if ($d === $today) {
+                $todayRows[$r['name']][$r['report_type']] = $r;
+            } elseif ($r['status'] === 'completed' && ($pc = $pct($r)) !== null) {
+                $histByAm[$r['name']][] = $pc;
+            }
+            if ($r['status'] === 'completed') {
+                foreach ($cl as $k => $item) {
+                    if (empty($item['done'])) $missed[$item['label'] ?? $k] = ($missed[$item['label'] ?? $k] ?? 0) + 1;
+                }
+            }
+        }
+        arsort($missed);
+        return $amCache = ['today'=>$todayRows, 'hist'=>$histByAm, 'missed'=>$missed, 'pct'=>$pct];
+    };
+
     $line = fn($text) => '<p style="margin:0 0 5px;font-size:13px;line-height:1.55;color:#374151">'.$text.'</p>';
     $head = fn($title, $color) => '<p style="margin:18px 0 6px;font-size:11px;font-weight:800;color:'.$color.';letter-spacing:0.08em;text-transform:uppercase">'.$title.'</p>';
     $b = fn($t) => '<strong style="color:#111827">'.$t.'</strong>';
@@ -249,6 +277,7 @@ if ($mode === 'digest') {
         $role = $m['role'];
         $canFinance = in_array($role, ['admin','accountant'], true);
         $canRecruit = in_array($role, ['admin','hr','account_director'], true);
+        $canAm = ($role === 'admin');
         $want = json_decode((string)($prefs['digest_sections'] ?? ''), true);
         if (!is_array($want)) $want = [];
         $on = fn($k) => !array_key_exists($k, $want) || !empty($want[$k]); // default: everything the person may see
@@ -289,6 +318,45 @@ if ($mode === 'digest') {
                 $body .= $head('Recruitment', '#8b5cf6');
                 $body .= $line($b(count($r['new'])).' new application'.(count($r['new'])==1?'':'s').' · '.$b($r['awaiting']).' awaiting review'.($r['offers'] ? ' · '.$b($r['offers']).' offer'.($r['offers']==1?'':'s').' waiting for an answer' : ''));
                 foreach (array_slice($r['new'], 0, 3) as $a) $body .= $line('• '.htmlspecialchars($a['candidate_name'] ?: 'Unknown').' <span style="color:#9ca3af">— '.htmlspecialchars($a['job_title'] ?: 'role').($a['ai_score'] !== null ? ' ('.(int)$a['ai_score'].'/100)' : '').'</span>');
+            }
+        }
+
+        if ($on('am_checkins') && $canAm) {
+            $am = $amData();
+            if ($am['today'] || $am['hist']) {
+                $body .= $head('Account manager check-ins', '#f59e0b');
+                $todayPcts = [];
+                foreach ($am['today'] as $name => $types) {
+                    $bits = [];
+                    foreach (['morning'=>'Morning','eod'=>'End of day'] as $t => $lab) {
+                        $r = $types[$t] ?? null;
+                        if (!$r) { $bits[] = $lab.': <span style="color:#9ca3af">not started</span>'; continue; }
+                        if ($r['status'] !== 'completed') { $bits[] = $lab.': <span style="color:#dc2626">no reply</span>'; continue; }
+                        $pc = $am['pct']($r);
+                        if ($pc !== null) $todayPcts[] = $pc;
+                        $bits[] = $lab.': '.$b((int)$r['score'].'/'.(int)$r['max_score']);
+                    }
+                    // vs this person's own 7-day average
+                    $trend = '';
+                    $hist = $am['hist'][$name] ?? [];
+                    $mine = array_filter(array_map(fn($t) => (($t['status'] ?? '') === 'completed') ? $am['pct']($t) : null, array_values($types)), fn($x) => $x !== null);
+                    if ($hist && $mine) {
+                        $diff = round(array_sum($mine)/count($mine) - array_sum($hist)/count($hist));
+                        $trend = $diff >= 5 ? ' <span style="color:#059669">▲ +'.$diff.'%</span>' : ($diff <= -5 ? ' <span style="color:#dc2626">▼ '.$diff.'%</span>' : ' <span style="color:#9ca3af">steady</span>');
+                    }
+                    $body .= $line('• '.$b(htmlspecialchars($name)).' — '.implode(' · ', $bits).$trend);
+                }
+                $allHist = array_merge(...(array_values($am['hist']) ?: [[]]));
+                if ($todayPcts && $allHist) {
+                    $t = round(array_sum($todayPcts)/count($todayPcts)); $h = round(array_sum($allHist)/count($allHist));
+                    $body .= $line('Team today: '.$b($t.'%').' vs '.$h.'% over the last 7 days '.($t>=$h ? '<span style="color:#059669">▲</span>' : '<span style="color:#dc2626">▼</span>'));
+                } elseif ($todayPcts) {
+                    $body .= $line('Team today: '.$b(round(array_sum($todayPcts)/count($todayPcts)).'%'));
+                }
+                if ($am['missed']) {
+                    $body .= $line('<span style="color:#b45309">To improve — most missed this week:</span>');
+                    foreach (array_slice($am['missed'], 0, 3, true) as $label => $n) $body .= $line('• '.htmlspecialchars($label).' <span style="color:#9ca3af">(missed '.$n.'×)</span>');
+                }
             }
         }
 

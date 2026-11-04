@@ -33212,10 +33212,10 @@ function NotificationPrefsTab({notifPrefs, onSaveNotifPrefs, currentUser, rolePe
                   prefs.daily_digest && !dis && (()=>{
                     let want = {}; try { want = prefs.digest_sections ? JSON.parse(prefs.digest_sections) : {}; } catch(e) { want = {}; }
                     const isOn = k => !(k in want) || !!want[k];
-                    const opts = [["tasks","Tasks",true],["finance","Finance",["admin","accountant"].includes(currentUser?.role)],["recruitment","Recruitment",["admin","hr","account_director"].includes(currentUser?.role)]].filter(o=>o[2]);
+                    const opts = [["tasks","Tasks",true],["finance","Finance",["admin","accountant"].includes(currentUser?.role)],["recruitment","Recruitment",["admin","hr","account_director"].includes(currentUser?.role)],["am_checkins","AM check-ins",currentUser?.role==="admin"]].filter(o=>o[2]);
                     return React.createElement("div",{style:{display:"flex",gap:8,flexWrap:"wrap",padding:"0 0 12px",alignItems:"center"}},
                       React.createElement("span",{style:{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase"}},"Include:"),
-                      ...opts.map(([k,l])=>React.createElement("button",{key:k,type:"button",onClick:()=>upd("digest_sections",JSON.stringify({tasks:isOn("tasks"),finance:isOn("finance"),recruitment:isOn("recruitment"),[k]:!isOn(k)})),style:{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:600,cursor:"pointer",border:"1px solid "+(isOn(k)?"var(--accent)":"var(--border2)"),background:isOn(k)?"var(--accent)":"transparent",color:isOn(k)?"#fff":"var(--text2)"}},(isOn(k)?"✓ ":"")+l)));
+                      ...opts.map(([k,l])=>React.createElement("button",{key:k,type:"button",onClick:()=>upd("digest_sections",JSON.stringify({tasks:isOn("tasks"),finance:isOn("finance"),recruitment:isOn("recruitment"),am_checkins:isOn("am_checkins"),[k]:!isOn(k)})),style:{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:600,cursor:"pointer",border:"1px solid "+(isOn(k)?"var(--accent)":"var(--border2)"),background:isOn(k)?"var(--accent)":"transparent",color:isOn(k)?"#fff":"var(--text2)"}},(isOn(k)?"✓ ":"")+l)));
                   })()
                 );
               })}

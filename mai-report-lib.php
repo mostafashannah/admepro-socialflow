@@ -457,12 +457,17 @@ function maiSendAdminDigest(PDO $pdo, $reportType) {
     $summary = trim($summary) ?: ("AM check-in summary (" . ($reportType === 'morning' ? 'morning' : 'EOD') . "):\n" . implode("\n", $lines));
 
     $admins = $pdo->query(
-        "SELECT tm.whatsapp_number, np.all_disabled, np.wa_am_reports_digest FROM team_members tm
+        "SELECT tm.whatsapp_number, np.all_disabled, np.wa_am_reports_digest, np.daily_digest, np.digest_sections FROM team_members tm
          LEFT JOIN notification_prefs np ON np.user_email = tm.email
          WHERE tm.role = 'admin' AND tm.status = 'active' AND tm.whatsapp_number IS NOT NULL AND tm.whatsapp_number != ''"
     )->fetchAll(PDO::FETCH_ASSOC);
     foreach ($admins as $admin) {
         if (!empty($admin['all_disabled']) || $admin['wa_am_reports_digest'] === '0') continue;
+        // The end-of-day email brief already contains the AM check-in results and
+        // progress — don't also send the separate WhatsApp summary to anyone who gets it.
+        $secs = json_decode((string)($admin['digest_sections'] ?? ''), true);
+        $inEmail = (string)($admin['daily_digest'] ?? '1') !== '0' && (!is_array($secs) || !array_key_exists('am_checkins', $secs) || !empty($secs['am_checkins']));
+        if ($inEmail) continue;
         sendWhatsAppReply($admin['whatsapp_number'], $summary);
     }
 }
