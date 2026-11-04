@@ -11,7 +11,7 @@
  *   php notification-reminders-cron.php reminders   — every 15 min, fires
  *     task-due-soon + subscription-renewal (idempotent via sent-flags)
  *   php notification-reminders-cron.php digest       — end-of-day (23:00) brief for ADMINS only
- *   php notification-reminders-cron.php digest_team  — the original 08:00 task digest for everyone else
+ *   php notification-reminders-cron.php digest_team  — the original task digest for everyone else, sent at 11:00 (run every 10 min)
  *
  * Crontab:
  *   (star)/15 (star) (star) (star) (star) /usr/bin/php /var/www/socialflow/notification-reminders-cron.php reminders >> /var/www/socialflow/notification-reminders-cron.log 2>&1
@@ -395,6 +395,10 @@ if ($mode === 'digest') {
 }
 
 if ($mode === 'digest_team') {
+    // Goes out at 11:00 Cairo time (run every 10 minutes — it waits for the time and
+    // each person's digest_last_sent keeps it to once a day).
+    $TEAM_DIGEST_TIME = '11:00';
+    if ($now->format('H:i') < $TEAM_DIGEST_TIME) { echo json_encode(['mode'=>'digest_team','skipped'=>'before '.$TEAM_DIGEST_TIME]); exit; }
     // Everyone EXCEPT admins keeps the original morning task digest (unchanged). Admins get the
     // end-of-day brief instead (mode 'digest').
     $team = $pdo->query("SELECT * FROM team_members WHERE status = 'active' AND role NOT IN ('client','admin')")->fetchAll(PDO::FETCH_ASSOC);
