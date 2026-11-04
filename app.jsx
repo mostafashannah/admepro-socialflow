@@ -33217,7 +33217,14 @@ function NotificationPrefsTab({notifPrefs, onSaveNotifPrefs, currentUser, rolePe
                     const opts = [["tasks","Tasks",true],["finance","Finance",["admin","accountant"].includes(currentUser?.role)],["recruitment","Recruitment",["admin","hr","account_director"].includes(currentUser?.role)],["am_checkins","AM check-ins",currentUser?.role==="admin"],["director","Director report",currentUser?.role==="admin"],["meetings","Meetings",currentUser?.role==="admin"]].filter(o=>o[2]);
                     return React.createElement("div",{style:{display:"flex",gap:8,flexWrap:"wrap",padding:"0 0 12px",alignItems:"center"}},
                       React.createElement("span",{style:{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase"}},"Include:"),
-                      ...opts.map(([k,l])=>React.createElement("button",{key:k,type:"button",onClick:()=>upd("digest_sections",JSON.stringify({tasks:isOn("tasks"),finance:isOn("finance"),recruitment:isOn("recruitment"),am_checkins:isOn("am_checkins"),director:isOn("director"),meetings:isOn("meetings"),[k]:!isOn(k)})),style:{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:600,cursor:"pointer",border:"1px solid "+(isOn(k)?"var(--accent)":"var(--border2)"),background:isOn(k)?"var(--accent)":"transparent",color:isOn(k)?"#fff":"var(--text2)"}},(isOn(k)?"✓ ":"")+l)));
+                      ...opts.map(([k,l])=>React.createElement("button",{key:k,type:"button",onClick:()=>upd("digest_sections",JSON.stringify({...want,[k]:!isOn(k)})),style:{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:600,cursor:"pointer",border:"1px solid "+(isOn(k)?"var(--accent)":"var(--border2)"),background:isOn(k)?"var(--accent)":"transparent",color:isOn(k)?"#fff":"var(--text2)"}},(isOn(k)?"✓ ":"")+l)));
+                  })(),
+                  prefs.daily_digest && !dis && currentUser?.role==="admin" && (()=>{
+                    let want = {}; try { want = prefs.digest_sections ? JSON.parse(prefs.digest_sections) : {}; } catch(e) { want = {}; }
+                    const isOn = k => !(k in want) || !!want[k];
+                    return React.createElement("div",{style:{display:"flex",gap:8,flexWrap:"wrap",padding:"0 0 12px",alignItems:"center"}},
+                      React.createElement("span",{style:{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase"}},"Send via:"),
+                      ...[["email","Email"],["whatsapp","WhatsApp"]].map(([k,l])=>React.createElement("button",{key:k,type:"button",onClick:()=>upd("digest_sections",JSON.stringify({...want,[k]:!isOn(k)})),style:{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:600,cursor:"pointer",border:"1px solid "+(isOn(k)?"var(--accent)":"var(--border2)"),background:isOn(k)?"var(--accent)":"transparent",color:isOn(k)?"#fff":"var(--text2)"}},(isOn(k)?"✓ ":"")+l)));
                   })()
                 );
               })}

@@ -26,6 +26,7 @@
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/pro-lib.php'; // sendWhatsAppReply() — the brief also goes out on WhatsApp
 
 $pdo = new PDO(
     'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4',
@@ -182,6 +183,17 @@ if ($mode === 'reminders') {
 
     echo json_encode(['mode'=>'reminders','sent'=>$counts]);
     exit;
+}
+
+// Turns the brief's HTML lines into a WhatsApp-style text (same content, *bold* headings).
+function brief_to_whatsapp($html) {
+    $t = preg_replace('/<br\s*\/?>/i', "\n   ", $html);
+    $t = preg_replace_callback('/<p style="margin:18px 0 6px;[^>]*>(.*?)<\/p>/s', fn($m) => "\n*".trim(strip_tags($m[1]))."*\n", $t);
+    $t = preg_replace('/<strong[^>]*>(.*?)<\/strong>/s', '*$1*', $t);
+    $t = preg_replace('/<p[^>]*>(.*?)<\/p>/s', "$1\n", $t);
+    $t = html_entity_decode(strip_tags($t), ENT_QUOTES, 'UTF-8');
+    $t = preg_replace("/\n{3,}/", "\n\n", trim($t));
+    return $t;
 }
 
 if ($mode === 'digest') {
@@ -414,6 +426,9 @@ if ($mode === 'digest') {
 
         if ($body === '') continue; // nothing worth sending
 
+        $sendEmail = !array_key_exists('email', $want) || !empty($want['email']);
+        $sendWa = (!array_key_exists('whatsapp', $want) || !empty($want['whatsapp'])) && !empty($m['whatsapp_number']);
+        if (!$sendEmail && !$sendWa) continue;
         $first = htmlspecialchars(explode(' ', trim($m['name']))[0] ?: 'there');
         $html = email_base(
             email_h('End-of-day brief') .
@@ -422,8 +437,16 @@ if ($mode === 'digest') {
             email_btn('https://socialflow.admepro.com', 'Open SocialFlow') .
             '<p style="margin:0;font-size:11px;color:#9ca3af;text-align:center">Choose what appears here in Account → Notifications → Daily Digest.</p>'
         );
-        [$ok, $raw] = send_via_resend($m['email'], '[SocialFlow] End-of-day brief — '.$now->format('d M Y'), $html);
-        log_email($insertLog, $m['email'], '[SocialFlow] Daily brief', $ok, $raw, $now);
+        $ok = false; $raw = '';
+        if ($sendEmail) {
+            [$ok, $raw] = send_via_resend($m['email'], '[SocialFlow] End-of-day brief — '.$now->format('d M Y'), $html);
+            log_email($insertLog, $m['email'], '[SocialFlow] Daily brief', $ok, $raw, $now);
+        }
+        if ($sendWa) {
+            $waText = "📋 *End-of-day brief — ".$now->format('D j M')."*\nGood evening ".strip_tags($first).".\n".brief_to_whatsapp($body)."\n\nFull details: socialflow.admepro.com";
+            if (mb_strlen($waText) > 3800) $waText = mb_substr($waText, 0, 3790).'…';
+            try { sendWhatsAppReply($m['whatsapp_number'], $waText); $ok = true; } catch (Throwable $e) { error_log('[digest] whatsapp: '.$e->getMessage()); }
+        }
         if ($testEmail) { echo json_encode(['test'=>$m['email'], 'sent'=>$ok, 'detail'=>$ok ? 'ok' : $raw]); exit; }
         if ($ok) {
             $counts['daily_digest']++;
