@@ -756,6 +756,16 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     // is optional — omitting it falls back to the plain current-assignee
     // check, e.g. the double-booking conflict check in the assign modal,
     // which cares who holds it right now.)
+    if (p.is_plan_parent) return false;
+    // Work THIS person finished on the viewed day always shows for them as done
+    // — even if the task has since been handed to someone else. (Each history
+    // entry records who finished it; entries without a name are legacy.)
+    {
+      const _fd = isDesignerRole(userRole) ? "design_completed_dates" : userRole==="content_creator" ? "content_completed_dates" : null;
+      let _h = [];
+      try { const raw = _fd ? p[_fd] : null; _h = raw ? (Array.isArray(raw) ? raw : JSON.parse(raw)) : []; } catch(e) { _h = []; }
+      if (_h.some(h=>h && typeof h==="object" && h.date===date && h.by && h.by===userEmail)) return true;
+    }
     if (!wasOwnerOf(p, userEmail, userRole)) return false;
     // A Calendar Plan parent card isn't a single time-boxed piece of work —
     // it's a container the team edits sub-items inside of (see plan_items),
@@ -790,9 +800,18 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     // task's CURRENT live duration/estimate happens to be right now.
     let completedHistory = [];
     try { const raw = completedDatesField ? p[completedDatesField] : null; completedHistory = raw ? (Array.isArray(raw) ? raw : JSON.parse(raw)) : []; } catch(e) { completedHistory = []; }
-    const completedOnViewedDay = completedHistory.some(h=>h.date===date) || !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
+    // A completion stamped with someone else's name isn't this person's finished work.
+    const completedOnViewedDay = completedHistory.some(h=>h.date===date && (!h.by || h.by===userEmail)) || !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
     if (completedOnViewedDay) return true;
     if (ownedStage && p.stage !== ownedStage) return false;
+    // Sent back for another round and now owned by SOMEONE ELSE — only the
+    // current owner of this stage has it as active work; the earlier person
+    // (still listed as an extra/old assignee) must not get it back on their
+    // timeline, nor have it re-scheduled to another time.
+    if (ownedStage && completedHistory.length) {
+      const curOwner = ownedStage==="design" ? (p.design_assigned_to||p.assigned_to) : (p.content_assigned_to||p.assigned_to);
+      if (curOwner && curOwner!==userEmail) return false;
+    }
     // This timeline is for capacity planning on work still actually IN
     // PROGRESS — Published and Scheduled are both done from the team's
     // side (content/design work is finished; Scheduled is just waiting on
@@ -6387,6 +6406,18 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   // assignee picker opens up, none of the other manager controls.
   const isSeniorDesigner = ["senior_graphic_designer","senior_video_editor"].includes(currentUser?.role);
   const canAssignPeople = isManager || isSeniorDesigner;
+  // Hands the current stage (Content/Design) to ONE person: they become the
+  // owner, the previous owner (and any leftover extra entry for either) is
+  // dropped, so the task leaves the earlier person's timeline instead of
+  // sitting on both.
+  const handoverTo = (m) => {
+    const key = post.stage==="content_creation" ? "content_assigned_to" : "design_assigned_to";
+    const prevEmail = (post[key]||post.assigned_to||"");
+    const prev = (team||[]).find(t=>t.email===prevEmail);
+    const extras = parseJ(post.assigned_to_extra||"[]").filter(e=>e!==m.email && e!==prevEmail);
+    onEdit&&onEdit({...post, assigned_to:m.email, [key]:m.email, assigned_to_extra:JSON.stringify(extras)});
+    if(onAddComment && prevEmail!==m.email) onAddComment(post.id, `Handed over${prev?` from ${prev.name}`:""} to ${m.name}`, currentUser, null, "internal");
+  };
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -7149,7 +7180,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                     <button key={m.email} onClick={()=>toggleExtraAssigneeLive(m.email)} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderRadius:7,border:"none",background:active?"var(--accent)22":"transparent",cursor:"pointer",textAlign:"left"}}>
                       <Avatar name={m.name} size={20} role={m.role}/>
                       <span style={{fontSize:12,fontWeight:600,color:"var(--text)",flex:1}}>{m.name}</span>
-                      {isSeniorDesigner&&<span role="button" onClick={e=>{e.stopPropagation(); onEdit&&onEdit({...post, assigned_to:m.email, design_assigned_to:m.email});}} style={{fontSize:10,fontWeight:700,color:"var(--accent)",padding:"2px 8px",border:"1px solid var(--accent)",borderRadius:99}}>Make main designer</span>}
+                      {canAssignPeople && ((post.stage==="design"&&isDesignerRole(m.role)) || (post.stage==="content_creation"&&m.role==="content_creator")) && <span role="button" title="Make this person the owner of the current stage — the previous owner stops seeing it on their timeline" onClick={e=>{e.stopPropagation(); handoverTo(m);}} style={{fontSize:10,fontWeight:700,color:"var(--accent)",padding:"2px 8px",border:"1px solid var(--accent)",borderRadius:99}}>Hand over to {post.stage==="design"?"designer":"writer"}</span>}
                       {active&&<Ico d={Icons.check} size={13} stroke="var(--accent)"/>}
                     </button>
                   );
@@ -50767,7 +50798,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   // so a later edit to the task's live duration, or it cycling through
   // again, never reaches back and changes how a past day's block rendered
   // (see generateDailySchedule's historyEntry lookup).
-  const appendCompletedDate = (existing, post) => {
+  const appendCompletedDate = (existing, post, by="") => {
     let entries = [];
     try {
       const parsed = existing ? (Array.isArray(existing) ? existing : JSON.parse(existing)) : [];
@@ -50779,9 +50810,12 @@ Return ONLY valid JSON (no markdown, no explanation):
     } catch(e) { entries = []; }
     const today = new Date().toISOString().split("T")[0];
     const duration_mins = estimateDuration(post);
-    const idx = entries.findIndex(e=>e.date===today);
-    if (idx >= 0) entries[idx] = {date:today, duration_mins};
-    else entries = [...entries, {date:today, duration_mins}];
+    // `by` = who actually did the work, so a task handed to a DIFFERENT person
+    // afterwards never shows up as that new person's (or re-appears on the
+    // first person's) timeline — each completion belongs to whoever finished it.
+    const idx = entries.findIndex(e=>e.date===today && (e.by||"")===(by||""));
+    if (idx >= 0) entries[idx] = {date:today, duration_mins, by};
+    else entries = [...entries, {date:today, duration_mins, by}];
     return JSON.stringify(entries);
   };
   const handleStageChange = async (post,newStage,overrides={}) => {
@@ -50854,6 +50888,12 @@ Return ONLY valid JSON (no markdown, no explanation):
       due_date: overrides.due_date || (needsDueDateBump ? todayStr : post.due_date),
       due_time: overrides.due_time || (needsDueDateBump ? null : post.due_time),
       estimated_minutes: overrides.estimated_minutes || post.estimated_minutes,
+      // Sent back to Content/Design with a DIFFERENT person picked: the person who did it
+      // before (and the new owner, if they were also listed as an extra) come off the extras
+      // so the task doesn't stay on the first person's timeline as well.
+      assigned_to_extra: (overrides.assigned_to && ["design","content_creation"].includes(newStage))
+        ? JSON.stringify(parseJ(post.assigned_to_extra||"[]").filter(e=>e!==(newStage==="design"?post.design_assigned_to:post.content_assigned_to) && e!==overrides.assigned_to))
+        : post.assigned_to_extra,
       content_assigned_to: newStage==="content_creation" ? (assigneeEmail||post.assigned_to) : post.content_assigned_to,
       design_assigned_to: newStage==="design" ? (assigneeEmail||post.assigned_to) : post.design_assigned_to,
       // Stamped the moment someone actually pushes their own work forward
@@ -50875,8 +50915,8 @@ Return ONLY valid JSON (no markdown, no explanation):
       // again), this never gets cleared, so a task finished yesterday, sent
       // back, and finished again today shows as completed work on BOTH
       // days on the Timeline (see generateDailySchedule), not just today.
-      content_completed_dates: (priorStage==="content_creation" && newStage!=="content_creation") ? appendCompletedDate(post.content_completed_dates, post) : post.content_completed_dates,
-      design_completed_dates: (priorStage==="design" && newStage!=="design") ? appendCompletedDate(post.design_completed_dates, post) : post.design_completed_dates,
+      content_completed_dates: (priorStage==="content_creation" && newStage!=="content_creation") ? appendCompletedDate(post.content_completed_dates, post, post.content_assigned_to||post.assigned_to||"") : post.content_completed_dates,
+      design_completed_dates: (priorStage==="design" && newStage!=="design") ? appendCompletedDate(post.design_completed_dates, post, post.design_assigned_to||post.assigned_to||"") : post.design_completed_dates,
       // Remembers whatever stage this was ACTUALLY in right before landing
       // on Client Approval — used by trello-webhook.php's "comments only +
       // sync approval moves" mode to send a rejected/bounced-back card to
