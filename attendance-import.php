@@ -483,6 +483,8 @@ if ($isRawDeviceFormat) {
         }
 
         $status = in_array($statusRaw, $validStatuses, true) ? $statusRaw : (!empty($row[$colIdx['check_in'] ?? -1]) ? 'present' : 'absent');
+        // A row with a real clock-in is never an absence, whatever the status column says.
+        if ($status === 'absent' && !empty($row[$colIdx['check_in'] ?? -1])) $status = 'present';
         $teamMemberId = $byLowerName[mb_strtolower($name)] ?? null;
         if (!$teamMemberId) $unmatched[$name] = true;
 

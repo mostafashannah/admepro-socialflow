@@ -21543,6 +21543,9 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
     // "absent" row, without needing to re-import anything.
     const overridden = filled.map(a => {
       if (a.status !== "absent") return a;
+      // A day with a real clock-in can't be an absence — the punches win
+      // over a stray "absent" status (manual edit / sheet status column).
+      if (a.check_in && !a._synthetic) return {...a, status: "present"};
       const approvedLeave = approvedLeaveDatesForFill[a.work_date];
       if (approvedLeave) return {...a, status: approvedLeave === "wfh" ? "wfh" : "leave"};
       if (isDayOffForFill(a.work_date)) return {...a, status: holidayDatesForFill.has(a.work_date) ? "holiday" : "weekend"};
@@ -44766,7 +44769,7 @@ RULES:
       .filter(m=>!m.pendingAction && !m.meta)
       .map(m=>{
         let textContent = stripActionBlocks(m.content||"");
-        const docs = (m.attachments||[]).filter(a=>a.kind==="image"||a.kind==="pdf");
+        const docs = (m.attachments||[]).filter(a=>(a.kind==="image"||a.kind==="pdf") && a.base64); // no bytes after a refresh -> would make the API reject the request
         const textAtt = (m.attachments||[]).filter(a=>a.kind==="text");
         if(textAtt.length) textContent += textAtt.map(a=>`\n\n[Attached file: ${a.name}]\n${a.text}`).join("");
         let blocks = [];
@@ -46669,7 +46672,7 @@ RULES:
     const toBlock = (a) => a.kind==="image"
       ? {type:"image", source:{type:"base64", media_type:a.mediaType||"image/jpeg", data:a.base64}}
       : {type:"document", source:{type:"base64", media_type:"application/pdf", data:a.base64}};
-    const visionBlocks = pendingAttachments.filter(a=>a.kind==="image"||a.kind==="pdf").map(toBlock);
+    const visionBlocks = pendingAttachments.filter(a=>(a.kind==="image"||a.kind==="pdf") && a.base64).map(toBlock);
     const textAttachmentsInline = pendingAttachments
       .filter(a=>a.kind==="text")
       .map(a=>`\n\n[Attached file: ${a.name}]\n${a.text}`).join("");
@@ -46690,7 +46693,12 @@ RULES:
       .map(m=>{
         const isCurrent = m===userMsgObj;
         let textContent = truncMsg(stripActionBlocks(m.content||""));
-        const pastDocs = !isCurrent ? (m.attachments||[]).filter(a=>a.kind==="image"||a.kind==="pdf") : [];
+        // Files from earlier turns only go back if their data is still in memory — after a
+        // refresh the saved chat keeps names but not the file bytes, and sending a block
+        // with no data makes the API reject the WHOLE request ("base64.data: Field required").
+        const pastDocs = !isCurrent ? (m.attachments||[]).filter(a=>(a.kind==="image"||a.kind==="pdf") && a.base64) : [];
+        const lostDocs = !isCurrent ? (m.attachments||[]).filter(a=>(a.kind==="image"||a.kind==="pdf") && !a.base64) : [];
+        if(lostDocs.length) textContent = (textContent||"") + lostDocs.map(a=>`\n[Earlier attachment "${a.name}" is no longer available — ask the user to re-attach it if you need it]`).join("");
         const pastText = !isCurrent ? (m.attachments||[]).filter(a=>a.kind==="text") : [];
         if(pastText.length) textContent = (textContent||"") + pastText.map(a=>{
           const full = textResent < 2; textResent++;
