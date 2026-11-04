@@ -10,8 +10,8 @@
  * Two modes, two crontab entries:
  *   php notification-reminders-cron.php reminders   — every 15 min, fires
  *     task-due-soon + subscription-renewal (idempotent via sent-flags)
- *   php notification-reminders-cron.php digest       — once daily, sends
- *     the per-user task digest to everyone with daily_digest enabled
+ *   php notification-reminders-cron.php digest       — end-of-day (21:00) brief for ADMINS only
+ *   php notification-reminders-cron.php digest_team  — the original 08:00 task digest for everyone else
  *
  * Crontab:
  *   (star)/15 (star) (star) (star) (star) /usr/bin/php /var/www/socialflow/notification-reminders-cron.php reminders >> /var/www/socialflow/notification-reminders-cron.log 2>&1
@@ -195,7 +195,7 @@ if ($mode === 'digest') {
     // ── Daily Digest = a SHORT brief (main points only), built from the sections
     // each person has switched on in Account > Notifications (digest_sections).
     // Finance is for admin/accountant, Recruitment for admin/hr/account_director.
-    $team = $pdo->query("SELECT * FROM team_members WHERE status = 'active' AND role NOT IN ('client')")->fetchAll(PDO::FETCH_ASSOC);
+    $team = $pdo->query("SELECT * FROM team_members WHERE status = 'active' AND role = 'admin'")->fetchAll(PDO::FETCH_ASSOC);
     $posts = $pdo->query("SELECT id, title, client_name, assigned_to, stage, scheduled_date FROM posts")->fetchAll(PDO::FETCH_ASSOC);
     $yesterday = (clone $now)->modify('-1 day')->format('Y-m-d');
     $monthStart = $now->format('Y-m-01');
@@ -384,6 +384,72 @@ if ($mode === 'digest') {
             $upd = $pdo->prepare("UPDATE notification_prefs SET digest_last_sent = :d WHERE user_email = :e");
             $upd->execute([':d' => $now->format('Y-m-d\TH:i:s\Z'), ':e' => $m['email']]);
             if ($upd->rowCount() === 0) {
+                $ins = $pdo->prepare("INSERT INTO notification_prefs (id, user_email, digest_last_sent) VALUES (UUID(), :e, :d)");
+                $ins->execute([':e' => $m['email'], ':d' => $now->format('Y-m-d\TH:i:s\Z')]);
+            }
+        }
+    }
+
+    echo json_encode(['mode'=>'digest','sent'=>$counts]);
+    exit;
+}
+
+if ($mode === 'digest_team') {
+    // Everyone EXCEPT admins keeps the original morning task digest (unchanged). Admins get the
+    // end-of-day brief instead (mode 'digest').
+    $team = $pdo->query("SELECT * FROM team_members WHERE status = 'active' AND role NOT IN ('client','admin')")->fetchAll(PDO::FETCH_ASSOC);
+    $posts = $pdo->query("SELECT * FROM posts")->fetchAll(PDO::FETCH_ASSOC);
+    $section = function($title, $color, $tasks) {
+        if (count($tasks) === 0) return '';
+        $rows = '';
+        foreach ($tasks as $t) {
+            $rows .= '<tr style="border-bottom:1px solid #f3f4f6">
+              <td style="padding:10px 14px;font-size:13px;color:#111827;font-weight:600">'.htmlspecialchars($t['title'] ?: 'Untitled').'</td>
+              <td style="padding:10px 14px;font-size:12px;color:#6b7280;text-align:right">'.htmlspecialchars($t['client_name'] ?: '—').'</td>
+            </tr>';
+        }
+        return '<p style="margin:20px 0 8px;font-size:11px;font-weight:800;color:'.$color.';letter-spacing:0.08em;text-transform:uppercase">'.$title.' ('.count($tasks).')</p>
+          <table width="100%" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-bottom:12px">'.$rows.'</table>';
+    };
+
+    foreach ($team as $m) {
+        $prefs = get_prefs($pdo, $m['email']);
+        if (!pref_allows($prefs, 'daily_digest')) continue;
+        if (!empty($prefs['digest_last_sent']) && substr($prefs['digest_last_sent'], 0, 10) === $today) continue;
+
+        $assigned = array_values(array_filter($posts, fn($p) => $p['assigned_to'] === $m['email']));
+        $dueToday = array_values(array_filter($assigned, fn($p) => $p['scheduled_date'] === $today && !in_array($p['stage'], ['published','rejected'])));
+        $overdue  = array_values(array_filter($assigned, fn($p) => $p['scheduled_date'] && $p['scheduled_date'] < $today && !in_array($p['stage'], ['published','rejected'])));
+        $completed= array_values(array_filter($assigned, fn($p) => $p['scheduled_date'] === $today && in_array($p['stage'], ['published','scheduled'])));
+        $pending  = array_values(array_filter($assigned, fn($p) => !in_array($p['stage'], ['published','rejected']) && $p['scheduled_date'] !== $today));
+
+        if (count($dueToday)===0 && count($overdue)===0 && count($completed)===0 && count($pending)===0) continue;
+
+        $html = email_base(
+            email_h('Your daily summary') .
+            email_p('Hi <strong>'.htmlspecialchars($m['name']).'</strong>, here\'s your task overview for today.') .
+            email_card([
+                ['Due Today', count($dueToday), count($dueToday)>0?'#f59e0b':'#10b981'],
+                ['Overdue', count($overdue), count($overdue)>0?'#ef4444':'#10b981'],
+                ['Completed', count($completed), '#10b981'],
+                ['Pending', count($pending), '#6b7280'],
+            ]) .
+            email_divider() .
+            $section('Due Today', '#f59e0b', $dueToday) .
+            $section('Overdue', '#ef4444', $overdue) .
+            $section('Completed', '#10b981', $completed) .
+            $section('Pending', '#6b7280', $pending) .
+            email_btn('https://socialflow.admepro.com', 'Open SocialFlow')
+        );
+        [$ok, $raw] = send_via_resend($m['email'], '[SocialFlow] Your daily summary — '.$now->format('d M Y'), $html);
+        log_email($insertLog, $m['email'], '[SocialFlow] Your daily summary', $ok, $raw, $now);
+        if ($ok) {
+            $counts['daily_digest']++;
+            $upd = $pdo->prepare("UPDATE notification_prefs SET digest_last_sent = :d WHERE user_email = :e");
+            $upd->execute([':d' => $now->format('Y-m-d\TH:i:s\Z'), ':e' => $m['email']]);
+            if ($upd->rowCount() === 0) {
+                // No notification_prefs row yet for this user — create one so
+                // digest_last_sent actually sticks (otherwise it'd resend daily).
                 $ins = $pdo->prepare("INSERT INTO notification_prefs (id, user_email, digest_last_sent) VALUES (UUID(), :e, :d)");
                 $ins->execute([':e' => $m['email'], ':d' => $now->format('Y-m-d\TH:i:s\Z')]);
             }

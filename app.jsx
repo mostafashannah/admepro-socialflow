@@ -33205,11 +33205,11 @@ function NotificationPrefsTab({notifPrefs, onSaveNotifPrefs, currentUser, rolePe
                   React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 0"}},
                     React.createElement("div",{style:{flex:1,marginRight:16}},
                       React.createElement("p",{style:{fontWeight:600,fontSize:13,color:dis?"var(--text3)":"var(--text)"}},"Daily Digest Email"),
-                      React.createElement("p",{style:{fontSize:11,color:"var(--text3)",marginTop:2}},"A short end-of-day brief (9 PM) with the main points — choose what it covers below")
+                      React.createElement("p",{style:{fontSize:11,color:"var(--text3)",marginTop:2}},currentUser?.role==="admin" ? "A short end-of-day brief (9 PM) with the main points — choose what it covers below" : "One summary email per day — tasks due today, overdue, completed")
                     ),
                     React.createElement(Toggle,{val:!!prefs.daily_digest,onChange:v=>upd("daily_digest",v),disabled:dis})
                   ),
-                  prefs.daily_digest && !dis && (()=>{
+                  prefs.daily_digest && !dis && currentUser?.role==="admin" && (()=>{
                     let want = {}; try { want = prefs.digest_sections ? JSON.parse(prefs.digest_sections) : {}; } catch(e) { want = {}; }
                     const isOn = k => !(k in want) || !!want[k];
                     const opts = [["tasks","Tasks",true],["finance","Finance",["admin","accountant"].includes(currentUser?.role)],["recruitment","Recruitment",["admin","hr","account_director"].includes(currentUser?.role)],["am_checkins","AM check-ins",currentUser?.role==="admin"]].filter(o=>o[2]);
