@@ -246,7 +246,7 @@ if ($mode === 'digest') {
         if ($amCache !== null) return $amCache;
         $since = (new DateTime($today))->modify('-7 day')->format('Y-m-d');
         $rows = $rowsOf("SELECT account_manager_id, account_manager_name AS name, report_type, report_date, status, score, max_score, checklist
-            FROM mai_report_sessions WHERE report_date >= :s", [':s'=>$since]);
+            FROM mai_report_sessions WHERE report_date >= :s AND report_type IN ('morning','eod')", [':s'=>$since]);
         $pct = fn($r) => (!empty($r['max_score']) && $r['score'] !== null) ? ((int)$r['score'] / (int)$r['max_score'] * 100) : null;
         $todayRows = []; $histByAm = []; $missed = [];
         foreach ($rows as $r) {
@@ -362,6 +362,32 @@ if ($mode === 'digest') {
                 if ($am['missed']) {
                     $body .= $line('<span style="color:#b45309">To improve — most missed this week:</span>');
                     foreach (array_slice($am['missed'], 0, 3, true) as $label => $n) $body .= $line('• '.htmlspecialchars($label).' <span style="color:#9ca3af">(missed '.$n.'×)</span>');
+                }
+            }
+        }
+
+        if ($on('director') && $canAm) {
+            // The Account Director's single 7:30 PM check-in with Mai: what was noted, what Mai did about it.
+            $ds = $rowsOf("SELECT account_manager_name AS name, status, score, max_score, checklist, summary FROM mai_report_sessions WHERE report_type = 'director' AND report_date = :d", [':d'=>$today]);
+            $dirs = $rowsOf("SELECT name FROM team_members WHERE role = 'account_director' AND status = 'active' AND mai_checkins_enabled = 1");
+            if ($ds || $dirs) {
+                $body .= $head('Account director report', '#0ea5e9');
+                if (!$ds) $body .= $line('<span style="color:#9ca3af">No check-in was started today.</span>');
+                foreach ($ds as $s) {
+                    $cl = json_decode((string)$s['checklist'], true) ?: [];
+                    $done = count(array_filter($cl, fn($v) => !empty($v['done']))); $tot = count($cl);
+                    $statusTxt = $s['status'] === 'completed' ? 'replied — '.$done.'/'.$tot.' topics covered' : ($s['status'] === 'missed' ? '<span style="color:#dc2626">did not finish</span>' : 'in progress');
+                    $body .= $line($b(htmlspecialchars($s['name'])).' — '.$statusTxt);
+                    $sum = json_decode((string)$s['summary'], true) ?: [];
+                    foreach (($sum['notes'] ?? []) as $n) {
+                        $dot = ($n['priority'] ?? '') === 'high' ? '<span style="color:#dc2626">●</span> ' : '• ';
+                        $body .= $line($dot.$b(htmlspecialchars($n['title'])).(!empty($n['detail']) ? ' <span style="color:#6b7280">— '.htmlspecialchars($n['detail']).'</span>' : ''));
+                    }
+                    if (!empty($sum['facts']) || !empty($sum['leads'])) {
+                        $body .= $line('<span style="color:#6b7280">Mai saved '.(int)($sum['facts'] ?? 0).' client fact(s) and logged '.(int)($sum['leads'] ?? 0).' lead update(s).</span>');
+                    }
+                    $open = array_filter($cl, fn($v) => empty($v['done']));
+                    if ($s['status'] !== 'in_progress' && $open) $body .= $line('<span style="color:#b45309">Not covered:</span> '.htmlspecialchars(implode('; ', array_map(fn($v) => $v['label'], $open))));
                 }
             }
         }

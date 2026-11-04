@@ -50,7 +50,18 @@ const MAI_EOD_CHECKLIST = [
     'morning_items_done' => 'Any items still open from the morning check-in are resolved or explained',
 ];
 
+// Account Director — ONE check-in a day (7:30 PM), different from the account managers':
+// not a per-client checklist, but the main things worth noting in the system.
+const MAI_DIRECTOR_CHECKLIST = [
+    'key_updates'     => "The main things to note in the system from today (client changes, decisions, deadlines)",
+    'client_risks'    => 'Client issues, risks or escalations',
+    'opportunities'   => 'New opportunities, leads or upsells',
+    'team_blockers'   => 'Team issues or blockers that need action',
+    'admin_attention' => 'Anything that needs the admin\'s attention or a decision',
+];
+
 function maiChecklistFor($reportType) {
+    if ($reportType === 'director') return MAI_DIRECTOR_CHECKLIST;
     return $reportType === 'eod' ? MAI_EOD_CHECKLIST : MAI_MORNING_CHECKLIST;
 }
 
@@ -204,7 +215,21 @@ function maiStartReportSession(PDO $pdo, array $am, $reportType) {
     $leadCtx = maiBuildLeadContext($pdo, $am['id'], $am['email']);
     $firstName = explode(' ', trim($am['name']))[0];
 
-    if ($reportType === 'morning') {
+    if ($reportType === 'director') {
+        // Agency-wide snapshot — the director oversees everyone, not one client list.
+        $od = $pdo->query("SELECT COALESCE(tm.name, p.assigned_to) AS who, COUNT(*) n FROM posts p LEFT JOIN team_members tm ON tm.email = p.assigned_to
+            WHERE p.due_date IS NOT NULL AND p.due_date <> '' AND LEFT(p.due_date,10) < CURDATE() AND p.stage NOT IN ('published','scheduled','approved','rejected','on_hold','client_request')
+            GROUP BY who ORDER BY n DESC LIMIT 6")->fetchAll(PDO::FETCH_ASSOC);
+        $odLine = $od ? implode('; ', array_map(fn($r) => "{$r['who']}: {$r['n']}", $od)) : 'none';
+        $notLive = (int)$pdo->query("SELECT COUNT(*) FROM posts WHERE scheduled_date = CURDATE() AND stage NOT IN ('published','scheduled')")->fetchColumn();
+        $userMsg = "It's 7:30 PM — time for {$firstName}'s end-of-day check-in. She is the ACCOUNT DIRECTOR, so this is NOT the account managers' checklist: "
+            . "you want the main things worth noting in the system from today, so you can record them and flag what the admin must know.\n\n"
+            . "Agency snapshot right now — overdue tasks by person: {$odLine}. Posts scheduled for today that are still not live: {$notLive}.\n\n"
+            . "Her own accounts:\n{$ctx['context']}\n\nOpen leads:\n{$leadCtx}\n\n"
+            . "Topics to get through over the conversation (never read them as a list):\n" . implode("\n", array_map(fn($l) => "- {$l}", $checklist)) . "\n\n"
+            . "Start now: greet her warmly and briefly, and ask what the main things are that should be noted in the system from today. You may mention ONE real thing from the snapshot to open. "
+            . "Write ONLY the WhatsApp message, nothing else.";
+    } elseif ($reportType === 'morning') {
         $userMsg = "It's midday — time for {$firstName}'s morning check-in. Her clients and what you know about them:\n\n{$ctx['context']}\n\n"
             . "Her open leads (ask about these BY NAME, e.g. \"did you call Ahmed Kamal?\" — not vaguely):\n{$leadCtx}\n\n"
             . "IMPORTANT on leads: if she says she followed up/called a lead that shows \"NO activity logged at all\" above, that's a real gap — "
@@ -244,9 +269,11 @@ function maiStartReportSession(PDO $pdo, array $am, $reportType) {
     }
     $opener = trim($opener);
     if ($opener === '') {
-        $opener = $reportType === 'morning'
-            ? "Hi {$firstName}! Quick check-in — have you had a chance to look at your clients' platforms and ad accounts today?"
-            : "Hi {$firstName}, end-of-day check-in — how did today go with your clients?";
+        $opener = $reportType === 'director'
+            ? "Hi {$firstName}, end-of-day check-in — what are the main things from today that should be noted in the system?"
+            : ($reportType === 'morning'
+                ? "Hi {$firstName}! Quick check-in — have you had a chance to look at your clients' platforms and ad accounts today?"
+                : "Hi {$firstName}, end-of-day check-in — how did today go with your clients?");
     }
     // The AM otherwise has no way to tell "still more coming" from "that's
     // it, done" across a free-flowing multi-turn conversation of unknown
@@ -311,6 +338,19 @@ function maiContinueReportSession(PDO $pdo, array $session, $incomingText) {
         . "Return ONLY this JSON (no markdown, no other text):\n"
         . '{"reply":"the next WhatsApp message to send her","checklist_done":["item_key",...],"client_memory":[{"client_name":"...","key":"...","value":"..."}],"lead_updates":[{"lead_name":"...","note":"what she told you happened with this lead","status":"new|contacted|follow_up|negotiation|closed_won|closed_lost or omit if unchanged"}],"complete":true|false}';
 
+    $isDir = ($session['report_type'] ?? '') === 'director';
+    if ($isDir) {
+        $sys = "You are Mai, the agency's AI Account Executive, doing the once-a-day end-of-day check-in with the ACCOUNT DIRECTOR over WhatsApp. "
+            . "She is senior — be brief, respectful and direct, short WhatsApp messages, one question at a time, never a checklist read aloud. "
+            . "Your job: draw out the main things worth noting in the system, record them, and flag what the admin must know.\n\n"
+            . "Topics still to cover naturally:\n{$checklistBlock}\n\nHer open leads (for reference):\n{$leadCtx}\n\n"
+            . "Conversation so far:\n{$historyBlock}\n\n"
+            . "Decide: which topics did her last message cover? Which facts about a specific client should be saved to memory? Did she mention something that happened on a lead? "
+            . "Is there anything the ADMIN needs to know or decide (list each as an admin note with a one-line title, a short detail, and priority high or normal)? "
+            . "Continue only while a topic is still open and worth asking; wrap up as soon as the main points are in, with a one-line thank-you.\n\n"
+            . "Return ONLY this JSON (no markdown):\n"
+            . '{"reply":"the next WhatsApp message","checklist_done":["item_key",...],"client_memory":[{"client_name":"...","key":"...","value":"..."}],"lead_updates":[{"lead_name":"...","note":"...","status":"new|contacted|follow_up|negotiation|closed_won|closed_lost or omit"}],"admin_notes":[{"title":"...","detail":"...","priority":"high|normal"}],"complete":true|false}';
+    }
     [$status, $data] = callClaude(['model' => 'claude-sonnet-5-5', 'max_tokens' => 500, 'system' => $sys, 'messages' => [['role' => 'user', 'content' => 'Continue the conversation now, following the instructions exactly.']]]);
     $raw = '';
     if ($status >= 200 && $status < 300) {
@@ -355,6 +395,25 @@ function maiContinueReportSession(PDO $pdo, array $session, $incomingText) {
             ->execute([':id' => generateProUuid(), ':cid' => $clientId, ':cname' => $cname, ':k' => $key, ':v' => $value]);
     }
     maiApplyLeadUpdates($pdo, $session['account_manager_email'], $parsed['lead_updates'] ?? []);
+    if ($isDir) {
+        // Mai acts on what she heard: notes for the admin become in-app notifications, and a running
+        // summary (notes + what she saved) is stored on the session for the admin's daily report.
+        $summary = json_decode((string)($session['summary'] ?? ''), true);
+        if (!is_array($summary)) $summary = ['notes' => [], 'facts' => 0, 'leads' => 0];
+        $summary['facts'] = (int)($summary['facts'] ?? 0) + count($parsed['client_memory'] ?? []);
+        $summary['leads'] = (int)($summary['leads'] ?? 0) + count($parsed['lead_updates'] ?? []);
+        $admins = $pdo->query("SELECT email FROM team_members WHERE role = 'admin' AND status = 'active'")->fetchAll(PDO::FETCH_COLUMN);
+        foreach (($parsed['admin_notes'] ?? []) as $n) {
+            $title = trim($n['title'] ?? ''); if ($title === '') continue;
+            $detail = trim($n['detail'] ?? ''); $prio = ($n['priority'] ?? 'normal') === 'high' ? 'high' : 'normal';
+            $summary['notes'][] = ['title' => $title, 'detail' => $detail, 'priority' => $prio];
+            foreach ($admins as $adminEmail) {
+                try { $pdo->prepare("INSERT INTO notifications (id, recipient_email, title, message, type, is_read) VALUES (UUID(), :e, :t, :m, :ty, 0)")
+                    ->execute([':e' => $adminEmail, ':t' => 'Account Director note: ' . $title, ':m' => $detail, ':ty' => $prio === 'high' ? 'warning' : 'info']); } catch (Throwable $e) {}
+            }
+        }
+        $session['summary'] = json_encode($summary, JSON_UNESCAPED_UNICODE);
+    }
 
     $transcript[] = ['role' => 'assistant', 'content' => $reply, 'at' => date('c')];
 
@@ -376,6 +435,9 @@ function maiContinueReportSession(PDO $pdo, array $session, $incomingText) {
         ':status' => $status_, ':score' => $score, ':max_score' => $maxScore, ':id' => $session['id'],
     ]);
 
+    if ($isDir && isset($session['summary'])) {
+        try { $pdo->prepare("UPDATE mai_report_sessions SET summary = :s WHERE id = :id")->execute([':s' => $session['summary'], ':id' => $session['id']]); } catch (Throwable $e) { /* summary column not migrated yet */ }
+    }
     if (!empty($session['account_manager_id'])) {
         $phoneStmt = $pdo->prepare("SELECT whatsapp_number FROM team_members WHERE id = :id");
         $phoneStmt->execute([':id' => $session['account_manager_id']]);
@@ -393,7 +455,7 @@ function maiContinueReportSession(PDO $pdo, array $session, $incomingText) {
 // the weighting in AccountManagerMaiReportsTab) — skipping check-ins
 // entirely must hurt more than a merely poor one, not be invisible.
 function maiMarkMissedSessions(PDO $pdo, $reportType, $cutoffHours = 3) {
-    $checklist = $reportType === 'morning' ? MAI_MORNING_CHECKLIST : MAI_EOD_CHECKLIST;
+    $checklist = maiChecklistFor($reportType);
     $maxScore = count($checklist) * 10;
     $stmt = $pdo->prepare(
         "SELECT id FROM mai_report_sessions WHERE report_type = :t AND status = 'in_progress' "
@@ -426,7 +488,7 @@ function maiSendAdminDigest(PDO $pdo, $reportType) {
     if ($flagStmt->fetchColumn()) return;
     $pdo->prepare("INSERT IGNORE INTO mai_report_digests (report_type, report_date) VALUES (:t, :d)")->execute([':t' => $reportType, ':d' => $today]);
 
-    $ams = $pdo->query("SELECT id, name FROM team_members WHERE role IN ('account_manager','account_director','account_executive') AND status = 'active' AND mai_checkins_enabled = 1")->fetchAll(PDO::FETCH_ASSOC);
+    $ams = $pdo->query("SELECT id, name FROM team_members WHERE role IN ('account_manager','account_executive') AND status = 'active' AND mai_checkins_enabled = 1")->fetchAll(PDO::FETCH_ASSOC);
     if (!$ams) return;
 
     $sessStmt = $pdo->prepare("SELECT * FROM mai_report_sessions WHERE account_manager_id = :id AND report_type = :t AND report_date = :d LIMIT 1");

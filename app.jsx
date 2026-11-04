@@ -21167,7 +21167,7 @@ function AccountManagerMaiReportsTab({member, onUpdateTeamMember}) {
           <div key={s.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:16}}>
             <div onClick={()=>setExpandedId(expanded?null:s.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer"}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <Badge label={s.report_type==="morning"?"Morning":"End of Day"} color={s.report_type==="morning"?"#f59e0b":"#6366f1"} xs/>
+                <Badge label={s.report_type==="morning"?"Morning":s.report_type==="director"?"Director":"End of Day"} color={s.report_type==="morning"?"#f59e0b":s.report_type==="director"?"#0ea5e9":"#6366f1"} xs/>
                 <span style={{fontSize:13,fontWeight:700}}>{fmtDate(s.report_date)}</span>
                 <Badge label={s.status==="completed"?"Completed":s.status==="in_progress"?"In Progress":s.status==="missed"?"Missed":"No Response"} color={s.status==="completed"?"#10b981":s.status==="in_progress"?"#f59e0b":s.status==="missed"?"#ef4444":"#6b7280"} xs/>
               </div>
@@ -33212,10 +33212,10 @@ function NotificationPrefsTab({notifPrefs, onSaveNotifPrefs, currentUser, rolePe
                   prefs.daily_digest && !dis && currentUser?.role==="admin" && (()=>{
                     let want = {}; try { want = prefs.digest_sections ? JSON.parse(prefs.digest_sections) : {}; } catch(e) { want = {}; }
                     const isOn = k => !(k in want) || !!want[k];
-                    const opts = [["tasks","Tasks",true],["finance","Finance",["admin","accountant"].includes(currentUser?.role)],["recruitment","Recruitment",["admin","hr","account_director"].includes(currentUser?.role)],["am_checkins","AM check-ins",currentUser?.role==="admin"]].filter(o=>o[2]);
+                    const opts = [["tasks","Tasks",true],["finance","Finance",["admin","accountant"].includes(currentUser?.role)],["recruitment","Recruitment",["admin","hr","account_director"].includes(currentUser?.role)],["am_checkins","AM check-ins",currentUser?.role==="admin"],["director","Director report",currentUser?.role==="admin"]].filter(o=>o[2]);
                     return React.createElement("div",{style:{display:"flex",gap:8,flexWrap:"wrap",padding:"0 0 12px",alignItems:"center"}},
                       React.createElement("span",{style:{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase"}},"Include:"),
-                      ...opts.map(([k,l])=>React.createElement("button",{key:k,type:"button",onClick:()=>upd("digest_sections",JSON.stringify({tasks:isOn("tasks"),finance:isOn("finance"),recruitment:isOn("recruitment"),am_checkins:isOn("am_checkins"),[k]:!isOn(k)})),style:{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:600,cursor:"pointer",border:"1px solid "+(isOn(k)?"var(--accent)":"var(--border2)"),background:isOn(k)?"var(--accent)":"transparent",color:isOn(k)?"#fff":"var(--text2)"}},(isOn(k)?"✓ ":"")+l)));
+                      ...opts.map(([k,l])=>React.createElement("button",{key:k,type:"button",onClick:()=>upd("digest_sections",JSON.stringify({tasks:isOn("tasks"),finance:isOn("finance"),recruitment:isOn("recruitment"),am_checkins:isOn("am_checkins"),director:isOn("director"),[k]:!isOn(k)})),style:{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:600,cursor:"pointer",border:"1px solid "+(isOn(k)?"var(--accent)":"var(--border2)"),background:isOn(k)?"var(--accent)":"transparent",color:isOn(k)?"#fff":"var(--text2)"}},(isOn(k)?"✓ ":"")+l)));
                   })()
                 );
               })}
