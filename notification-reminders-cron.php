@@ -366,6 +366,26 @@ if ($mode === 'digest') {
             }
         }
 
+        if ($on('meetings') && $canAm) {
+            // Meetings that actually happened today = contact reports logged for today (meeting date, or
+            // the day it was logged if no date was set). Two-line brief taken from each report.
+            $mt = $rowsOf("SELECT client_name, created_by_name, meeting_type, summary, key_points FROM contact_reports
+                WHERE (meeting_date = :d OR (meeting_date IS NULL AND DATE(created_at) = :d)) ORDER BY created_at DESC", [':d'=>$today]);
+            if (!$mt) $mt = $rowsOf("SELECT client_name, created_by_name, '' AS meeting_type, summary, key_points FROM contact_reports WHERE DATE(created_at) = :d ORDER BY created_at DESC", [':d'=>$today]);
+            $body .= $head('Meetings', '#ec4899');
+            if (!$mt) {
+                $body .= $line('<span style="color:#9ca3af">No meetings were logged today.</span>');
+            } else {
+                $body .= $line($b(count($mt)).' meeting'.(count($mt)==1?'':'s').' done today');
+                foreach (array_slice($mt, 0, 6) as $r) {
+                    $txt = trim(preg_replace('/\s+/', ' ', strip_tags((string)($r['summary'] ?: $r['key_points']))));
+                    if (mb_strlen($txt) > 230) { $cut = mb_substr($txt, 0, 230); $sp = mb_strrpos($cut, ' '); $txt = ($sp ? mb_substr($cut, 0, $sp) : $cut).'…'; }
+                    $body .= $line('• '.$b(htmlspecialchars($r['client_name'] ?: 'Meeting')).($r['created_by_name'] ? ' <span style="color:#9ca3af">('.htmlspecialchars($r['created_by_name']).')</span>' : '').($txt !== '' ? '<br><span style="color:#6b7280">'.htmlspecialchars($txt).'</span>' : ''));
+                }
+                if (count($mt) > 6) $body .= $line('<span style="color:#9ca3af">…and '.(count($mt)-6).' more</span>');
+            }
+        }
+
         if ($on('director') && $canAm) {
             // The Account Director's single 7:30 PM check-in with Mai: what was noted, what Mai did about it.
             $ds = $rowsOf("SELECT account_manager_name AS name, status, score, max_score, checklist, summary FROM mai_report_sessions WHERE report_type = 'director' AND report_date = :d", [':d'=>$today]);
