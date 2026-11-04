@@ -1310,7 +1310,7 @@ const SB_SCHEMA = {
   // "digest_time" field the notification_prefs table never actually had —
   // an UPDATE/INSERT including it errored out at the SQL level, so every
   // single notification-prefs save was silently failing.
-  notification_prefs: ["user_email","all_disabled","mentions_only","daily_digest","task_assigned","task_stage_changed","task_due_soon","task_overdue","task_mention","task_comment","project_created","project_task_added","project_deadline_updated","post_approved","post_rejected","client_approval_required","invoice_created","payment_received","subscription_renewal","user_invited","access_approved","access_rejected","permissions_updated","recruitment_new_application","recruitment_task_submitted","recruitment_reschedule_request"],
+  notification_prefs: ["user_email","all_disabled","mentions_only","daily_digest","task_assigned","task_stage_changed","task_due_soon","task_overdue","task_mention","task_comment","project_created","project_task_added","project_deadline_updated","post_approved","post_rejected","client_approval_required","invoice_created","payment_received","subscription_renewal","user_invited","access_approved","access_rejected","permissions_updated","recruitment_new_application","recruitment_task_submitted","recruitment_reschedule_request","digest_sections"],
   customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","attachment_url","sent_by","thread_status","draft_status","external_id"],
   task_logs: ["post_id","post_title","client_name","phase","round","assignee_email","assignee_name","assigned_by","assigned_at","completed_at","duration_mins","outcome"],
   daily_report_settings: ["enabled","send_time","days","sections","client_ids","recipients","window_hours","last_sent_date"],
@@ -2454,6 +2454,7 @@ const DEFAULT_NOTIF_PREFS = {
   wa_am_reports_digest: true,
   // Digest
   daily_digest: true,
+  digest_sections: "",
   digest_time: "08:00",
   // Mode
   mentions_only: false, // if true, only mention emails are sent
@@ -33204,10 +33205,18 @@ function NotificationPrefsTab({notifPrefs, onSaveNotifPrefs, currentUser, rolePe
                   React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 0"}},
                     React.createElement("div",{style:{flex:1,marginRight:16}},
                       React.createElement("p",{style:{fontWeight:600,fontSize:13,color:dis?"var(--text3)":"var(--text)"}},"Daily Digest Email"),
-                      React.createElement("p",{style:{fontSize:11,color:"var(--text3)",marginTop:2}},"One summary email per day — tasks due today, overdue, completed")
+                      React.createElement("p",{style:{fontSize:11,color:"var(--text3)",marginTop:2}},"A short end-of-day brief (9 PM) with the main points — choose what it covers below")
                     ),
                     React.createElement(Toggle,{val:!!prefs.daily_digest,onChange:v=>upd("daily_digest",v),disabled:dis})
-                  )
+                  ),
+                  prefs.daily_digest && !dis && (()=>{
+                    let want = {}; try { want = prefs.digest_sections ? JSON.parse(prefs.digest_sections) : {}; } catch(e) { want = {}; }
+                    const isOn = k => !(k in want) || !!want[k];
+                    const opts = [["tasks","Tasks",true],["finance","Finance",["admin","accountant"].includes(currentUser?.role)],["recruitment","Recruitment",["admin","hr","account_director"].includes(currentUser?.role)]].filter(o=>o[2]);
+                    return React.createElement("div",{style:{display:"flex",gap:8,flexWrap:"wrap",padding:"0 0 12px",alignItems:"center"}},
+                      React.createElement("span",{style:{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase"}},"Include:"),
+                      ...opts.map(([k,l])=>React.createElement("button",{key:k,type:"button",onClick:()=>upd("digest_sections",JSON.stringify({tasks:isOn("tasks"),finance:isOn("finance"),recruitment:isOn("recruitment"),[k]:!isOn(k)})),style:{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:600,cursor:"pointer",border:"1px solid "+(isOn(k)?"var(--accent)":"var(--border2)"),background:isOn(k)?"var(--accent)":"transparent",color:isOn(k)?"#fff":"var(--text2)"}},(isOn(k)?"✓ ":"")+l)));
+                  })()
                 );
               })}
             </div>

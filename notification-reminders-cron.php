@@ -15,7 +15,8 @@
  *
  * Crontab:
  *   (star)/15 (star) (star) (star) (star) /usr/bin/php /var/www/socialflow/notification-reminders-cron.php reminders >> /var/www/socialflow/notification-reminders-cron.log 2>&1
- *   0 8 (star) (star) (star) /usr/bin/php /var/www/socialflow/notification-reminders-cron.php digest >> /var/www/socialflow/notification-reminders-cron.log 2>&1
+ *   (star)/10 (star) (star) (star) (star) /usr/bin/php /var/www/socialflow/notification-reminders-cron.php digest >> /var/www/socialflow/notification-reminders-cron.log 2>&1
+ *     (every 10 min — the script itself waits for 21:00 Cairo time and sends once a day)
  * (5-field cron wildcard syntax — written out here so this docblock comment doesn't break PHP parsing)
  */
 
@@ -184,59 +185,130 @@ if ($mode === 'reminders') {
 }
 
 if ($mode === 'digest') {
+    // End-of-day brief: goes out at 21:00 Cairo time. Run this every 10 minutes —
+    // it only sends once the time has passed, and at most once per person per day.
+    $DIGEST_SEND_TIME = '21:00';
+    if ($now->format('H:i') < $DIGEST_SEND_TIME) { echo json_encode(['mode'=>'digest','skipped'=>'before '.$DIGEST_SEND_TIME]); exit; }
+    // ── Daily Digest = a SHORT brief (main points only), built from the sections
+    // each person has switched on in Account > Notifications (digest_sections).
+    // Finance is for admin/accountant, Recruitment for admin/hr/account_director.
     $team = $pdo->query("SELECT * FROM team_members WHERE status = 'active' AND role NOT IN ('client')")->fetchAll(PDO::FETCH_ASSOC);
-    $posts = $pdo->query("SELECT * FROM posts")->fetchAll(PDO::FETCH_ASSOC);
-    $section = function($title, $color, $tasks) {
-        if (count($tasks) === 0) return '';
-        $rows = '';
-        foreach ($tasks as $t) {
-            $rows .= '<tr style="border-bottom:1px solid #f3f4f6">
-              <td style="padding:10px 14px;font-size:13px;color:#111827;font-weight:600">'.htmlspecialchars($t['title'] ?: 'Untitled').'</td>
-              <td style="padding:10px 14px;font-size:12px;color:#6b7280;text-align:right">'.htmlspecialchars($t['client_name'] ?: '—').'</td>
-            </tr>';
-        }
-        return '<p style="margin:20px 0 8px;font-size:11px;font-weight:800;color:'.$color.';letter-spacing:0.08em;text-transform:uppercase">'.$title.' ('.count($tasks).')</p>
-          <table width="100%" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-bottom:12px">'.$rows.'</table>';
+    $posts = $pdo->query("SELECT id, title, client_name, assigned_to, stage, scheduled_date FROM posts")->fetchAll(PDO::FETCH_ASSOC);
+    $yesterday = (clone $now)->modify('-1 day')->format('Y-m-d');
+    $monthStart = $now->format('Y-m-01');
+    $money = function($n) { return 'EGP ' . number_format((float)$n, 0); };
+    $one = function($sql, $params = []) use ($pdo) { try { $st = $pdo->prepare($sql); $st->execute($params); return (float)$st->fetchColumn(); } catch (Throwable $e) { return 0.0; } };
+    $rowsOf = function($sql, $params = []) use ($pdo) { try { $st = $pdo->prepare($sql); $st->execute($params); return $st->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) { return []; } };
+
+    // Finance numbers are the same for everyone who sees them — compute lazily, once.
+    $financeCache = null;
+    $finance = function() use (&$financeCache, $one, $yesterday, $monthStart, $today) {
+        if ($financeCache !== null) return $financeCache;
+        $inRange = function($from, $to) use ($one) {
+            $a = $one("SELECT COALESCE(SUM(amount),0) FROM payments WHERE LEFT(payment_date,10) BETWEEN :f AND :t", [':f'=>$from, ':t'=>$to]);
+            $b = $one("SELECT COALESCE(SUM(amount),0) FROM subscription_payments WHERE LEFT(payment_date,10) BETWEEN :f AND :t", [':f'=>$from, ':t'=>$to]);
+            $c = $one("SELECT COALESCE(SUM(amount),0) FROM expenses WHERE type = 'in' AND outstanding_kind IS NULL AND LEFT(date,10) BETWEEN :f AND :t", [':f'=>$from, ':t'=>$to]);
+            return $a + $b + $c;
+        };
+        $outRange = function($from, $to) use ($one) {
+            $a = $one("SELECT COALESCE(SUM(amount),0) FROM expenses WHERE (type IS NULL OR type = 'out') AND outstanding_kind IS NULL AND LEFT(date,10) BETWEEN :f AND :t", [':f'=>$from, ':t'=>$to]);
+            $b = $one("SELECT COALESCE(SUM(op.amount),0) FROM outstanding_payments op JOIN expenses e ON e.id = op.expense_id WHERE (e.type IS NULL OR e.type = 'out') AND LEFT(op.date,10) BETWEEN :f AND :t", [':f'=>$from, ':t'=>$to]);
+            return $a + $b;
+        };
+        $owed = $one("SELECT COALESCE(SUM(COALESCE(e.outstanding_total_payable, e.amount) - COALESCE(p.paid,0)),0) FROM expenses e
+            LEFT JOIN (SELECT expense_id, SUM(amount) paid FROM outstanding_payments GROUP BY expense_id) p ON p.expense_id = e.id
+            WHERE e.outstanding_kind IS NOT NULL AND (e.outstanding_status IS NULL OR e.outstanding_status <> 'settled') AND (e.type IS NULL OR e.type = 'out')");
+        $inv = $one("SELECT COUNT(*) FROM invoices WHERE status NOT IN ('paid','cancelled','draft') AND due_date IS NOT NULL AND due_date <> '' AND LEFT(due_date,10) < :t", [':t'=>$today]);
+        $invAmt = $one("SELECT COALESCE(SUM(balance_due),0) FROM invoices WHERE status NOT IN ('paid','cancelled','draft') AND due_date IS NOT NULL AND due_date <> '' AND LEFT(due_date,10) < :t", [':t'=>$today]);
+        return $financeCache = [
+            'y_in' => $inRange($today, $today), 'y_out' => $outRange($today, $today),
+            'm_in' => $inRange($monthStart, $today),    'm_out' => $outRange($monthStart, $today),
+            'owed' => $owed, 'inv_overdue' => (int)$inv, 'inv_overdue_amt' => $invAmt,
+        ];
     };
+    $recruitCache = null;
+    $recruit = function() use (&$recruitCache, $one, $rowsOf) {
+        if ($recruitCache !== null) return $recruitCache;
+        return $recruitCache = [
+            'new' => $rowsOf("SELECT candidate_name, job_title, ai_score FROM job_applications WHERE created_at >= (NOW() - INTERVAL 24 HOUR) ORDER BY created_at DESC LIMIT 50"),
+            'awaiting' => (int)$one("SELECT COUNT(*) FROM job_applications WHERE status = 'new'"),
+            'offers' => (int)$one("SELECT COUNT(*) FROM job_applications WHERE status = 'offer' AND (offer_candidate_response IS NULL OR offer_candidate_response = '')"),
+        ];
+    };
+
+    $line = fn($text) => '<p style="margin:0 0 5px;font-size:13px;line-height:1.55;color:#374151">'.$text.'</p>';
+    $head = fn($title, $color) => '<p style="margin:18px 0 6px;font-size:11px;font-weight:800;color:'.$color.';letter-spacing:0.08em;text-transform:uppercase">'.$title.'</p>';
+    $b = fn($t) => '<strong style="color:#111827">'.$t.'</strong>';
+    $teamOverdue = count(array_filter($posts, fn($p) => $p['scheduled_date'] && $p['scheduled_date'] < $today && !in_array($p['stage'], ['published','rejected','scheduled','approved'])));
 
     foreach ($team as $m) {
         $prefs = get_prefs($pdo, $m['email']);
         if (!pref_allows($prefs, 'daily_digest')) continue;
         if (!empty($prefs['digest_last_sent']) && substr($prefs['digest_last_sent'], 0, 10) === $today) continue;
 
-        $assigned = array_values(array_filter($posts, fn($p) => $p['assigned_to'] === $m['email']));
-        $dueToday = array_values(array_filter($assigned, fn($p) => $p['scheduled_date'] === $today && !in_array($p['stage'], ['published','rejected'])));
-        $overdue  = array_values(array_filter($assigned, fn($p) => $p['scheduled_date'] && $p['scheduled_date'] < $today && !in_array($p['stage'], ['published','rejected'])));
-        $completed= array_values(array_filter($assigned, fn($p) => $p['scheduled_date'] === $today && in_array($p['stage'], ['published','scheduled'])));
-        $pending  = array_values(array_filter($assigned, fn($p) => !in_array($p['stage'], ['published','rejected']) && $p['scheduled_date'] !== $today));
+        $role = $m['role'];
+        $canFinance = in_array($role, ['admin','accountant'], true);
+        $canRecruit = in_array($role, ['admin','hr','account_director'], true);
+        $want = json_decode((string)($prefs['digest_sections'] ?? ''), true);
+        if (!is_array($want)) $want = [];
+        $on = fn($k) => !array_key_exists($k, $want) || !empty($want[$k]); // default: everything the person may see
 
-        if (count($dueToday)===0 && count($overdue)===0 && count($completed)===0 && count($pending)===0) continue;
+        $body = '';
 
+        if ($on('tasks')) {
+            $assigned = array_values(array_filter($posts, fn($p) => $p['assigned_to'] === $m['email']));
+            $dueToday = array_filter($assigned, fn($p) => $p['scheduled_date'] === $today && !in_array($p['stage'], ['published','rejected']));
+            $overdue  = array_values(array_filter($assigned, fn($p) => $p['scheduled_date'] && $p['scheduled_date'] < $today && !in_array($p['stage'], ['published','rejected','scheduled','approved'])));
+            $pending  = array_filter($assigned, fn($p) => !in_array($p['stage'], ['published','rejected','scheduled','approved']));
+            if (count($dueToday) || count($overdue) || count($pending)) {
+                $body .= $head('Tasks', '#3b82f6');
+                $doneToday = (int)$one("SELECT COUNT(*) FROM task_logs WHERE assignee_email = :e AND LEFT(completed_at,10) = :t", [':e'=>$m['email'], ':t'=>$today]);
+                $body .= $line(($doneToday ? $b($doneToday).' finished today · ' : '').$b(count($dueToday)).' due today · '.$b(count($overdue)).' overdue · '.$b(count($pending)).' open in total');
+                foreach (array_slice($overdue, 0, 3) as $t) $body .= $line('• '.htmlspecialchars($t['title'] ?: 'Untitled').' <span style="color:#9ca3af">— '.htmlspecialchars($t['client_name'] ?: '').'</span>');
+                if (count($overdue) > 3) $body .= $line('<span style="color:#9ca3af">…and '.(count($overdue)-3).' more overdue</span>');
+            }
+            if (in_array($role, ['admin','account_manager','account_director','account_executive'], true) && $teamOverdue > 0) {
+                if ($body === '' || strpos($body, 'Tasks') === false) $body .= $head('Tasks', '#3b82f6');
+                $body .= $line('Whole team: '.$b($teamOverdue).' overdue task'.($teamOverdue==1?'':'s'));
+            }
+        }
+
+        if ($on('finance') && $canFinance) {
+            $f = $finance();
+            $body .= $head('Finance', '#10b981');
+            $body .= $line('Today: in '.$b($money($f['y_in'])).' · out '.$b($money($f['y_out'])));
+            $net = $f['m_in'] - $f['m_out'];
+            $body .= $line('This month so far: in '.$b($money($f['m_in'])).' · out '.$b($money($f['m_out'])).' · net <strong style="color:'.($net>=0?'#059669':'#dc2626').'">'.($net<0?'−':'').$money(abs($net)).'</strong>');
+            if ($f['owed'] > 0) $body .= $line('Still owed (outstanding): '.$b($money($f['owed'])));
+            if ($f['inv_overdue'] > 0) $body .= $line('<span style="color:#dc2626">'.$f['inv_overdue'].' overdue invoice'.($f['inv_overdue']==1?'':'s').' — '.$money($f['inv_overdue_amt']).'</span>');
+        }
+
+        if ($on('recruitment') && $canRecruit) {
+            $r = $recruit();
+            if (count($r['new']) || $r['awaiting'] || $r['offers']) {
+                $body .= $head('Recruitment', '#8b5cf6');
+                $body .= $line($b(count($r['new'])).' new application'.(count($r['new'])==1?'':'s').' · '.$b($r['awaiting']).' awaiting review'.($r['offers'] ? ' · '.$b($r['offers']).' offer'.($r['offers']==1?'':'s').' waiting for an answer' : ''));
+                foreach (array_slice($r['new'], 0, 3) as $a) $body .= $line('• '.htmlspecialchars($a['candidate_name'] ?: 'Unknown').' <span style="color:#9ca3af">— '.htmlspecialchars($a['job_title'] ?: 'role').($a['ai_score'] !== null ? ' ('.(int)$a['ai_score'].'/100)' : '').'</span>');
+            }
+        }
+
+        if ($body === '') continue; // nothing worth sending
+
+        $first = htmlspecialchars(explode(' ', trim($m['name']))[0] ?: 'there');
         $html = email_base(
-            email_h('Your daily summary') .
-            email_p('Hi <strong>'.htmlspecialchars($m['name']).'</strong>, here\'s your task overview for today.') .
-            email_card([
-                ['Due Today', count($dueToday), count($dueToday)>0?'#f59e0b':'#10b981'],
-                ['Overdue', count($overdue), count($overdue)>0?'#ef4444':'#10b981'],
-                ['Completed', count($completed), '#10b981'],
-                ['Pending', count($pending), '#6b7280'],
-            ]) .
-            email_divider() .
-            $section('Due Today', '#f59e0b', $dueToday) .
-            $section('Overdue', '#ef4444', $overdue) .
-            $section('Completed', '#10b981', $completed) .
-            $section('Pending', '#6b7280', $pending) .
-            email_btn('https://socialflow.admepro.com', 'Open SocialFlow')
+            email_h('End-of-day brief') .
+            email_p('Good evening <strong>'.$first.'</strong> — the main points from today, '.$now->format('D j M').'.') .
+            $body .
+            email_btn('https://socialflow.admepro.com', 'Open SocialFlow') .
+            '<p style="margin:0;font-size:11px;color:#9ca3af;text-align:center">Choose what appears here in Account → Notifications → Daily Digest.</p>'
         );
-        [$ok, $raw] = send_via_resend($m['email'], '[SocialFlow] Your daily summary — '.$now->format('d M Y'), $html);
-        log_email($insertLog, $m['email'], '[SocialFlow] Your daily summary', $ok, $raw, $now);
+        [$ok, $raw] = send_via_resend($m['email'], '[SocialFlow] End-of-day brief — '.$now->format('d M Y'), $html);
+        log_email($insertLog, $m['email'], '[SocialFlow] Daily brief', $ok, $raw, $now);
         if ($ok) {
             $counts['daily_digest']++;
             $upd = $pdo->prepare("UPDATE notification_prefs SET digest_last_sent = :d WHERE user_email = :e");
             $upd->execute([':d' => $now->format('Y-m-d\TH:i:s\Z'), ':e' => $m['email']]);
             if ($upd->rowCount() === 0) {
-                // No notification_prefs row yet for this user — create one so
-                // digest_last_sent actually sticks (otherwise it'd resend daily).
                 $ins = $pdo->prepare("INSERT INTO notification_prefs (id, user_email, digest_last_sent) VALUES (UUID(), :e, :d)");
                 $ins->execute([':e' => $m['email'], ':d' => $now->format('Y-m-d\TH:i:s\Z')]);
             }
