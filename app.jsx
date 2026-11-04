@@ -1262,6 +1262,7 @@ const SB_TABLE = {
   CustomerMessage:"customer_messages",
   ReplyBotSetting:"reply_bot_settings",
   DailyReportSettings:"daily_report_settings",
+  TaskLog:"task_logs",
   RolePermission:"role_permissions",
   LeaveRequest:"leave_requests",
   AttendanceRecord:"attendance_records",
@@ -1311,6 +1312,7 @@ const SB_SCHEMA = {
   // single notification-prefs save was silently failing.
   notification_prefs: ["user_email","all_disabled","mentions_only","daily_digest","task_assigned","task_stage_changed","task_due_soon","task_overdue","task_mention","task_comment","project_created","project_task_added","project_deadline_updated","post_approved","post_rejected","client_approval_required","invoice_created","payment_received","subscription_renewal","user_invited","access_approved","access_rejected","permissions_updated","recruitment_new_application","recruitment_task_submitted","recruitment_reschedule_request"],
   customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","attachment_url","sent_by","thread_status","draft_status","external_id"],
+  task_logs: ["post_id","post_title","client_name","phase","round","assignee_email","assignee_name","assigned_by","assigned_at","completed_at","duration_mins","outcome"],
   daily_report_settings: ["enabled","send_time","days","sections","client_ids","recipients","window_hours","last_sent_date"],
   reply_bot_settings: ["client_id","client_name","enabled","mode","channels","tone","brain","dont_do","fallback_message","updated_by","external_bot","external_webhook_url","external_api_key"],
   pro_chat_sessions: ["user_email","client_id","title","messages","shared_with","is_shared_copy"],
@@ -6388,6 +6390,44 @@ function PlanItemsEditor({post,team,onUpdateItem,onSplitItem}) {
   );
 }
 
+// Per-task phase log (see logTaskPhase in App): who had each phase, when they were
+// given it, when they finished and how long it took — a new row every round.
+function TaskLogView({postId, team=[]}) {
+  const [rows,setRows] = useState(null);
+  useEffect(()=>{
+    let live = true;
+    const load = () => qe("TaskLog",{post_id:postId},"assigned_at",200).then(r=>{ if(live) setRows(r.entities||[]); }).catch(()=>{ if(live) setRows([]); });
+    load();
+    const t = setInterval(load, 20000);
+    return ()=>{ live=false; clearInterval(t); };
+  },[postId]);
+  const fmtDur = (m) => m==null ? "—" : m<60 ? `${m} min` : m<1440 ? `${Math.floor(m/60)}h ${m%60}m` : `${Math.floor(m/1440)}d ${Math.floor((m%1440)/60)}h`;
+  const fmt = (iso) => iso ? new Date(iso).toLocaleString("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "—";
+  if(rows===null) return <div style={{padding:16}}><Spinner size={16}/></div>;
+  const sorted = [...rows].sort((a,b)=>new Date(a.assigned_at||a.completed_at||0)-new Date(b.assigned_at||b.completed_at||0));
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      <p style={{fontSize:12,color:"var(--text3)"}}>Every phase this task goes through — who had it, when it was assigned, when it was finished and how long it took. If it comes back, even to the same person, a new line starts.</p>
+      {sorted.length===0&&<p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:16}}>No log yet — it starts recording from the next phase change.</p>}
+      {sorted.map(r=>{
+        const st = STAGE_MAP[r.phase];
+        const live = !r.completed_at;
+        return (
+          <div key={r.id} style={{background:"var(--surface2)",border:`1px solid ${live?"var(--accent)":"var(--border)"}`,borderRadius:"var(--rs)",padding:"9px 12px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <span style={{fontSize:12,fontWeight:800,color:st?.color||"var(--text)"}}>{st?.label||r.phase}</span>
+              {Number(r.round)>1&&<span style={{fontSize:10,fontWeight:700,color:"#f59e0b",background:"#f59e0b22",borderRadius:99,padding:"1px 8px"}}>Round {r.round}</span>}
+              <span style={{fontSize:12,fontWeight:600}}>{r.assignee_name||r.assignee_email}</span>
+              <span style={{marginLeft:"auto",fontSize:11,fontWeight:700,color:live?"var(--accent)":"var(--text2)"}}>{live?"In progress":fmtDur(r.duration_mins)}</span>
+            </div>
+            <p style={{fontSize:11,color:"var(--text3)",marginTop:3}}>Assigned {fmt(r.assigned_at)}{r.assigned_by?` by ${r.assigned_by}`:""} · Done {fmt(r.completed_at)}{r.outcome?` — ${r.outcome}`:""}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // POST DETAIL MODAL
 // ════════════════════════════════════════════════════════════════
 function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onAddComment,onDeleteComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[],allPosts=[],contactReports=[],onUpdatePlanItem,onSplitPlanItem}) {
@@ -7946,6 +7986,11 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                 Insights
               </button>
             )}
+            {canAssignPeople&&(
+              <button onClick={()=>setActivityTab("log")} style={{padding:"6px 14px",borderRadius:99,background:activityTab==="log"?"var(--accent)":"none",color:activityTab==="log"?"#fff":"var(--text2)",border:"none",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                Log
+              </button>
+            )}
             {isManager&&(
               <button onClick={()=>setActivityTab("mai")} style={{padding:"6px 14px",borderRadius:99,background:activityTab==="mai"?"var(--accent)":"none",color:activityTab==="mai"?"#fff":"var(--text2)",border:"none",fontSize:12,fontWeight:700,cursor:"pointer"}}>
                 Mai
@@ -7953,7 +7998,9 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
             )}
           </div>
 
-          {activityTab==="mai" ? (
+          {activityTab==="log" ? (
+            <TaskLogView postId={post.id} team={team}/>
+          ) : activityTab==="mai" ? (
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               <p style={{fontSize:12,color:"var(--text3)"}}>Mai's take on this task — grounded in this client's actual published-post count and any real contact reports that mention something related to it.</p>
               {maiRec && (
@@ -50937,6 +50984,8 @@ Return ONLY valid JSON (no markdown, no explanation):
       published_at: newStage==="published" ? (post.published_at || new Date().toISOString()) : post.published_at,
     };
     setData(d=>({...d,posts:d.posts.map(p=>p.id===post.id?updatedPost:p)}));
+    // Task log: close the phase that just ended, open the next one for whoever now owns it.
+    if(priorStage!==newStage) logTaskPhase({...post, assigned_to: data.posts.find(p=>p.id===post.id)?.assigned_to ?? post.assigned_to}, priorStage, newStage, updatedPost.assigned_to);
 
     // Log a real performance record for whoever just finished THEIR part —
     // not the post as a whole. A designer's job is done the moment a task
@@ -51194,7 +51243,37 @@ Return ONLY valid JSON (no markdown, no explanation):
     }
   };
 
+  // ── TASK LOG — one row per person per phase per round: who had it, when it was
+  // assigned to them, when they finished it and how long that took. A task that
+  // comes back (same person or a new one) gets a NEW row with its own start time.
+  const TASK_LOG_TERMINAL = ["published","scheduled","approved","rejected","cancelled","on_hold"];
+  const logTaskPhase = async (post, fromStage, toStage, toAssigneeEmail, reason="") => {
+    try {
+      const nowIso = new Date().toISOString();
+      const existing = (await qe("TaskLog",{post_id:post.id},"-assigned_at",100).catch(()=>({entities:[]}))).entities||[];
+      const open = existing.find(l=>!l.completed_at);
+      if(open) {
+        const mins = open.assigned_at ? Math.max(0, Math.round((Date.now()-new Date(open.assigned_at).getTime())/60000)) : null;
+        await ue("TaskLog", open.id, {completed_at:nowIso, duration_mins:mins, outcome: reason || (toStage!==fromStage ? `moved to ${STAGE_MAP[toStage]?.label||toStage}` : "reassigned")});
+      } else if(fromStage && !TASK_LOG_TERMINAL.includes(fromStage) && post.assigned_to) {
+        // No open row (task predates the log): record the phase that just ended, start unknown.
+        const who = (data.team||[]).find(m=>m.email===post.assigned_to);
+        await ce("TaskLog",[{post_id:post.id, post_title:post.title, client_name:post.client_name||"", phase:fromStage, round:existing.filter(l=>l.phase===fromStage).length+1, assignee_email:post.assigned_to, assignee_name:who?.name||post.assigned_to, assigned_by:"", assigned_at:null, completed_at:nowIso, duration_mins:null, outcome: toStage!==fromStage ? `moved to ${STAGE_MAP[toStage]?.label||toStage}` : "reassigned"}]).catch(()=>{});
+      }
+      if(!TASK_LOG_TERMINAL.includes(toStage) && toAssigneeEmail) {
+        const who = (data.team||[]).find(m=>m.email===toAssigneeEmail);
+        await ce("TaskLog",[{post_id:post.id, post_title:post.title, client_name:post.client_name||"", phase:toStage, round:existing.filter(l=>l.phase===toStage).length+1, assignee_email:toAssigneeEmail, assignee_name:who?.name||toAssigneeEmail, assigned_by:currentUser?.name||"", assigned_at:nowIso, completed_at:null, duration_mins:null, outcome:""}]);
+      }
+    } catch(e) { console.warn("task log failed", e); }
+  };
   const handleEditPost = (updatedPost) => {
+    // Same stage but a different person in charge -> close their row, open the new person's.
+    try {
+      const before = data.posts.find(p=>p.id===updatedPost.id);
+      if(before && before.stage===updatedPost.stage && before.assigned_to!==updatedPost.assigned_to && updatedPost.assigned_to) {
+        logTaskPhase(before, before.stage, before.stage, updatedPost.assigned_to, "reassigned");
+      }
+    } catch(e) {}
     setData(d=>({...d, posts:d.posts.map(p=>p.id===updatedPost.id?updatedPost:p)}));
     setSelectedPost(updatedPost);
     ue("Post", updatedPost.id, {
@@ -51215,6 +51294,10 @@ Return ONLY valid JSON (no markdown, no explanation):
       priority: updatedPost.priority,
       assigned_to: updatedPost.assigned_to,
       assigned_to_extra: updatedPost.assigned_to_extra||null,
+      // The stage owners — "Hand over" changes these; without saving them the
+      // new owner looked right until the next reload, then reverted.
+      content_assigned_to: updatedPost.content_assigned_to||null,
+      design_assigned_to: updatedPost.design_assigned_to||null,
       scheduled_date: updatedPost.scheduled_date||null,
       scheduled_time: updatedPost.scheduled_time||null,
       due_date: updatedPost.due_date||null,
