@@ -188,7 +188,10 @@ if ($mode === 'digest') {
     // End-of-day brief: goes out at 21:00 Cairo time. Run this every 10 minutes —
     // it only sends once the time has passed, and at most once per person per day.
     $DIGEST_SEND_TIME = '21:00';
-    if ($now->format('H:i') < $DIGEST_SEND_TIME) { echo json_encode(['mode'=>'digest','skipped'=>'before '.$DIGEST_SEND_TIME]); exit; }
+    // Test run: `php notification-reminders-cron.php digest test you@email.com` sends ONE brief
+    // to that person right now (ignores the 9 PM gate and the once-a-day guard).
+    $testEmail = (($argv[2] ?? '') === 'test') ? strtolower(trim($argv[3] ?? '')) : '';
+    if (!$testEmail && $now->format('H:i') < $DIGEST_SEND_TIME) { echo json_encode(['mode'=>'digest','skipped'=>'before '.$DIGEST_SEND_TIME]); exit; }
     // ── Daily Digest = a SHORT brief (main points only), built from the sections
     // each person has switched on in Account > Notifications (digest_sections).
     // Finance is for admin/accountant, Recruitment for admin/hr/account_director.
@@ -270,9 +273,12 @@ if ($mode === 'digest') {
     $teamOverdue = count(array_filter($posts, fn($p) => $p['scheduled_date'] && $p['scheduled_date'] < $today && !in_array($p['stage'], ['published','rejected','scheduled','approved'])));
 
     foreach ($team as $m) {
+        if ($testEmail && strtolower($m['email']) !== $testEmail) continue;
         $prefs = get_prefs($pdo, $m['email']);
-        if (!pref_allows($prefs, 'daily_digest')) continue;
-        if (!empty($prefs['digest_last_sent']) && substr($prefs['digest_last_sent'], 0, 10) === $today) continue;
+        if (!$testEmail) {
+            if (!pref_allows($prefs, 'daily_digest')) continue;
+            if (!empty($prefs['digest_last_sent']) && substr($prefs['digest_last_sent'], 0, 10) === $today) continue;
+        }
 
         $role = $m['role'];
         $canFinance = in_array($role, ['admin','accountant'], true);
@@ -372,6 +378,7 @@ if ($mode === 'digest') {
         );
         [$ok, $raw] = send_via_resend($m['email'], '[SocialFlow] End-of-day brief — '.$now->format('d M Y'), $html);
         log_email($insertLog, $m['email'], '[SocialFlow] Daily brief', $ok, $raw, $now);
+        if ($testEmail) { echo json_encode(['test'=>$m['email'], 'sent'=>$ok, 'detail'=>$ok ? 'ok' : $raw]); exit; }
         if ($ok) {
             $counts['daily_digest']++;
             $upd = $pdo->prepare("UPDATE notification_prefs SET digest_last_sent = :d WHERE user_email = :e");
