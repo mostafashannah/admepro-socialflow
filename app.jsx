@@ -20536,10 +20536,11 @@ async function computeFirst3MonthsAbsence(member, lastDayISO, rules) {
   if(!startRaw || !lastDayISO) return {days:0, lateDays:0, lateHours:0, rate:0, amount:0};
   const end3 = new Date(startRaw+"T00:00:00"); end3.setMonth(end3.getMonth()+3);
   const endISO = end3.toISOString().slice(0,10);
-  const [att, leaves] = await Promise.all([
-    qe("AttendanceRecord",{team_member_id:member.id}).catch(()=>[]),
-    qe("LeaveRequest",{team_member_id:member.id}).catch(()=>[]),
+  const [attR, leavesR] = await Promise.all([
+    qe("AttendanceRecord",{team_member_id:member.id},null,2000),
+    qe("LeaveRequest",{team_member_id:member.id},null,500),
   ]);
+  const att = attR?.entities||[], leaves = leavesR?.entities||[];
   const approved = (leaves||[]).filter(l=>String(l.status||"").toLowerCase()==="approved");
   const days = new Set(); let lateDays = 0;
   (att||[]).forEach(a=>{
