@@ -2378,7 +2378,8 @@ function waPrefAllows(PDO $pdo, $email, $col) {
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$row) return true;
     if (!empty($row['all_disabled'])) return false;
-    return $row['pref'] !== '0';
+    // TINYINT comes back as an int (0), not the string '0' — compare as strings so a switched-off preference is honoured.
+    return (string)$row['pref'] !== '0';
 }
 
 function sendWhatsAppReply($to, $body) {

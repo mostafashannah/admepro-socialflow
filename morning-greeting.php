@@ -15,7 +15,7 @@ $members = $pdo->query("
 ")->fetchAll(PDO::FETCH_ASSOC);
 
 foreach ($members as $m) {
-    if (!empty($m['all_disabled']) || $m['wa_morning_greeting'] === '0') continue;
+    if (!empty($m['all_disabled']) || (string)$m['wa_morning_greeting'] === '0') continue;
     $tasks = $pdo->prepare("
         SELECT title, stage, scheduled_date FROM posts
         WHERE assigned_to = :n AND stage NOT IN ('published','cancelled')

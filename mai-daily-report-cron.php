@@ -543,7 +543,7 @@ foreach ($recipientFindings as $email => $entry) {
     $prefStmt->execute([':email' => $email]);
     $pref = $prefStmt->fetch(PDO::FETCH_ASSOC);
     // No saved prefs row yet means default-on, matching DEFAULT_NOTIF_PREFS on the frontend.
-    if ($pref && (!empty($pref['all_disabled']) || $pref['wa_daily_finance_report'] === '0')) continue;
+    if ($pref && (!empty($pref['all_disabled']) || (string)$pref['wa_daily_finance_report'] === '0')) continue;
     sendWhatsAppReply($entry['whatsapp_number'], $msg);
 }
 

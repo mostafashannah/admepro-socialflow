@@ -524,7 +524,7 @@ function maiSendAdminDigest(PDO $pdo, $reportType) {
          WHERE tm.role = 'admin' AND tm.status = 'active' AND tm.whatsapp_number IS NOT NULL AND tm.whatsapp_number != ''"
     )->fetchAll(PDO::FETCH_ASSOC);
     foreach ($admins as $admin) {
-        if (!empty($admin['all_disabled']) || $admin['wa_am_reports_digest'] === '0') continue;
+        if (!empty($admin['all_disabled']) || (string)$admin['wa_am_reports_digest'] === '0') continue;
         // The end-of-day email brief already contains the AM check-in results and
         // progress — don't also send the separate WhatsApp summary to anyone who gets it.
         $secs = json_decode((string)($admin['digest_sections'] ?? ''), true);

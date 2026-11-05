@@ -549,7 +549,7 @@ foreach ($messages as $message) {
                         ? "📧 {$confirmedApp['candidate_name']} ({$confirmedApp['job_title']}) wants to move their interview from {$confirmedApp['interview_confirmed_slot']} to {$proposedTime}.\n\nOpen Recruitment to approve or propose a different time."
                         : "📧 {$confirmedApp['candidate_name']} ({$confirmedApp['job_title']}) emailed asking to change their confirmed interview time ({$confirmedApp['interview_confirmed_slot']}):\n\"{$snippet}\"\n\nOpen Recruitment to propose new times.";
                     foreach ($admins as $admin) {
-                        if (!empty($admin['all_disabled']) || $admin['recruitment_reschedule_request'] === '0') continue;
+                        if (!empty($admin['all_disabled']) || (string)$admin['recruitment_reschedule_request'] === '0') continue;
                         if (!empty($admin['whatsapp_number'])) sendWhatsAppReply($admin['whatsapp_number'], $alertMsg);
                         if (!empty($admin['email'])) {
                             $notif = $pdo->prepare("INSERT INTO notifications (id, recipient_email, title, message, type, is_read, link_type, link_id) VALUES (:id, :email, :title, :msg, 'info', 0, 'job_application', :appid)");

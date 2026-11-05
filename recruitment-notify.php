@@ -41,7 +41,7 @@ try {
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     $sent = 0;
     foreach ($rows as $row) {
-        if (!empty($row['all_disabled']) || $row['wa_recruitment_candidate_response'] === '0') continue;
+        if (!empty($row['all_disabled']) || (string)$row['wa_recruitment_candidate_response'] === '0') continue;
         $digits = preg_replace('/\D/', '', (string)$row['whatsapp_number']);
         if (!$digits) continue;
         if (sendWhatsAppReply($digits, $message)) $sent++;
