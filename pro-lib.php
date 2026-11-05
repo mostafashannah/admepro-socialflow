@@ -2388,8 +2388,12 @@ function sendWhatsAppReply($to, $body) {
         return;
     }
     $to = preg_replace('/[\s\-\(\)]+/', '', $to);
-    if (!str_starts_with($to, '+')) $to = '+' . $to;
-    $to = '+' . preg_replace('/\D/', '', $to);
+    $digits = preg_replace('/\D/', '', $to);
+    // Numbers saved the local Egyptian way (01XXXXXXXXX, or 0020…/00…) used to become "+01XXXXXXXXX"
+    // — not a real number, so the message never reached the person. Fix them to +20XXXXXXXXXX.
+    if (str_starts_with($digits, '00')) $digits = substr($digits, 2);
+    elseif (preg_match('/^0\d{10}$/', $digits)) $digits = '20' . substr($digits, 1);
+    $to = '+' . $digits;
     $endpoint = 'https://graph.facebook.com/v19.0/' . WA_PHONE_ID . '/messages';
     $payload = json_encode([
         'messaging_product' => 'whatsapp',
