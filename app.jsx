@@ -35701,6 +35701,22 @@ function TerminationDeductionPanel({run, member, rules, onApply}) {
     return ()=>{alive=false};
   },[run.id]);
   const go = async (st)=>{ setBusy(true); try{ await onApply(run, st==="applied"?Number(amt)||0:0, st); } finally{ setBusy(false);} };
+  const [sent,setSent] = useState(false);
+  const sendReport = async ()=>{
+    if(!member.email){ alert("This member has no email address."); return; }
+    setBusy(true);
+    try{
+      const f = n=>"EGP "+Math.round(Number(n)||0).toLocaleString();
+      const applied = status==="applied", ded = Number(run.termination_deduction)||0;
+      const sug = calc.amount;
+      const outcome = applied ? (Math.round(ded)===Math.round(sug) ? `Applied in full (${f(ded)})` : `Applied at an adjusted amount of ${f(ded)} (calculated: ${f(sug)})`) : `Not applied (calculated: ${f(sug)} — waived)`;
+      const row=(a,b,bold)=>`<tr><td style="padding:10px 14px;border-bottom:1px solid #f1f1f3;font-size:13px;color:#6b7280">${a}</td><td style="padding:10px 14px;border-bottom:1px solid #f1f1f3;font-size:14px;text-align:right;font-weight:${bold?800:600};color:#111827">${b}</td></tr>`;
+      const month = new Date(run.salary_month+"-01").toLocaleDateString("en-US",{month:"long",year:"numeric"});
+      const html = `<!DOCTYPE html><html><body style="margin:0;background:#f4f4f7;font-family:Arial,sans-serif"><div style="max-width:560px;margin:0 auto;padding:24px"><div style="background:#fff;border-radius:12px;padding:24px"><h2 style="margin:0 0 6px;color:#111827">Final salary report — ${month}</h2><p style="color:#6b7280;font-size:14px;margin:0 0 16px">Hi ${(member.name||"").split(" ")[0]}, here is the full breakdown of your final pay.</p><table style="width:100%;border-collapse:collapse">${row("Prorated salary (through last working day)",f(run.base_salary))}${Number(run.deduction_amount)>0?row("Vacation overage deduction",`−${f(run.deduction_amount)}`):""}${row("Absent / leave days in first 3 months",`${calc.days} day(s)`)}${calc.lateHours>0?row("Late-policy hours (first 3 months)",`${calc.lateHours}h`):""}${row("Daily rate",f(calc.rate))}${row("First 3 months deduction",outcome)}${applied?row("Deducted from your pay",`−${f(ded)}`):""}${row("Final net amount",f(run.net_amount),true)}${row("Payable on","5th–10th of next month")}</table><p style="color:#6b7280;font-size:12px;margin:16px 0 0">This is the final calculation after attendance review.</p></div></div></body></html>`;
+      const ok = await sendEmail(member.email, `Your final salary report — ${month}`, html);
+      if(ok){ setSent(true); } else alert("Email failed to send.");
+    } finally { setBusy(false); }
+  };
   if(!calc) return <div style={{flexBasis:"100%",fontSize:11,color:"var(--text3)"}}>Calculating termination deduction…</div>;
   return (
     <div style={{flexBasis:"100%",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"10px 12px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
@@ -35711,6 +35727,7 @@ function TerminationDeductionPanel({run, member, rules, onApply}) {
       <input type="number" min="0" value={amt} onChange={e=>setAmt(e.target.value)} style={{width:110,padding:"6px 8px",border:"1px solid var(--border2)",borderRadius:6,background:"var(--surface)",color:"var(--text)",fontSize:13}}/>
       <Btn disabled={busy} onClick={()=>go("applied")}>{status==="applied"?"Update":"Apply"}</Btn>
       <Btn variant="secondary" disabled={busy} onClick={()=>go("rejected")}>{status==="applied"?"Remove":"Reject"}</Btn>
+      {(status==="applied"||status==="rejected")&&<Btn variant="secondary" disabled={busy} onClick={sendReport}>{sent?"Report sent ✓":"Send full report"}</Btn>}
     </div>
   );
 }
