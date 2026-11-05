@@ -20531,7 +20531,8 @@ function terminationLetterCopy(reasonKey, firstName, lastDayLabel) {
 // Unapproved absent days (no clock-in, not covered by approved leave) within
 // the first 3 months of employment, up to the last working day.
 async function computeFirst3MonthsAbsence(member, lastDayISO, rules) {
-  const startRaw = member?.start_date || (member?.created_at ? String(member.created_at).slice(0,10) : null);
+  const startRaw = String(member?.start_date || member?.created_at || "").slice(0,10) || null;
+  lastDayISO = String(lastDayISO||"").slice(0,10);
   if(!startRaw || !lastDayISO) return {days:0, lateDays:0, lateHours:0, rate:0, amount:0};
   const end3 = new Date(startRaw+"T00:00:00"); end3.setMonth(end3.getMonth()+3);
   const endISO = end3.toISOString().slice(0,10);
@@ -35694,10 +35695,11 @@ function TerminationDeductionPanel({run, member, rules, onApply}) {
   const [calc,setCalc] = useState(null);
   const [amt,setAmt] = useState("");
   const [busy,setBusy] = useState(false);
+  const [err,setErr] = useState("");
   const status = run.termination_deduction_status;
   useEffect(()=>{
     let alive=true;
-    computeFirst3MonthsAbsence(member, member.termination_date, rules).then(c=>{ if(alive){ setCalc(c); setAmt(String(status==="applied"?Number(run.termination_deduction)||0:c.amount)); } }).catch(()=>{});
+    computeFirst3MonthsAbsence(member, member.termination_date, rules).then(c=>{ if(alive){ setCalc(c); setAmt(String(status==="applied"?Number(run.termination_deduction)||0:c.amount)); } }).catch(e=>{ if(alive) setErr(String(e?.message||e)); });
     return ()=>{alive=false};
   },[run.id]);
   const go = async (st)=>{ setBusy(true); try{ await onApply(run, st==="applied"?Number(amt)||0:0, st); } finally{ setBusy(false);} };
@@ -35717,6 +35719,7 @@ function TerminationDeductionPanel({run, member, rules, onApply}) {
       if(ok){ setSent(true); } else alert("Email failed to send.");
     } finally { setBusy(false); }
   };
+  if(err) return <div style={{flexBasis:"100%",fontSize:11,color:"#ef4444"}}>Could not calculate termination deduction: {err}</div>;
   if(!calc) return <div style={{flexBasis:"100%",fontSize:11,color:"var(--text3)"}}>Calculating termination deduction…</div>;
   return (
     <div style={{flexBasis:"100%",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"10px 12px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
