@@ -20530,9 +20530,9 @@ function terminationLetterCopy(reasonKey, firstName, lastDayLabel) {
 //     events notwithstanding.
 // Unapproved absent days (no clock-in, not covered by approved leave) within
 // the first 3 months of employment, up to the last working day.
-async function computeFirst3MonthsAbsence(member, lastDayISO) {
+async function computeFirst3MonthsAbsence(member, lastDayISO, rules) {
   const startRaw = member?.start_date || (member?.created_at ? String(member.created_at).slice(0,10) : null);
-  if(!startRaw || !lastDayISO) return {days:0};
+  if(!startRaw || !lastDayISO) return {days:0, lateDays:0, lateHours:0, rate:0, amount:0};
   const end3 = new Date(startRaw+"T00:00:00"); end3.setMonth(end3.getMonth()+3);
   const endISO = end3.toISOString().slice(0,10);
   const [att, leaves] = await Promise.all([
@@ -20540,12 +20540,12 @@ async function computeFirst3MonthsAbsence(member, lastDayISO) {
     qe("LeaveRequest",{team_member_id:member.id}).catch(()=>[]),
   ]);
   const approved = (leaves||[]).filter(l=>String(l.status||"").toLowerCase()==="approved");
-  const days = new Set();
+  const days = new Set(); let lateDays = 0;
   (att||[]).forEach(a=>{
-    const d = String(a.date||"").slice(0,10);
+    const d = String(a.work_date||a.date||"").slice(0,10);
     if(!d || d<startRaw || d>=endISO || d>lastDayISO) return;
-    if(String(a.status||"").toLowerCase()!=="absent" || a.check_in) return;
-    days.add(d);
+    if(String(a.status||"").toLowerCase()==="absent" && !a.check_in) days.add(d);
+    if(a.late_deducted && String(a.late_deducted)!=="0") lateDays++;
   });
   // No leave credit in the first 3 months: approved leave days are deducted too (Fri/Sat are weekend).
   approved.forEach(l=>{
@@ -20557,7 +20557,10 @@ async function computeFirst3MonthsAbsence(member, lastDayISO) {
       days.add(d);
     }
   });
-  return {days:days.size};
+  const hrs = Number(rules?.lateDeductHours ?? 2), trig = Math.max(1, Number(rules?.lateTriggerCount ?? 1));
+  const lateHours = lateDays*hrs/trig;
+  const rate = ((Number(member.probation_salary)||0)>0 ? Number(member.probation_salary) : Number(member.salary)||0)/30;
+  return {days:days.size, lateDays, lateHours, rate, amount: Math.round((days.size + lateHours/8)*rate*100)/100};
 }
 
 function terminationPayrollEstimate(member, lastDayISO, raiseEvents, absence) {
@@ -35687,7 +35690,32 @@ function FinanceForecast({monthlyByCategory, ledger=[], partnerInKeys=[], team=[
   );
 }
 
-function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,clients=[],financeClientNotes=[],team=[],currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh,onRenameClient,onSaveClientNote,onUpdateClient,activityLogs=[],payrollRuns=[],onDecidePayrollRun}) {
+function TerminationDeductionPanel({run, member, rules, onApply}) {
+  const [calc,setCalc] = useState(null);
+  const [amt,setAmt] = useState("");
+  const [busy,setBusy] = useState(false);
+  const status = run.termination_deduction_status;
+  useEffect(()=>{
+    let alive=true;
+    computeFirst3MonthsAbsence(member, member.termination_date, rules).then(c=>{ if(alive){ setCalc(c); setAmt(String(status==="applied"?Number(run.termination_deduction)||0:c.amount)); } }).catch(()=>{});
+    return ()=>{alive=false};
+  },[run.id]);
+  const go = async (st)=>{ setBusy(true); try{ await onApply(run, st==="applied"?Number(amt)||0:0, st); } finally{ setBusy(false);} };
+  if(!calc) return <div style={{flexBasis:"100%",fontSize:11,color:"var(--text3)"}}>Calculating termination deduction…</div>;
+  return (
+    <div style={{flexBasis:"100%",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"10px 12px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+      <div style={{flex:1,minWidth:220}}>
+        <p style={{fontSize:12,fontWeight:700}}>Termination deduction — first 3 months{status==="applied"?" · applied":status==="rejected"?" · skipped":""}</p>
+        <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{calc.days} absent/leave day(s){calc.lateHours>0?` + ${calc.lateHours}h late-policy`:""} × EGP {Math.round(calc.rate).toLocaleString()}/day = EGP {Math.round(calc.amount).toLocaleString()} suggested</p>
+      </div>
+      <input type="number" min="0" value={amt} onChange={e=>setAmt(e.target.value)} style={{width:110,padding:"6px 8px",border:"1px solid var(--border2)",borderRadius:6,background:"var(--surface)",color:"var(--text)",fontSize:13}}/>
+      <Btn disabled={busy} onClick={()=>go("applied")}>{status==="applied"?"Update":"Apply"}</Btn>
+      <Btn variant="secondary" disabled={busy} onClick={()=>go("rejected")}>{status==="applied"?"Remove":"Reject"}</Btn>
+    </div>
+  );
+}
+
+function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,clients=[],financeClientNotes=[],team=[],currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh,onRenameClient,onSaveClientNote,onUpdateClient,activityLogs=[],payrollRuns=[],onDecidePayrollRun,onApplyTerminationDeduction,attendanceRules}) {
   const {isMobile} = useResponsive();
   const [showAdd,setShowAdd] = useState(false);
   const [range,setRange] = useState("all");
@@ -36286,6 +36314,7 @@ No markdown, no explanation.`;
                   <Btn variant="secondary" onClick={()=>onDecidePayrollRun(r,"reject")}>Reject</Btn>
                   <Btn onClick={()=>onDecidePayrollRun(r,"approve")}>Approve</Btn>
                 </div>
+                {(()=>{ const m=(team||[]).find(t=>t.id===r.team_member_id); return m&&m.termination_date&&String(m.termination_date).slice(0,7)===r.salary_month&&onApplyTerminationDeduction ? <TerminationDeductionPanel key={r.id} run={r} member={m} rules={attendanceRules} onApply={onApplyTerminationDeduction}/> : null; })()}
               </div>
             ))}
             <div style={{padding:"12px 18px",borderTop:"1px solid var(--border)",background:"var(--surface2)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -50479,6 +50508,15 @@ Return ONLY the JSON array, no markdown.`;
   // which only ever generates these as PENDING — nothing gets added to
   // Outstanding until an admin actually reviews the salary/deduction figures
   // here and approves it).
+  const applyTerminationDeduction = async (run, amount, st) => {
+    const prev = Number(run.termination_deduction)||0;
+    const amt = st==="applied" ? Math.max(0, Number(amount)||0) : 0;
+    const net = Math.max(0, Number(run.net_amount)+prev-amt);
+    await ue("PayrollRun", run.id, {termination_deduction:amt, termination_deduction_status:st, net_amount:net}).catch(()=>{});
+    setData(d=>({...d,payrollRuns:d.payrollRuns.map(r=>r.id===run.id?{...r,termination_deduction:amt,termination_deduction_status:st,net_amount:net}:r)}));
+    setToast(st==="applied"?`Termination deduction EGP ${amt.toLocaleString()} applied`:"Termination deduction skipped");
+  };
+
   const decidePayrollRun = async (run, decision) => {
     const status = decision==="approve" ? "approved" : "rejected";
     if(decision==="approve") {
@@ -52391,6 +52429,8 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         )}
         {page==="finance"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"finance.full"))&&(
           <FinancePage
+            onApplyTerminationDeduction={applyTerminationDeduction}
+            attendanceRules={appSettings?.attendance_rules||{}}
             invoices={data.invoices}
             payments={data.payments}
             subscriptions={data.subscriptions}

@@ -77,7 +77,7 @@ function proratedMonthlySalary($currentSalary, $events, $year, $month, $startDay
 }
 
 $rows = $pdo->query(
-    "SELECT pr.id, pr.team_member_id, pr.member_name, pr.salary_month,
+    "SELECT pr.id, pr.termination_deduction, pr.team_member_id, pr.member_name, pr.salary_month,
             tm.salary, tm.probation_salary, tm.probation_months, tm.termination_date, tm.employment_type, tm.attendance_policy_exempt,
             tm.vacation_days_used, tm.vacation_days_total,
             COALESCE(tm.start_date, DATE(tm.created_at)) AS start_date
@@ -128,8 +128,7 @@ foreach ($rows as $r) {
     $total = floatval($r['vacation_days_total'] ?? 30);
     $overage = $isFreelance ? 0 : max(0, $used - $total);
     $deduction = round($overage * ($fullSalary / $dayRate), 2);
-    if ($termDate && substr($termDate,0,7) === substr($monthStart ?? '',0,7)) $deduction += firstThreeMonthsAbsenceDeduction($pdo, $r['team_member_id'], $startDate, $termDate, $fullSalary, floatval($r['probation_salary']));
-    $newNet = max(0, $newBase - $deduction);
+    $newNet = max(0, $newBase - $deduction - floatval($r['termination_deduction'] ?? 0));
 
     $update->execute([$newBase, $overage, $deduction, $newNet, $r['id']]);
     echo "{$r['member_name']} — {$r['salary_month']}: base -> EGP {$newBase}, overage -> {$overage}d, deduction -> EGP {$deduction}, net -> EGP {$newNet}\n";

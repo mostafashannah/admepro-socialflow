@@ -192,7 +192,6 @@ foreach ($members as $m) {
     $total = floatval($m['vacation_days_total'] ?? 30);
     $overage = $isFreelance ? 0 : max(0, $used - $total);
     $deduction = round($overage * ($fullSalary / $dayRate), 2);
-    if ($termDate && substr($termDate,0,7) === substr($monthStart ?? '',0,7)) $deduction += firstThreeMonthsAbsenceDeduction($pdo, $m['id'], $startDate, $termDate, $fullSalary, floatval($m['probation_salary']));
     $net = max(0, $baseSalary - $deduction);
 
     $insert->execute([$m['id'], $m['name'], $lastMonth, $baseSalary, $overage, $deduction, $net]);
