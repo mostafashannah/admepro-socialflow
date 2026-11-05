@@ -109,7 +109,16 @@ function firstThreeMonthsAbsenceDeduction($pdo, $memberId, $startDate, $termDate
         }
     }
     $rate = ($probationSalary > 0 ? $probationSalary : $fullSalary) / 30;
-    return round(count($days) * $rate, 2);
+    // Late-policy hours (late_deducted=1) in the first 3 months: no leave
+    // credit exists yet, so they are charged as money (8h = 1 day).
+    $rs = $pdo->query("SELECT attendance_rules FROM app_settings LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+    $rules = $rs && !empty($rs['attendance_rules']) ? json_decode($rs['attendance_rules'], true) : [];
+    $rules = is_array($rules) ? $rules : [];
+    $hrsPer = floatval($rules['lateDeductHours'] ?? 2);
+    $lq = $pdo->prepare("SELECT COUNT(*) FROM attendance_records WHERE team_member_id = ? AND late_deducted = 1 AND work_date >= ? AND work_date < ? AND work_date <= ?");
+    $lq->execute([$memberId, $startDate, $end3, $termDate]);
+    $lateHours = intval($lq->fetchColumn()) * $hrsPer / max(1, intval($rules['lateTriggerCount'] ?? 1));
+    return round(count($days) * $rate + ($lateHours / 8) * $rate, 2);
 }
 
 function proratedMonthlySalary($currentSalary, $events, $year, $month, $startDay, $endDay, $daysInMonth, $probationEndDate, $probationSalary) {

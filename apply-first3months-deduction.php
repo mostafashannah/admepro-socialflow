@@ -38,11 +38,20 @@ function firstThreeMonthsAbsenceDeduction($pdo, $memberId, $startDate, $termDate
         }
     }
     $rate = ($probationSalary > 0 ? $probationSalary : $fullSalary) / 30;
-    return round(count($days) * $rate, 2);
+    // Late-policy hours (late_deducted=1) in the first 3 months: no leave
+    // credit exists yet, so they are charged as money (8h = 1 day).
+    $rs = $pdo->query("SELECT attendance_rules FROM app_settings LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+    $rules = $rs && !empty($rs['attendance_rules']) ? json_decode($rs['attendance_rules'], true) : [];
+    $rules = is_array($rules) ? $rules : [];
+    $hrsPer = floatval($rules['lateDeductHours'] ?? 2);
+    $lq = $pdo->prepare("SELECT COUNT(*) FROM attendance_records WHERE team_member_id = ? AND late_deducted = 1 AND work_date >= ? AND work_date < ? AND work_date <= ?");
+    $lq->execute([$memberId, $startDate, $end3, $termDate]);
+    $lateHours = intval($lq->fetchColumn()) * $hrsPer / max(1, intval($rules['lateTriggerCount'] ?? 1));
+    return round(count($days) * $rate + ($lateHours / 8) * $rate, 2);
 }
 
 
-$name = $argv[1] ?? ''; $apply = ($argv[2] ?? '') === 'apply';
+$name = $argv[1] ?? ''; $apply = ($argv[2] ?? '') === 'apply'; $already = floatval($argv[3] ?? 0); // amount of this deduction already applied earlier
 if (!$name) die("Pass a member name\n");
 $q = $pdo->prepare("SELECT pr.id, pr.member_name, pr.salary_month, pr.base_salary, pr.deduction_amount, tm.id AS tm_id, tm.salary, tm.probation_salary,
     COALESCE(tm.start_date, DATE(tm.created_at)) AS start_date, COALESCE(tm.termination_date, LAST_DAY(CONCAT(pr.salary_month,'-01'))) AS cutoff
@@ -52,6 +61,7 @@ $q->execute(["%$name%"]);
 $upd = $pdo->prepare("UPDATE payroll_runs SET deduction_amount = ?, net_amount = ? WHERE id = ?");
 foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
     $extra = firstThreeMonthsAbsenceDeduction($pdo, $r['tm_id'], $r['start_date'], $r['cutoff'], floatval($r['salary']), floatval($r['probation_salary']));
+    $extra = round($extra - $already, 2);
     $ded = round(floatval($r['deduction_amount']) + $extra, 2);
     $net = max(0, floatval($r['base_salary']) - $ded);
     echo "{$r['member_name']} {$r['salary_month']}: extra deduction EGP {$extra} -> deduction {$ded}, net {$net}" . ($apply ? " [applied]" : " [dry run]") . "\n";
