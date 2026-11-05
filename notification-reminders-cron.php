@@ -445,7 +445,7 @@ if ($mode === 'digest') {
         if ($sendWa) {
             $waText = "📋 *End-of-day brief — ".$now->format('D j M')."*\nGood evening ".strip_tags($first).".\n".brief_to_whatsapp($body)."\n\nFull details: socialflow.admepro.com";
             if (mb_strlen($waText) > 3800) $waText = mb_substr($waText, 0, 3790).'…';
-            try { sendWhatsAppReply($m['whatsapp_number'], $waText); $ok = true; } catch (Throwable $e) { error_log('[digest] whatsapp: '.$e->getMessage()); }
+            try { $waOk = sendWhatsAppReply($m['whatsapp_number'], $waText); if ($waOk) $ok = true; } catch (Throwable $e) { error_log('[digest] whatsapp: '.$e->getMessage()); }
         }
         if ($testEmail) { echo json_encode(['test'=>$m['email'], 'sent'=>$ok, 'detail'=>$ok ? 'ok' : $raw]); exit; }
         if ($ok) {
