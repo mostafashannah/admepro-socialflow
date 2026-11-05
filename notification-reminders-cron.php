@@ -10,13 +10,13 @@
  * Two modes, two crontab entries:
  *   php notification-reminders-cron.php reminders   — every 15 min, fires
  *     task-due-soon + subscription-renewal (idempotent via sent-flags)
- *   php notification-reminders-cron.php digest       — end-of-day (23:00) brief for ADMINS only
+ *   php notification-reminders-cron.php digest       — end-of-day (22:00) brief for ADMINS only
  *   php notification-reminders-cron.php digest_team  — the original task digest for everyone else, sent at 11:00 (run every 10 min)
  *
  * Crontab:
  *   (star)/15 (star) (star) (star) (star) /usr/bin/php /var/www/socialflow/notification-reminders-cron.php reminders >> /var/www/socialflow/notification-reminders-cron.log 2>&1
  *   (star)/10 (star) (star) (star) (star) /usr/bin/php /var/www/socialflow/notification-reminders-cron.php digest >> /var/www/socialflow/notification-reminders-cron.log 2>&1
- *     (every 10 min — the script itself waits for 23:00 Cairo time and sends once a day)
+ *     (every 10 min — the script itself waits for 22:00 Cairo time and sends once a day)
  * (5-field cron wildcard syntax — written out here so this docblock comment doesn't break PHP parsing)
  */
 
@@ -197,11 +197,11 @@ function brief_to_whatsapp($html) {
 }
 
 if ($mode === 'digest') {
-    // End-of-day brief: goes out at 23:00 Cairo time. Run this every 10 minutes —
+    // End-of-day brief: goes out at 22:00 Cairo time. Run this every 10 minutes —
     // it only sends once the time has passed, and at most once per person per day.
-    $DIGEST_SEND_TIME = '23:00';
+    $DIGEST_SEND_TIME = '22:00';
     // Test run: `php notification-reminders-cron.php digest test you@email.com` sends ONE brief
-    // to that person right now (ignores the 11 PM gate and the once-a-day guard).
+    // to that person right now (ignores the 10 PM gate and the once-a-day guard).
     $testEmail = (($argv[2] ?? '') === 'test') ? strtolower(trim($argv[3] ?? '')) : '';
     if (!$testEmail && $now->format('H:i') < $DIGEST_SEND_TIME) { echo json_encode(['mode'=>'digest','skipped'=>'before '.$DIGEST_SEND_TIME]); exit; }
     // ── Daily Digest = a SHORT brief (main points only), built from the sections
