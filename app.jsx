@@ -20540,13 +20540,22 @@ async function computeFirst3MonthsAbsence(member, lastDayISO) {
     qe("LeaveRequest",{team_member_id:member.id}).catch(()=>[]),
   ]);
   const approved = (leaves||[]).filter(l=>String(l.status||"").toLowerCase()==="approved");
-  const covered = d => approved.some(l=>(l.start_date||"")<=d && d<=(l.end_date||l.start_date||""));
   const days = new Set();
   (att||[]).forEach(a=>{
     const d = String(a.date||"").slice(0,10);
     if(!d || d<startRaw || d>=endISO || d>lastDayISO) return;
-    if(String(a.status||"").toLowerCase()!=="absent" || a.check_in || covered(d)) return;
+    if(String(a.status||"").toLowerCase()!=="absent" || a.check_in) return;
     days.add(d);
+  });
+  // No leave credit in the first 3 months: approved leave days are deducted too (Fri/Sat are weekend).
+  approved.forEach(l=>{
+    const ls = l.start_date, le = l.end_date||l.start_date;
+    if(!ls) return;
+    for(let t=new Date(ls+"T00:00:00"), e=new Date(le+"T00:00:00"); t<=e; t.setDate(t.getDate()+1)){
+      const d = t.toISOString().slice(0,10), wd = t.getDay();
+      if(wd===5||wd===6 || d<startRaw || d>=endISO || d>lastDayISO) continue;
+      days.add(d);
+    }
   });
   return {days:days.size};
 }

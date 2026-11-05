@@ -34,8 +34,16 @@ function firstThreeMonthsAbsenceDeduction($pdo, $memberId, $startDate, $termDate
     foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $a) {
         $d = substr($a['work_date'], 0, 10);
         if (strtolower((string)$a['status']) !== 'absent' || !empty($a['check_in'])) continue;
-        foreach ($leaves as $l) { if ($l['start_date'] <= $d && $d <= ($l['end_date'] ?: $l['start_date'])) continue 2; }
         $days[$d] = 1;
+    }
+    // No leave credit in the first 3 months: approved leave days are deducted too (Fri/Sat = weekend).
+    foreach ($leaves as $l) {
+        $t = strtotime($l['start_date']); $e = strtotime($l['end_date'] ?: $l['start_date']);
+        for (; $t <= $e; $t += 86400) {
+            $d = date('Y-m-d', $t); $w = (int)date('w', $t);
+            if ($w === 5 || $w === 6 || $d < $startDate || $d >= $end3 || $d > $termDate) continue;
+            $days[$d] = 1;
+        }
     }
     $rate = ($probationSalary > 0 ? $probationSalary : $fullSalary) / 30;
     return round(count($days) * $rate, 2);
