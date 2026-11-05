@@ -7498,6 +7498,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                         {isVideo
                           ? <video src={url+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
                           : <img src={url} style={{width:"100%",height:"100%",objectFit:"contain"}} alt={asset.name||post.title}/>}
+                        {media.length>1&&<span style={{position:"absolute",left:6,top:6,background:"rgba(0,0,0,0.65)",color:"#fff",fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:99,zIndex:2}}>Slide {i+1}</span>}
                         {isVideo&&(
                           <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.15)"}}>
                             <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -24016,10 +24017,11 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                       {media.map((m,i)=>{
                         const isVideo = (m.type||"").startsWith("video") || (m.url||"").match(/\.(mp4|mov|webm|m4v)/i);
                         return (
-                          <a key={i} href={m.url} target="_blank" rel="noreferrer" style={{display:"block",borderRadius:8,overflow:"hidden",border:"1px solid var(--border)",aspectRatio:"1",background:"var(--surface2)"}}>
+                          <a key={i} href={m.url} target="_blank" rel="noreferrer" style={{position:"relative",display:"block",borderRadius:8,overflow:"hidden",border:"1px solid var(--border)",aspectRatio:"1",background:"var(--surface2)"}}>
                             {isVideo
                               ? <video src={m.url+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                               : <img src={m.url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+                            {media.length>1&&<span style={{position:"absolute",left:4,top:4,background:"rgba(0,0,0,0.65)",color:"#fff",fontSize:9,fontWeight:700,padding:"1px 6px",borderRadius:99}}>Slide {i+1}</span>}
                           </a>
                         );
                       })}
