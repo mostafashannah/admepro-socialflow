@@ -19,6 +19,28 @@ $pdo = new PDO(
 
 $dayRate = 30;
 $parseNum = function($v) { return (float)preg_replace('/[^0-9.]/', '', (string)$v); };
+// Unapproved absences (status absent, no clock-in, not covered by approved
+// leave) in the first 3 months, up to the termination date, are deducted
+// from a terminated member's final pay.
+function firstThreeMonthsAbsenceDeduction($pdo, $memberId, $startDate, $termDate, $fullSalary, $probationSalary) {
+    if (!$startDate || !$termDate) return 0.0;
+    $end3 = date('Y-m-d', strtotime($startDate . ' +3 months'));
+    $q = $pdo->prepare("SELECT work_date, check_in, status FROM attendance_records WHERE team_member_id = ? AND work_date >= ? AND work_date < ? AND work_date <= ?");
+    $q->execute([$memberId, $startDate, $end3, $termDate]);
+    $lv = $pdo->prepare("SELECT start_date, end_date FROM leave_requests WHERE team_member_id = ? AND LOWER(status) = 'approved'");
+    $lv->execute([$memberId]);
+    $leaves = $lv->fetchAll(PDO::FETCH_ASSOC);
+    $days = [];
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $a) {
+        $d = substr($a['work_date'], 0, 10);
+        if (strtolower((string)$a['status']) !== 'absent' || !empty($a['check_in'])) continue;
+        foreach ($leaves as $l) { if ($l['start_date'] <= $d && $d <= ($l['end_date'] ?: $l['start_date'])) continue 2; }
+        $days[$d] = 1;
+    }
+    $rate = ($probationSalary > 0 ? $probationSalary : $fullSalary) / 30;
+    return round(count($days) * $rate, 2);
+}
+
 function proratedMonthlySalary($currentSalary, $events, $year, $month, $startDay, $endDay, $daysInMonth, $probationEndDate, $probationSalary) {
     $total = 0.0;
     for ($d = $startDay; $d <= $endDay; $d++) {
@@ -89,6 +111,7 @@ foreach ($rows as $r) {
     $total = floatval($r['vacation_days_total'] ?? 30);
     $overage = $isFreelance ? 0 : max(0, $used - $total);
     $deduction = round($overage * ($fullSalary / $dayRate), 2);
+    if ($termDate && substr($termDate,0,7) === substr($monthStart ?? '',0,7)) $deduction += firstThreeMonthsAbsenceDeduction($pdo, $r['team_member_id'], $startDate, $termDate, $fullSalary, floatval($r['probation_salary']));
     $newNet = max(0, $newBase - $deduction);
 
     $update->execute([$newBase, $overage, $deduction, $newNet, $r['id']]);

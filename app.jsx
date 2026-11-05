@@ -2211,11 +2211,11 @@ const EMAIL_TEMPLATES = {
       },
       terminate: (() => {
         const base = terminationLetterCopy(event.previous_value, firstName, event.effective_date?fmtDate(event.effective_date):null);
-        const payroll = terminationPayrollEstimate(event.payrollMember, event.effective_date, event.salaryRaises);
+        const payroll = terminationPayrollEstimate(event.payrollMember, event.effective_date, event.salaryRaises, event.absence);
         const contact = event.payrollContact;
         const contactLine = contact ? ` For any payroll follow-up, please reach out to ${contact.name}${contact.email?` at ${contact.email}`:""}${contact.whatsapp_number?` (WhatsApp: ${contact.whatsapp_number})`:""}.` : "";
         if(!payroll) return {...base, body: `${base.body}${contactLine}`};
-        return {...base, body: `${base.body} Your final salary of EGP ${payroll.amount.toLocaleString()} (prorated through your last working day) will be payable in the next payroll round, on the ${payroll.payoutWindowLabel}.${contactLine}`};
+        return {...base, body: `${base.body} Your estimated salary of EGP ${payroll.amount.toLocaleString()} (prorated through your last working day) is not final. The final amount will be calculated at the end of the month once your attendance has been reviewed, and paid in the next payroll round, on the ${payroll.payoutWindowLabel}.${payroll.absenceDays>0?` This estimate already includes a deduction of EGP ${payroll.absenceDeduction.toLocaleString()} for ${payroll.absenceDays} absent day(s) during your first 3 months.`:` Any absent days during your first 3 months will be deducted from the final amount.`}${contactLine}`};
       })(),
       other: {
         hero:event.title||"An update regarding your employment", sub:firstName?`Hi ${firstName},`:"",
@@ -2228,11 +2228,12 @@ const EMAIL_TEMPLATES = {
         <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:13px;color:#6b7280">${label}</td>
         <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:14px;font-weight:800;color:#111827;text-align:right">${value}</td>
       </tr>`;
-    const terminatePayroll = t==="terminate" ? terminationPayrollEstimate(event.payrollMember, event.effective_date, event.salaryRaises) : null;
+    const terminatePayroll = t==="terminate" ? terminationPayrollEstimate(event.payrollMember, event.effective_date, event.salaryRaises, event.absence) : null;
     const rowsHtml = t==="terminate" ? [
       offerRow("Reason", TERMINATION_REASON_MAP[event.previous_value]?.label || "Not specified"),
       offerRow("Last Working Day", event.effective_date?fmtDate(event.effective_date):""),
-      offerRow("Final Payroll Amount", terminatePayroll?`EGP ${terminatePayroll.amount.toLocaleString()}`:null),
+      offerRow("Estimated Payroll Amount (not final)", terminatePayroll?`EGP ${terminatePayroll.amount.toLocaleString()}`:null),
+      offerRow("First 3 Months Absence Deduction", terminatePayroll&&terminatePayroll.absenceDays>0?`${terminatePayroll.absenceDays} day(s) · EGP ${terminatePayroll.absenceDeduction.toLocaleString()}`:null),
       offerRow("Payable On", terminatePayroll?terminatePayroll.payoutWindowLabel:null),
       offerRow("Payroll Contact", event.payrollContact?`${event.payrollContact.name}${event.payrollContact.email?` (${event.payrollContact.email})`:""}`:null),
     ].join("") : [
@@ -9365,7 +9366,7 @@ function FAB({currentUser,onAddClient,onAddCalendar,onAddTask,onCreateInvoice,on
             <button key={i} onClick={()=>{setOpen(false);item.action();}} style={{
               display:"flex",alignItems:"center",gap:12,width:"100%",
               padding:"12px 16px",textAlign:"left",transition:"background 0.12s",
-              borderBottom:i<items.length-1?"1px solid var(--border)":"none",
+              borderBottom:i<(openGroups[groupName]?items.length:1)-1?"1px solid var(--border)":"none",
             }}
             onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
             onMouseLeave={e=>e.currentTarget.style.background=""}>
@@ -20527,7 +20528,30 @@ function terminationLetterCopy(reasonKey, firstName, lastDayLabel) {
 //     someone who joined Aug 2 with a 3-month probation is still on
 //     probation_salary the whole way through an Aug 20 termination, raise
 //     events notwithstanding.
-function terminationPayrollEstimate(member, lastDayISO, raiseEvents) {
+// Unapproved absent days (no clock-in, not covered by approved leave) within
+// the first 3 months of employment, up to the last working day.
+async function computeFirst3MonthsAbsence(member, lastDayISO) {
+  const startRaw = member?.start_date || (member?.created_at ? String(member.created_at).slice(0,10) : null);
+  if(!startRaw || !lastDayISO) return {days:0};
+  const end3 = new Date(startRaw+"T00:00:00"); end3.setMonth(end3.getMonth()+3);
+  const endISO = end3.toISOString().slice(0,10);
+  const [att, leaves] = await Promise.all([
+    qe("AttendanceRecord",{team_member_id:member.id}).catch(()=>[]),
+    qe("LeaveRequest",{team_member_id:member.id}).catch(()=>[]),
+  ]);
+  const approved = (leaves||[]).filter(l=>String(l.status||"").toLowerCase()==="approved");
+  const covered = d => approved.some(l=>(l.start_date||"")<=d && d<=(l.end_date||l.start_date||""));
+  const days = new Set();
+  (att||[]).forEach(a=>{
+    const d = String(a.date||"").slice(0,10);
+    if(!d || d<startRaw || d>=endISO || d>lastDayISO) return;
+    if(String(a.status||"").toLowerCase()!=="absent" || a.check_in || covered(d)) return;
+    days.add(d);
+  });
+  return {days:days.size};
+}
+
+function terminationPayrollEstimate(member, lastDayISO, raiseEvents, absence) {
   const salary = Number(member?.salary)||0;
   if(!lastDayISO || !salary) return null;
   const d = new Date(lastDayISO+"T00:00:00");
@@ -20574,7 +20598,13 @@ function terminationPayrollEstimate(member, lastDayISO, raiseEvents) {
   }
   amount = Math.round(amount*100)/100;
   const payoutMonthLabel = new Date(year, month+1, 1).toLocaleDateString("en-US",{month:"long",year:"numeric"});
-  return { amount, payoutWindowLabel: `5th–10th of ${payoutMonthLabel}` };
+  // Unapproved absences in the first 3 months are deducted from the final pay.
+  const absenceDays = Number(absence?.days)||0;
+  const dayRate = ((Number(member.probation_salary)||0) > 0 ? Number(member.probation_salary) : salary) / 30;
+  const absenceDeduction = Math.round(absenceDays*dayRate*100)/100;
+  const grossAmount = amount;
+  amount = Math.max(0, Math.round((amount-absenceDeduction)*100)/100);
+  return { amount, grossAmount, absenceDays, absenceDeduction, payoutWindowLabel: `5th–10th of ${payoutMonthLabel}` };
 }
 
 // A salary raise partway through a month means the member actually earned
@@ -20722,7 +20752,9 @@ function TeamMemberHistoryTab({member, team=[], canEdit, currentUser, onUpdateTe
         terminate: terminationLetterCopy(e.previous_value, (member.name||"").split(" ")[0]).hero,
       };
       const subject = `[SocialFlow] ${subjects[e.event_type]||e.title||t.label}`;
-      const html = EMAIL_TEMPLATES.careerEvent(member.name, e.event_type==="terminate" ? {...e, payrollMember: member, salaryRaises: events.filter(ev=>ev.event_type==="salary_raise"), payrollContact} : e);
+      let absence = null;
+      if(e.event_type==="terminate") { try { absence = await computeFirst3MonthsAbsence(member, e.effective_date); } catch(_){} }
+      const html = EMAIL_TEMPLATES.careerEvent(member.name, e.event_type==="terminate" ? {...e, payrollMember: member, salaryRaises: events.filter(ev=>ev.event_type==="salary_raise"), payrollContact, absence} : e);
       const ok = await sendEmail(member.email, subject, html);
       if(ok) setEmailedIds(s=>new Set([...s, e.id]));
       else alert("Email failed to send.");
@@ -35273,6 +35305,7 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
   const [paymentsByExpense, setPaymentsByExpense] = useState({});
   const [loading, setLoading] = useState(true);
   const [payingId, setPayingId] = useState(null);
+  const [openGroups, setOpenGroups] = useState({});
   const [payAmount, setPayAmount] = useState("");
   const [payDate, setPayDate] = useState(new Date().toISOString().split("T")[0]);
   const [payMethod, setPayMethod] = useState("Cash");
@@ -35390,19 +35423,22 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
         const groupRemaining = items.reduce((s,e)=>s+Math.max(0, Number(e.outstanding_total_payable ?? e.amount ?? 0)-paidSoFar(e.id)), 0);
         return (
         <div key={groupName}>
-          <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
-            <p style={{fontSize:12,fontWeight:800,color:"var(--text3)",letterSpacing:"0.05em",textTransform:"uppercase",margin:0}}>{groupName}</p>
+          <div onClick={()=>setOpenGroups(g=>({...g,[groupName]:!g[groupName]}))} style={{cursor:"pointer",display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
+            <p style={{fontSize:12,fontWeight:800,color:"var(--text3)",letterSpacing:"0.05em",textTransform:"uppercase",margin:0}}>{openGroups[groupName]?"▾":"▸"} {groupName} · {items.length}</p>
             <p style={{fontSize:12,color:"var(--text3)",margin:0}}>
               Remaining <strong style={{fontSize:14,color:groupRemaining>0?"#ef4444":"#10b981"}}>{groupRemaining.toLocaleString(undefined,{maximumFractionDigits:2})}</strong> of {groupTotal.toLocaleString(undefined,{maximumFractionDigits:2})}
             </p>
           </div>
-          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
-            {items.map((e,i)=>{
+          <div style={{position:"relative",paddingBottom:openGroups[groupName]?0:Math.min(items.length-1,2)*8}}>
+          {!openGroups[groupName]&&items.length>2&&<div style={{position:"absolute",left:16,right:16,bottom:0,height:40,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",boxShadow:"0 2px 6px rgba(0,0,0,.06)"}}/>}
+          {!openGroups[groupName]&&items.length>1&&<div style={{position:"absolute",left:8,right:8,bottom:items.length>2?8:0,height:40,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",boxShadow:"0 2px 6px rgba(0,0,0,.06)"}}/>}
+          <div style={{position:"relative",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden",boxShadow:openGroups[groupName]?"none":"0 3px 10px rgba(0,0,0,.08)"}}>
+            {(openGroups[groupName]?items:items.slice(0,1)).map((e,i)=>{
               const paid = paidSoFar(e.id);
               const total = Number(e.outstanding_total_payable ?? e.amount);
               const remaining = Math.max(0, total-paid);
               return (
-                <div key={e.id} style={{padding:"14px 18px",borderBottom:i<items.length-1?"1px solid var(--border)":"none"}}>
+                <div key={e.id} style={{padding:"14px 18px",borderBottom:i<(openGroups[groupName]?items.length:1)-1?"1px solid var(--border)":"none"}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
                     <div>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -35465,6 +35501,7 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
                 </div>
               );
             })}
+          </div>
           </div>
         </div>
       );})}
