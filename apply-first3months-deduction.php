@@ -47,6 +47,7 @@ function firstThreeMonthsAbsenceDeduction($pdo, $memberId, $startDate, $termDate
     $lq = $pdo->prepare("SELECT COUNT(*) FROM attendance_records WHERE team_member_id = ? AND late_deducted = 1 AND work_date >= ? AND work_date < ? AND work_date <= ?");
     $lq->execute([$memberId, $startDate, $end3, $termDate]);
     $lateHours = intval($lq->fetchColumn()) * $hrsPer / max(1, intval($rules['lateTriggerCount'] ?? 1));
+    $GLOBALS['fm3_detail'] = ['dates' => array_keys($days), 'rate' => round($rate, 2), 'lateHours' => $lateHours, 'window' => "$startDate .. $end3 (cutoff $termDate)"];
     return round(count($days) * $rate + ($lateHours / 8) * $rate, 2);
 }
 
@@ -64,6 +65,8 @@ foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
     $extra = round($extra - $already, 2);
     $ded = round(floatval($r['deduction_amount']) + $extra, 2);
     $net = max(0, floatval($r['base_salary']) - $ded);
+    $d = $GLOBALS['fm3_detail'] ?? [];
+    echo "  window: {$d['window']} | daily rate: {$d['rate']} | late hours: {$d['lateHours']} | days (" . count($d['dates']) . "): " . implode(', ', $d['dates']) . "\n";
     echo "{$r['member_name']} {$r['salary_month']}: extra deduction EGP {$extra} -> deduction {$ded}, net {$net}" . ($apply ? " [applied]" : " [dry run]") . "\n";
     if ($apply) $upd->execute([$ded, $net, $r['id']]);
 }
