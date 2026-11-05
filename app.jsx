@@ -36218,9 +36218,15 @@ No markdown, no explanation.`;
         <>
         {(payrollRuns||[]).filter(r=>r.status==="pending").length>0 && (
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden",marginBottom:16}}>
-            <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
-              <h3 style={{fontWeight:700,fontSize:14}}>Pending Payroll Approvals</h3>
-              <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Generated automatically after each month's attendance is uploaded — review and approve to add to Outstanding.</p>
+            <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+              <div style={{minWidth:200,flex:1}}>
+                <h3 style={{fontWeight:700,fontSize:14}}>Pending Payroll Approvals</h3>
+                <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Generated automatically after each month's attendance is uploaded — review and approve to add to Outstanding.</p>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Total · {payrollRuns.filter(r=>r.status==="pending").length} people</p>
+                <p style={{fontSize:20,fontWeight:800,color:"var(--accent)"}}>EGP {Math.round(payrollRuns.filter(r=>r.status==="pending").reduce((a,r)=>a+(Number(r.net_amount)||0),0)).toLocaleString()}</p>
+              </div>
             </div>
             {payrollRuns.filter(r=>r.status==="pending").map((r,i,arr)=>(
               <div key={r.id} style={{padding:"12px 18px",borderBottom:i<arr.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
@@ -36236,6 +36242,10 @@ No markdown, no explanation.`;
                 </div>
               </div>
             ))}
+            <div style={{padding:"12px 18px",borderTop:"1px solid var(--border)",background:"var(--surface2)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:13,fontWeight:700}}>Total pending</span>
+              <span style={{fontSize:16,fontWeight:800}}>EGP {Math.round(payrollRuns.filter(r=>r.status==="pending").reduce((a,r)=>a+(Number(r.net_amount)||0),0)).toLocaleString()}</span>
+            </div>
           </div>
         )}
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
