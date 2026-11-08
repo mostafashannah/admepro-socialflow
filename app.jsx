@@ -49953,7 +49953,9 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
     const email = currentUser?.email;
     if(!email) return;
     const payload = {...prefs, user_email:email};
-    const existing = (data.notifPrefs||[]).find(p=>p.user_email===email);
+    let existing = (data.notifPrefs||[]).find(p=>p.user_email===email);
+    // Not in memory (e.g. beyond the first page load) — look it up so we update instead of inserting a duplicate.
+    if(!existing?.id) { try { const r = await qe("NotificationPrefs",{user_email:email},null,1); if(r?.entities?.[0]) existing = r.entities[0]; } catch(e){} }
     setData(d=>({...d, notifPrefs: existing
       ? d.notifPrefs.map(p=>p.user_email===email?{...p,...payload}:p)
       : [...(d.notifPrefs||[]),{...payload,id:uid()}]
