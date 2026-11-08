@@ -50,7 +50,7 @@ $dayRate = 30; // salary / 30 as the per-day deduction rate
 // `status != 'inactive'` filter alone would silently skip their final,
 // real partial-month payroll entirely.
 $members = $pdo->prepare(
-    "SELECT id, name, salary, probation_salary, probation_months, vacation_days_used, vacation_days_total, termination_date, employment_type, attendance_policy_exempt, COALESCE(start_date, DATE(created_at)) AS start_date FROM team_members
+    "SELECT id, name, role, salary, probation_salary, probation_months, vacation_days_used, vacation_days_total, termination_date, employment_type, attendance_policy_exempt, COALESCE(start_date, DATE(created_at)) AS start_date FROM team_members
      WHERE salary IS NOT NULL AND salary > 0
        AND (status != 'inactive' OR (termination_date IS NOT NULL AND termination_date >= :monthStartForTerm))"
 );
@@ -191,6 +191,15 @@ foreach ($members as $m) {
     $used = $isFreelance ? 0 : floatval($m['vacation_days_used'] ?? 0);
     $total = floatval($m['vacation_days_total'] ?? 30);
     $overage = $isFreelance ? 0 : max(0, $used - $total);
+    // Owners/admins are not on the vacation-deduction policy.
+    if (strtolower((string)($m['role'] ?? '')) === 'admin') $overage = 0;
+    // Only charge overage not already charged in earlier (approved/pending) payroll rows —
+    // vacation_days_used is a running total, so without this the same days repeat every month.
+    if ($overage > 0) {
+        $prev = $pdo->prepare("SELECT COALESCE(SUM(vacation_overage_days),0) FROM payroll_runs WHERE team_member_id = ? AND status IN ('approved','pending') AND salary_month < ?");
+        $prev->execute([$m['id'], $lastMonth]);
+        $overage = max(0, $overage - floatval($prev->fetchColumn()));
+    }
     $deduction = round($overage * ($fullSalary / $dayRate), 2);
     $net = max(0, $baseSalary - $deduction);
 
