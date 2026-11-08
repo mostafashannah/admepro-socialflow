@@ -458,8 +458,13 @@ $maiWaSystem = "You are Mai, the agency's AI Account Executive, sending a WhatsA
     . "- End with ONE short line pointing to SocialFlow notifications for full details and inviting them to ask you for more — not a full sentence per client repeating this.\n"
     . "- Never use markdown headers, '#', or bullet-point '-' lists — write like a real WhatsApp text (short lines/emoji are fine, formal lists/headers are not).";
 
+// The daily client check ping is retired for admins — the same hint now lives
+// inside the Daily Report. Never send the degraded "AI writer unavailable"
+// fallback to anyone either.
+$adminEmails = array_map('strtolower', array_column($admins, 'email'));
 foreach ($recipientFindings as $email => $entry) {
     if (empty($entry['clients'])) continue;
+    if (in_array(strtolower((string)$email), $adminEmails, true)) continue;
     $lines = [];
     foreach ($entry['clients'] as $name => $facts) {
         $parts = [];
@@ -529,7 +534,9 @@ foreach ($recipientFindings as $email => $entry) {
         if ($lastSpace !== false) $cut = mb_substr($cut, 0, $lastSpace);
         $msg = $cut . "… full details in SocialFlow notifications.";
     }
+    $usedFallbackMsg = false;
     if ($msg === '') {
+        $usedFallbackMsg = true;
         // Fallback if the AI call itself fails even after a retry — still
         // one message, still short, just without her usual phrasing
         // variety. Real line breaks instead of a semicolon-separated wall,
@@ -539,6 +546,7 @@ foreach ($recipientFindings as $email => $entry) {
             array_keys($entry['clients']), array_values($entry['clients'])
         )) . "\n\nFull details in SocialFlow notifications — ask me for more on any account.";
     }
+    if ($usedFallbackMsg ?? false) continue;
     $prefStmt = $pdo->prepare("SELECT all_disabled, wa_daily_finance_report FROM notification_prefs WHERE user_email = :email LIMIT 1");
     $prefStmt->execute([':email' => $email]);
     $pref = $prefStmt->fetch(PDO::FETCH_ASSOC);

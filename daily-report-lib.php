@@ -11,7 +11,7 @@ function drDefaults(): array {
         'enabled' => 0,
         'send_time' => '19:00',
         'days' => [7, 1, 2, 3, 4], // ISO weekdays: Sun..Thu (Fri/Sat weekend)
-        'sections' => ['tasks_done' => true, 'tasks_open' => true, 'posting' => true, 'insights' => true, 'applications' => true],
+        'sections' => ['progress' => true, 'accounts_hint' => true, 'tasks_done' => true, 'tasks_open' => true, 'posting' => true, 'insights' => true, 'applications' => true],
         'client_ids' => [],   // empty = every account with Facebook/Instagram insights
         'recipients' => [],   // team-member emails; empty = every active admin
         'window_hours' => 24,
@@ -67,6 +67,47 @@ function drBuildReport(PDO $pdo, array $s): string {
     $h = max(1, (int)$s['window_hours']);
     $sec = $s['sections'];
     $out = ["📊 *Daily report — " . $now->format('D j M') . "*", "_Last {$h} hours_"];
+
+    if (!empty($sec['progress'])) {
+        // Brief task progress: finished in the window vs still open, plus who is behind.
+        $ex = "'published','scheduled','approved','client_approval','rejected','on_hold'";
+        $fin = $pdo->prepare("SELECT COUNT(*) FROM posts WHERE stage = 'published' AND published_at >= (NOW() - INTERVAL {$h} HOUR)");
+        $fin->execute();
+        $finished = (int)$fin->fetchColumn();
+        $steps = $pdo->prepare("SELECT COUNT(*) FROM performance_logs WHERE created_at >= (NOW() - INTERVAL {$h} HOUR) AND user_name IS NOT NULL AND user_name <> ''");
+        $steps->execute();
+        $stepsDone = (int)$steps->fetchColumn();
+        $pending = (int)$pdo->query("SELECT COUNT(*) FROM posts WHERE stage NOT IN ({$ex})")->fetchColumn();
+        $od = $pdo->prepare("SELECT COALESCE(tm.name,'Unassigned') AS who, COUNT(*) AS n FROM posts p LEFT JOIN team_members tm ON tm.email = p.assigned_to
+            WHERE p.due_date IS NOT NULL AND p.due_date <> '' AND LEFT(p.due_date,10) < :t AND p.stage NOT IN ({$ex}) GROUP BY who ORDER BY n DESC LIMIT 8");
+        $od->execute([':t' => $today]);
+        $late = $od->fetchAll(PDO::FETCH_ASSOC);
+        $out[] = "";
+        $out[] = "📌 *Progress* — {$stepsDone} step(s) done · {$finished} published · {$pending} still open";
+        if ($late) $out[] = "🔴 Out of timeline: " . implode(', ', array_map(fn($r) => "{$r['who']} ({$r['n']})", $late));
+        else $out[] = "🟢 Everyone is within their timeline.";
+    }
+
+    if (!empty($sec['accounts_hint'])) {
+        // Short hint on accounts needing attention (replaces the separate Mai "quick account check" ping).
+        $hints = [];
+        $cl = $pdo->query("SELECT id, name FROM clients WHERE status = 'active'")->fetchAll(PDO::FETCH_ASSOC);
+        $lp = $pdo->prepare("SELECT MAX(published_at) FROM posts WHERE client_id = :c AND stage = 'published'");
+        $sp = $pdo->prepare("SELECT COUNT(*) FROM posts WHERE client_id = :c AND stage = 'scheduled' AND LEFT(scheduled_date,10) >= :t");
+        foreach ($cl as $c) {
+            $lp->execute([':c' => $c['id']]); $last = $lp->fetchColumn();
+            $sp->execute([':c' => $c['id'], ':t' => $today]); $sched = (int)$sp->fetchColumn();
+            $why = [];
+            if ($last) { $days = (int)floor((time() - strtotime($last)) / 86400); if ($days >= 6) $why[] = "last post {$days}d ago"; }
+            if ($sched === 0) $why[] = "nothing scheduled";
+            if ($why) $hints[] = "• {$c['name']} — " . implode(', ', $why);
+        }
+        $out[] = "";
+        $out[] = "🩺 *Accounts to watch*" . ($hints ? " — " . count($hints) : '');
+        if (!$hints) $out[] = "All accounts look healthy ✅";
+        foreach (array_slice($hints, 0, 10) as $h2) $out[] = $h2;
+        if (count($hints) > 10) $out[] = "…and " . (count($hints) - 10) . " more";
+    }
 
     if (!empty($sec['tasks_done'])) {
         $st = $pdo->prepare("SELECT user_name, client_name, post_title FROM performance_logs
