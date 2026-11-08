@@ -203,7 +203,6 @@ if ($mode === 'digest') {
     // Test run: `php notification-reminders-cron.php digest test you@email.com` sends ONE brief
     // to that person right now (ignores the 10 PM gate and the once-a-day guard).
     $testEmail = (($argv[2] ?? '') === 'test') ? strtolower(trim($argv[3] ?? '')) : '';
-    if (!$testEmail && $now->format('H:i') < $DIGEST_SEND_TIME) { echo json_encode(['mode'=>'digest','skipped'=>'before '.$DIGEST_SEND_TIME]); exit; }
     // ── Daily Digest = a SHORT brief (main points only), built from the sections
     // each person has switched on in Account > Notifications (digest_sections).
     // Finance is for admin/accountant, Recruitment for admin/hr/account_director.
@@ -290,6 +289,8 @@ if ($mode === 'digest') {
         if (!$testEmail) {
             if (!pref_allows($prefs, 'daily_digest')) continue;
             if (!empty($prefs['digest_last_sent']) && substr($prefs['digest_last_sent'], 0, 10) === $today) continue;
+            $mySendAt = preg_match('/^\d{2}:\d{2}$/', (string)($prefs['digest_time'] ?? '')) ? $prefs['digest_time'] : $DIGEST_SEND_TIME;
+            if ($now->format('H:i') < $mySendAt) continue; // each person's own send time
         }
 
         $role = $m['role'];
@@ -467,7 +468,6 @@ if ($mode === 'digest_team') {
     // Goes out at 11:00 Cairo time (run every 10 minutes — it waits for the time and
     // each person's digest_last_sent keeps it to once a day).
     $TEAM_DIGEST_TIME = '11:00';
-    if ($now->format('H:i') < $TEAM_DIGEST_TIME) { echo json_encode(['mode'=>'digest_team','skipped'=>'before '.$TEAM_DIGEST_TIME]); exit; }
     // Everyone EXCEPT admins keeps the original morning task digest (unchanged). Admins get the
     // end-of-day brief instead (mode 'digest').
     $team = $pdo->query("SELECT * FROM team_members WHERE status = 'active' AND role NOT IN ('client','admin')")->fetchAll(PDO::FETCH_ASSOC);
@@ -489,6 +489,8 @@ if ($mode === 'digest_team') {
         $prefs = get_prefs($pdo, $m['email']);
         if (!pref_allows($prefs, 'daily_digest')) continue;
         if (!empty($prefs['digest_last_sent']) && substr($prefs['digest_last_sent'], 0, 10) === $today) continue;
+        $mySendAt = preg_match('/^\d{2}:\d{2}$/', (string)($prefs['digest_time'] ?? '')) ? $prefs['digest_time'] : $TEAM_DIGEST_TIME;
+        if ($now->format('H:i') < $mySendAt) continue; // each person's own send time
 
         $assigned = array_values(array_filter($posts, fn($p) => $p['assigned_to'] === $m['email']));
         $dueToday = array_values(array_filter($assigned, fn($p) => $p['scheduled_date'] === $today && !in_array($p['stage'], ['published','rejected'])));

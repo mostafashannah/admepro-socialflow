@@ -1310,7 +1310,7 @@ const SB_SCHEMA = {
   // "digest_time" field the notification_prefs table never actually had —
   // an UPDATE/INSERT including it errored out at the SQL level, so every
   // single notification-prefs save was silently failing.
-  notification_prefs: ["user_email","all_disabled","mentions_only","daily_digest","task_assigned","task_stage_changed","task_due_soon","task_overdue","task_mention","task_comment","project_created","project_task_added","project_deadline_updated","post_approved","post_rejected","client_approval_required","invoice_created","payment_received","subscription_renewal","user_invited","access_approved","access_rejected","permissions_updated","recruitment_new_application","recruitment_task_submitted","recruitment_reschedule_request","digest_sections"],
+  notification_prefs: ["user_email","all_disabled","mentions_only","daily_digest","task_assigned","task_stage_changed","task_due_soon","task_overdue","task_mention","task_comment","project_created","project_task_added","project_deadline_updated","post_approved","post_rejected","client_approval_required","invoice_created","payment_received","subscription_renewal","user_invited","access_approved","access_rejected","permissions_updated","recruitment_new_application","recruitment_task_submitted","recruitment_reschedule_request","digest_sections","digest_time"],
   customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","attachment_url","sent_by","thread_status","draft_status","external_id"],
   task_logs: ["post_id","post_title","client_name","phase","round","assignee_email","assignee_name","assigned_by","assigned_at","completed_at","duration_mins","outcome"],
   daily_report_settings: ["enabled","send_time","days","sections","client_ids","recipients","window_hours","last_sent_date"],
@@ -2456,7 +2456,7 @@ const DEFAULT_NOTIF_PREFS = {
   // Digest
   daily_digest: true,
   digest_sections: "",
-  digest_time: "08:00",
+  digest_time: "",
   // Mode
   mentions_only: false, // if true, only mention emails are sent
   all_disabled: false, // master kill switch
@@ -33303,7 +33303,12 @@ function NotificationPrefsTab({notifPrefs, onSaveNotifPrefs, currentUser, rolePe
                     return React.createElement("div",{style:{display:"flex",gap:8,flexWrap:"wrap",padding:"0 0 12px",alignItems:"center"}},
                       React.createElement("span",{style:{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase"}},"Send via:"),
                       ...[["email","Email"],["whatsapp","WhatsApp"]].map(([k,l])=>React.createElement("button",{key:k,type:"button",onClick:()=>upd("digest_sections",JSON.stringify({...want,[k]:!isOn(k)})),style:{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:600,cursor:"pointer",border:"1px solid "+(isOn(k)?"var(--accent)":"var(--border2)"),background:isOn(k)?"var(--accent)":"transparent",color:isOn(k)?"#fff":"var(--text2)"}},(isOn(k)?"✓ ":"")+l)));
-                  })()
+                  })(),
+                  prefs.daily_digest && !dis && React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center",padding:"0 0 12px"}},
+                    React.createElement("span",{style:{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase"}},"Send at:"),
+                    React.createElement("input",{type:"time",value:prefs.digest_time||(currentUser?.role==="admin"?"22:00":"11:00"),onChange:e=>upd("digest_time",e.target.value),style:{padding:"5px 10px",border:"1px solid var(--border2)",borderRadius:8,background:"var(--surface)",color:"var(--text)",fontSize:13}}),
+                    React.createElement("span",{style:{fontSize:11,color:"var(--text3)"}},"Cairo time")
+                  )
                 );
               })}
             </div>
