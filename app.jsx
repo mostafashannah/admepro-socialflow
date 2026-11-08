@@ -33208,9 +33208,27 @@ function NotificationPrefsTab({notifPrefs, onSaveNotifPrefs, currentUser, rolePe
         const [nsaving, setNSaving] = React.useState(false);
         const [nsaved, setNSaved] = React.useState(false);
         const prefsRef = React.useRef(prefs); prefsRef.current = prefs;
+        const touched = React.useRef(false);
+        // The start-up load can miss this row (or return it late), leaving every toggle at its default —
+        // so read the signed-in user's own row straight from the database when this tab opens.
+        React.useEffect(()=>{
+          let alive = true;
+          const email = currentUser?.email;
+          if(!email) return;
+          qe("NotificationPrefs",{user_email:email},null,1).then(r=>{
+            const row = r?.entities?.[0];
+            if(alive && row && !touched.current) {
+              const norm = {...row};
+              ["all_disabled","mentions_only","daily_digest"].forEach(k=>{ if(k in norm) norm[k] = String(norm[k])==="0" || norm[k]===false ? false : !!norm[k]; });
+              setPrefs({...DEFAULT_NOTIF_PREFS, ...norm});
+            }
+          }).catch(()=>{});
+          return ()=>{alive=false};
+        },[currentUser?.email]);
         const autoTimer = React.useRef(null);
         // Changes save themselves ~0.7s after the last click, so a toggle can't be lost by forgetting the Save button.
         const upd = (k,v) => {
+          touched.current = true;
           const next = {...prefsRef.current,[k]:v};
           prefsRef.current = next;
           setPrefs(next);
