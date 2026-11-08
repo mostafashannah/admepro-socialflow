@@ -33207,7 +33207,19 @@ function NotificationPrefsTab({notifPrefs, onSaveNotifPrefs, currentUser, rolePe
         const [prefs, setPrefs] = React.useState({...DEFAULT_NOTIF_PREFS,...(notifPrefs||{})});
         const [nsaving, setNSaving] = React.useState(false);
         const [nsaved, setNSaved] = React.useState(false);
-        const upd = (k,v) => setPrefs(p=>({...p,[k]:v}));
+        const prefsRef = React.useRef(prefs); prefsRef.current = prefs;
+        const autoTimer = React.useRef(null);
+        // Changes save themselves ~0.7s after the last click, so a toggle can't be lost by forgetting the Save button.
+        const upd = (k,v) => {
+          const next = {...prefsRef.current,[k]:v};
+          prefsRef.current = next;
+          setPrefs(next);
+          clearTimeout(autoTimer.current);
+          autoTimer.current = setTimeout(async()=>{
+            setNSaving(true);
+            try { if(onSaveNotifPrefs) await onSaveNotifPrefs(prefsRef.current); } finally { setNSaving(false); setNSaved(true); setTimeout(()=>setNSaved(false),2000); }
+          }, 700);
+        };
         const Toggle = ({val,onChange,disabled}) => (
           <button disabled={disabled} onClick={()=>!disabled&&onChange(!val)} style={{
             width:44,height:24,borderRadius:99,flexShrink:0,
