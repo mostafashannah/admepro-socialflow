@@ -35796,7 +35796,7 @@ function TerminationDeductionPanel({run, member, rules, onApply}) {
   );
 }
 
-function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,clients=[],financeClientNotes=[],team=[],currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh,onRenameClient,onSaveClientNote,onUpdateClient,activityLogs=[],payrollRuns=[],onDecidePayrollRun,onApplyTerminationDeduction,attendanceRules}) {
+function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,clients=[],financeClientNotes=[],team=[],currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh,onRenameClient,onSaveClientNote,onUpdateClient,activityLogs=[],payrollRuns=[],onDecidePayrollRun,onApplyTerminationDeduction,onDecideOverageDeduction,attendanceRules}) {
   const {isMobile} = useResponsive();
   const [showAdd,setShowAdd] = useState(false);
   const [range,setRange] = useState("all");
@@ -36395,6 +36395,17 @@ No markdown, no explanation.`;
                   <Btn variant="secondary" onClick={()=>onDecidePayrollRun(r,"reject")}>Reject</Btn>
                   <Btn onClick={()=>onDecidePayrollRun(r,"approve")}>Approve</Btn>
                 </div>
+                {Number(r.deduction_amount)>0 && !r.overage_status && onDecideOverageDeduction && (
+                  <div style={{flexBasis:"100%",background:"rgba(239,68,68,0.06)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,padding:"10px 12px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                    <div style={{flex:1,minWidth:220}}>
+                      <p style={{fontSize:12,fontWeight:700,color:"#ef4444"}}>Vacation limit exceeded — deduction EGP {Math.round(r.deduction_amount).toLocaleString()}</p>
+                      <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{Number(r.vacation_overage_days)} day(s) over the limit, already taken off the net above. Approve it, or postpone it to next month.</p>
+                    </div>
+                    <Btn variant="secondary" onClick={()=>onDecideOverageDeduction(r,"postponed")}>Postpone</Btn>
+                    <Btn onClick={()=>onDecideOverageDeduction(r,"approved")}>Approve deduction</Btn>
+                  </div>
+                )}
+                {r.overage_status==="postponed" && <p style={{flexBasis:"100%",fontSize:11,color:"#f59e0b"}}>Vacation deduction postponed to next month.</p>}
                 {(()=>{ const m=(team||[]).find(t=>t.id===r.team_member_id); return m&&m.termination_date&&String(m.termination_date).slice(0,7)===r.salary_month&&onApplyTerminationDeduction ? <TerminationDeductionPanel key={r.id} run={r} member={m} rules={attendanceRules} onApply={onApplyTerminationDeduction}/> : null; })()}
               </div>
             ))}
@@ -50591,6 +50602,17 @@ Return ONLY the JSON array, no markdown.`;
   // which only ever generates these as PENDING — nothing gets added to
   // Outstanding until an admin actually reviews the salary/deduction figures
   // here and approves it).
+  // Vacation-overage deduction is its own decision: approve it (stays deducted) or postpone it to next month's payroll.
+  const decideOverageDeduction = async (run, decision) => {
+    const ded = Number(run.deduction_amount)||0;
+    const patch = decision==="postponed"
+      ? {overage_status:"postponed", deduction_amount:0, vacation_overage_days:0, net_amount: Math.max(0, Number(run.net_amount)+ded)}
+      : {overage_status:"approved"};
+    await ue("PayrollRun", run.id, patch).catch(()=>{});
+    setData(d=>({...d,payrollRuns:d.payrollRuns.map(r=>r.id===run.id?{...r,...patch}:r)}));
+    setToast(decision==="postponed" ? `Deduction of EGP ${Math.round(ded).toLocaleString()} postponed to next month` : "Vacation deduction approved");
+  };
+
   const applyTerminationDeduction = async (run, amount, st) => {
     const prev = Number(run.termination_deduction)||0;
     const amt = st==="applied" ? Math.max(0, Number(amount)||0) : 0;
@@ -52513,6 +52535,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         {page==="finance"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"finance.full"))&&(
           <FinancePage
             onApplyTerminationDeduction={applyTerminationDeduction}
+            onDecideOverageDeduction={decideOverageDeduction}
             attendanceRules={appSettings?.attendance_rules||{}}
             invoices={data.invoices}
             payments={data.payments}

@@ -77,7 +77,7 @@ function proratedMonthlySalary($currentSalary, $events, $year, $month, $startDay
 }
 
 $rows = $pdo->query(
-    "SELECT pr.id, pr.termination_deduction, pr.team_member_id, pr.member_name, pr.salary_month,
+    "SELECT pr.id, pr.termination_deduction, pr.overage_status, pr.team_member_id, pr.member_name, pr.salary_month,
             tm.role, tm.salary, tm.probation_salary, tm.probation_months, tm.termination_date, tm.employment_type, tm.attendance_policy_exempt,
             tm.vacation_days_used, tm.vacation_days_total,
             COALESCE(tm.start_date, DATE(tm.created_at)) AS start_date
@@ -128,6 +128,7 @@ foreach ($rows as $r) {
     $total = floatval($r['vacation_days_total'] ?? 30);
     $overage = $isFreelance ? 0 : max(0, $used - $total);
     if (strtolower((string)($r['role'] ?? '')) === 'admin') $overage = 0; // owners/admins exempt
+    if (($r['overage_status'] ?? '') === 'postponed') $overage = 0; // postponed to next month
     if ($overage > 0) { // don't re-charge overage already charged in earlier approved/pending rows
         $prev = $pdo->prepare("SELECT COALESCE(SUM(vacation_overage_days),0) FROM payroll_runs WHERE team_member_id = ? AND status IN ('approved','pending') AND salary_month < ?");
         $prev->execute([$r['team_member_id'], $r['salary_month']]);
