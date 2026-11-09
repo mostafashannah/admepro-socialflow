@@ -31906,6 +31906,7 @@ function MaiReportSettings() {
           <div><h3 style={{fontSize:16,fontWeight:800}}>Mai — Daily Client Check</h3><p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>The morning WhatsApp from Mai about each client's posting pace and pipeline. Switch it off to stop it for everyone.</p></div>
           <SwitchToggle on={enabled} onChange={setEnabled}/>
         </div>
+        <div style={{padding:"10px 14px",borderRadius:8,fontSize:13,fontWeight:800,background:enabled?"#16a34a1f":"#ef44441f",color:enabled?"#15803d":"#dc2626",border:`1px solid ${enabled?"#16a34a55":"#ef444455"}`}}>{enabled?"● ON — Mai's daily client check is being sent":"● OFF — nothing is sent"}{recipients.length&&enabled?` to ${recipients.length} selected`:""}</div>
         <div>
           <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",marginBottom:6}}>Send to {recipients.length?`(${recipients.length} selected)`:"(everyone it applies to — pick people to limit it)"}</p>
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
