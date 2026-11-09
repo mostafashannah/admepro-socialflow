@@ -39174,13 +39174,13 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
           <div style={{overflowX:"auto"}}>
           <div style={{minWidth:`${zoom*100}%`}}>
           <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:120,flexShrink:0,position:"sticky",left:16,fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",background:"var(--surface2)"}}>Combined Timeline</div>
+            <div style={{width:150,flexShrink:0,position:"sticky",left:16,fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",background:"var(--surface2)"}}>Combined Timeline</div>
             {/* Ruler lives in a name-column + flex-timeline split identical to each
                 member row below, so hour ticks (percentage-positioned) line up
                 exactly with the percentage-positioned task bars underneath them. */}
             <div style={{position:"relative",flex:1,height:14}}>
               {hours.map(h=>(
-                <span key={h} style={{position:"absolute",left:`${(h-WORKING_START)*60/WORKING_MINS*100}%`,fontSize:10,color:"var(--text3)",whiteSpace:"nowrap"}}>{h===0?12:h>12?h-12:h}{h<12?"am":"pm"}</span>
+                <span key={h} style={{position:"absolute",left:`${(h-WORKING_START)*60/WORKING_MINS*100}%`,fontSize:11,fontWeight:700,color:"var(--text2)",whiteSpace:"nowrap"}}>{h===0?12:h>12?h-12:h}{h<12?"am":"pm"}</span>
               ))}
             </div>
           </div>
@@ -39208,15 +39208,15 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             const laneH = 58; // taller blocks so each task can show more detail
             const rowH = laneCount*laneH + (laneCount-1)*3;
             return (
-              <div key={member.email} style={{display:"flex",alignItems:"center",padding:"10px 16px",borderBottom:"1px solid var(--border)",gap:10}}>
-                <div style={{width:120,flexShrink:0,position:"sticky",left:16,display:"flex",alignItems:"center",gap:6,background:"var(--surface)"}}>
-                  <Avatar name={member.name} size={16} role={member.role} photoUrl={member.avatar_url}/>
+              <div key={member.email} style={{display:"flex",alignItems:"center",padding:"14px 16px",borderBottom:"1px solid var(--border)",gap:10}}>
+                <div style={{width:150,flexShrink:0,position:"sticky",left:16,display:"flex",alignItems:"center",gap:10,background:"var(--surface)",zIndex:3}}>
+                  <Avatar name={member.name} size={30} role={member.role} photoUrl={member.avatar_url}/>
                   <div style={{overflow:"hidden"}}>
-                    <p style={{fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.name}{member.email===currentUser?.email?" (You)":""}</p>
-                    <p style={{fontSize:9,fontWeight:600,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.title||ROLES[member.role]?.label||""}</p>
+                    <p style={{fontSize:13,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.name}{member.email===currentUser?.email?" (You)":""}</p>
+                    <p style={{fontSize:10,fontWeight:600,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.title||ROLES[member.role]?.label||""}</p>
                   </div>
                 </div>
-                <div style={{position:"relative",flex:1,height:rowH,background:"var(--surface2)",borderRadius:6,cursor:(isAM&&onQuickAdd)?"copy":"default",
+                <div style={{position:"relative",flex:1,height:rowH,background:"var(--surface2)",borderRadius:10,cursor:(isAM&&onQuickAdd)?"copy":"default",
                   backgroundImage:`repeating-linear-gradient(to right, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${100/(WORKING_END-WORKING_START)}%)`}}
                   onClick={(isAM&&onQuickAdd)?(e)=>{
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -39300,6 +39300,8 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     setToast(" Task moved");
                   }:undefined}>
                   {memberSlots.length===0 && <span style={{position:"absolute",top:"50%",left:8,transform:"translateY(-50%)",fontSize:10,color:"var(--text3)",pointerEvents:"none"}}>No tasks scheduled</span>}
+                  {(()=>{ const nd=new Date(); if(dateStr!==nd.toISOString().split("T")[0]) return null; const nm=nd.getHours()*60+nd.getMinutes(); if(nm<WORKING_START*60||nm>=WORKING_END*60) return null;
+                    return <div title="Now" style={{position:"absolute",top:-4,bottom:-4,left:`${(nm-WORKING_START*60)/WORKING_MINS*100}%`,width:2,background:"#ef4444",zIndex:2,pointerEvents:"none",borderRadius:2,boxShadow:"0 0 0 1px rgba(239,68,68,0.25)"}}><span style={{position:"absolute",top:-3,left:-3,width:8,height:8,borderRadius:"50%",background:"#ef4444"}}/></div>; })()}
                   {lanedSlots.map(slot=>{
                     const post = posts.find(p=>p.id===slot.post_id);
                     const leftPct = Math.max(0,(slot.start_mins - WORKING_START*60)/WORKING_MINS*100);
@@ -39325,7 +39327,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                           setCopiedTask({postId:post.id, durationMins: slot.end_mins-slot.start_mins});
                           setToast(` "${post.title}" copied — right-click a free slot (any day) to move it there`);
                         }:undefined}
-                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,background:slot.overdue?"#ef4444":slot.completed_today?"#22c55e":(stage?.color||"var(--accent)"),borderRadius:5,cursor:post?(canMove?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 6px",...(slot.overdue?{boxShadow:"0 0 0 1px #b91c1c inset"}:{})}}>
+                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,background:slot.overdue?"#ef4444":slot.completed_today?"#22c55e":(stage?.color||"var(--accent)"),borderRadius:8,backgroundImage:"linear-gradient(180deg, rgba(255,255,255,0.16), rgba(0,0,0,0.08))",boxShadow:slot.overdue?"0 0 0 1.5px #b91c1c inset, 0 2px 6px rgba(0,0,0,0.2)":"0 2px 6px rgba(0,0,0,0.18)",cursor:post?(canMove?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 8px"}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
                           {post&&<TaskThumb post={post} team={team} size={34}/>}
                           <div style={{display:"flex",flexDirection:"column",minWidth:0,flex:1,lineHeight:1.25}}>
