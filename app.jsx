@@ -39279,6 +39279,8 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
     .filter(m=>m.status!=="inactive")
     .filter(m=>!["office_boy","accountant"].includes(m.role)) // never on the timeline, for anyone (admins and directors included)
     .filter(m=>isAdminViewer || !["hr","accountant","office_boy","admin"].includes(m.role))
+    // People outside the account team (designers, content creators, editors…) never see the account team's timelines.
+    .filter(m=>isAdminViewer || ["account_manager","account_director","account_executive"].includes(currentUser?.role) || !["account_manager","account_director","account_executive"].includes(m.role))
     // Account managers / executives never see the account director's timeline.
     .filter(m=>!(["account_manager","account_executive"].includes(currentUser?.role) && m.role==="account_director"))
     .filter(m=>isAdminViewer || currentUser?.role==="account_director" || !TIMELINE_EXCLUDED_NAMES.some(n=>(m.name||"").trim().toLowerCase().split(/\s+/)[0]===n))
