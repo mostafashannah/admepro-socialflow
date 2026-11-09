@@ -39004,7 +39004,7 @@ function RepeatTaskModal({open, onClose, slot, projects=[], team=[], clients=[],
               {(()=>{
                 const q = projQuery.trim().toLowerCase();
                 const groups = {};
-                projects.forEach(pr=>{ const key = pr.client_name||"No client"; if(q && !key.toLowerCase().includes(q) && !(pr.title||"").toLowerCase().includes(q)) return; (groups[key]=groups[key]||[]).push(pr); });
+                projects.forEach(pr=>{ const key = (clients.find(c=>c.id===pr.client_id)?.name)||pr.client_name||"No client"; if(q && !key.toLowerCase().includes(q) && !(pr.title||"").toLowerCase().includes(q)) return; (groups[key]=groups[key]||[]).push(pr); });
                 const names = Object.keys(groups).sort();
                 if(!names.length) return <p style={{fontSize:12,color:"var(--text3)",padding:"8px 12px"}}>No match.</p>;
                 if(projMode==="client") return names.map(name=>{
@@ -49625,6 +49625,12 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
     const cl = data.clients.find(c=>c.id===id);
     setData(d=>({...d, clients:d.clients.map(c=>c.id===id?{...c,...updates}:c)}));
     await ue("Client", id, updates).catch(()=>{});
+    // Projects keep their own copy of the client's name — carry a rename over so lists stop showing the old one.
+    if(updates.name && cl && updates.name!==cl.name) {
+      const mine = (data.projects||[]).filter(p=>p.client_id===id);
+      setData(d=>({...d, projects:d.projects.map(p=>p.client_id===id?{...p,client_name:updates.name}:p)}));
+      mine.forEach(p=>{ ue("Project", p.id, {client_name:updates.name}).catch(()=>{}); });
+    }
     logActivity("Client Updated","clients",`${cl?.name||id} — ${Object.keys(updates).join(", ")}`,"success","",currentUser?.email||"admin");
     setToast(" Client updated");
 
