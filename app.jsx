@@ -38956,6 +38956,9 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   const [viewUser, setViewUser] = useState(()=>initialJump?.viewUser||null); // null = self
   const [combinedView, setCombinedView] = useState(()=>initialJump ? !!initialJump.combined : true);
   const [zoom, setZoom] = useState(1); // 1x–4x horizontal stretch on the combined timeline
+  // Rows the viewer has stacked (collapsed) to a thin strip — remembered per browser.
+  const [collapsedRows, setCollapsedRows] = usePersistentState("sf_timeline_collapsed", {});
+  const toggleRow = (k) => setCollapsedRows({...(collapsedRows||{}), [k]: !(collapsedRows||{})[k]});
   const [overrideTarget, setOverrideTarget] = useState(null); // {slot, post}
   const [overrideTime, setOverrideTime] = useState("09:00");
   const effectiveUser = (isAM && viewUser) ? viewUser : currentUser;
@@ -39207,6 +39210,20 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             const laneCount = Math.max(1, lanesEnd.length);
             const laneH = 58; // taller blocks so each task can show more detail
             const rowH = laneCount*laneH + (laneCount-1)*3;
+            const isCollapsed = !!(collapsedRows||{})[member.email];
+            if(isCollapsed) return (
+              <div key={member.email} onClick={()=>toggleRow(member.email)} title="Click to expand" style={{display:"flex",alignItems:"center",padding:"8px 16px",borderBottom:"1px solid var(--border)",gap:10,cursor:"pointer"}}>
+                <div style={{width:150,flexShrink:0,position:"sticky",left:16,display:"flex",alignItems:"center",gap:8,background:"var(--surface)",zIndex:3}}>
+                  <span style={{fontSize:11,color:"var(--text3)",width:12}}>▸</span>
+                  <Avatar name={member.name} size={22} role={member.role} photoUrl={member.avatar_url}/>
+                  <p style={{fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.name}</p>
+                </div>
+                <div style={{position:"relative",flex:1,height:10,background:"var(--surface2)",borderRadius:5}}>
+                  {lanedSlots.map(slot=>{ const l=Math.max(0,(slot.start_mins-WORKING_START*60)/WORKING_MINS*100), w=Math.max(0.8,(slot.end_mins-slot.start_mins)/WORKING_MINS*100); const pp=posts.find(x=>x.id===slot.post_id); return <div key={slot.post_id} style={{position:"absolute",left:`${l}%`,width:`${w}%`,top:1,bottom:1,borderRadius:4,background:slot.overdue?"#ef4444":slot.completed_today?"#22c55e":((pp&&STAGE_MAP[pp.stage]?.color)||"var(--accent)"),opacity:0.85}}/>; })}
+                </div>
+                <span style={{fontSize:11,color:"var(--text3)",fontWeight:700,flexShrink:0,minWidth:54,textAlign:"right"}}>{lanedSlots.length} task{lanedSlots.length!==1?"s":""}</span>
+              </div>
+            );
             return (
               <div key={member.email} style={{display:"flex",alignItems:"center",padding:"14px 16px",borderBottom:"1px solid var(--border)",gap:10}}>
                 <div style={{width:150,flexShrink:0,position:"sticky",left:16,display:"flex",alignItems:"center",gap:10,background:"var(--surface)",zIndex:3}}>
@@ -39215,6 +39232,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     <p style={{fontSize:13,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.name}{member.email===currentUser?.email?" (You)":""}</p>
                     <p style={{fontSize:10,fontWeight:600,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.title||ROLES[member.role]?.label||""}</p>
                   </div>
+                  <button onClick={(e)=>{e.stopPropagation();toggleRow(member.email);}} title="Stack (collapse) this timeline" style={{marginLeft:"auto",flexShrink:0,width:22,height:22,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text3)",cursor:"pointer",fontSize:11,lineHeight:1}}>▾</button>
                 </div>
                 <div style={{position:"relative",flex:1,height:rowH,background:"var(--surface2)",borderRadius:10,cursor:(isAM&&onQuickAdd)?"copy":"default",
                   backgroundImage:`repeating-linear-gradient(to right, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${100/(WORKING_END-WORKING_START)}%)`}}
@@ -39367,16 +39385,33 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
               .filter(r=>r.timing && r.timing.start.toISOString().split("T")[0]===dateStr);
             if(!sara) return null;
             return (
-              <div key="sara-timeline-row" style={{display:"flex",alignItems:"center",padding:"10px 16px",borderBottom:"1px solid var(--border)",gap:10,background:sara.color+"08"}}>
-                <div style={{width:120,flexShrink:0,position:"sticky",left:16,fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:6,background:"var(--surface)"}}>
-                  <div style={{width:16,height:16,borderRadius:"50%",background:sara.color,flexShrink:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:9,fontWeight:800}}>
+              (collapsedRows||{}).sara ? (
+              <div key="sara-timeline-row" onClick={()=>toggleRow("sara")} title="Click to expand" style={{display:"flex",alignItems:"center",padding:"8px 16px",borderBottom:"1px solid var(--border)",gap:10,cursor:"pointer",background:sara.color+"08"}}>
+                <div style={{width:150,flexShrink:0,position:"sticky",left:16,display:"flex",alignItems:"center",gap:8,background:"var(--surface)",zIndex:3}}>
+                  <span style={{fontSize:11,color:"var(--text3)",width:12}}>▸</span>
+                  <div style={{width:22,height:22,borderRadius:"50%",background:sara.color,flexShrink:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:11,fontWeight:800}}>{avatarUrl?<img src={avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"S"}</div>
+                  <p style={{fontSize:12,fontWeight:700}}>Sara (AI)</p>
+                </div>
+                <div style={{position:"relative",flex:1,height:10,background:"var(--surface2)",borderRadius:5}}>
+                  {saraRuns.map(({log,timing},ri)=>{ const sm=timing.start.getHours()*60+timing.start.getMinutes(); const l=Math.max(0,(sm-WORKING_START*60)/WORKING_MINS*100); return <div key={log.id||ri} style={{position:"absolute",left:`${l}%`,width:"1.2%",top:1,bottom:1,borderRadius:4,background:log.status==="error"?"#ef4444":sara.color}}/>; })}
+                </div>
+                <span style={{fontSize:11,color:"var(--text3)",fontWeight:700,flexShrink:0,minWidth:54,textAlign:"right"}}>{saraRuns.length} run{saraRuns.length!==1?"s":""}</span>
+              </div>
+              ) : (
+              <div key="sara-timeline-row" style={{display:"flex",alignItems:"center",padding:"14px 16px",borderBottom:"1px solid var(--border)",gap:10,background:sara.color+"08"}}>
+                <div style={{width:150,flexShrink:0,position:"sticky",left:16,display:"flex",alignItems:"center",gap:10,background:"var(--surface)",zIndex:3}}>
+                  <div style={{width:30,height:30,borderRadius:"50%",background:sara.color,flexShrink:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:13,fontWeight:800}}>
                     {avatarUrl?<img src={avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"S"}
                   </div>
-                  Sara (AI)
+                  <div style={{overflow:"hidden"}}>
+                    <p style={{fontSize:13,fontWeight:800,whiteSpace:"nowrap"}}>Sara (AI)</p>
+                    <p style={{fontSize:10,fontWeight:600,color:"var(--text3)",whiteSpace:"nowrap"}}>AI Assistant</p>
+                  </div>
+                  <button onClick={(e)=>{e.stopPropagation();toggleRow("sara");}} title="Stack (collapse) this timeline" style={{marginLeft:"auto",flexShrink:0,width:22,height:22,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text3)",cursor:"pointer",fontSize:11,lineHeight:1}}>▾</button>
                 </div>
-                <div style={{position:"relative",flex:1,height:30,background:"var(--surface2)",borderRadius:6,
+                <div style={{position:"relative",flex:1,height:58,background:"var(--surface2)",borderRadius:10,
                   backgroundImage:`repeating-linear-gradient(to right, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${100/(WORKING_END-WORKING_START)}%)`}}>
-                  {saraRuns.length===0 && <span style={{position:"absolute",top:"50%",left:8,transform:"translateY(-50%)",fontSize:10,color:"var(--text3)"}}>No activity this day</span>}
+                  {saraRuns.length===0 && <span style={{position:"absolute",top:"50%",left:12,transform:"translateY(-50%)",fontSize:11,color:"var(--text3)"}}>No activity this day</span>}
                   {saraRuns.map(({log,timing},ri)=>{
                     const startMins = timing.start.getHours()*60+timing.start.getMinutes();
                     const durMins = Math.max(0,(timing.end-timing.start)/60000);
@@ -39389,11 +39424,12 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     const timeLabel = `${timing.start.toTimeString().slice(0,5)}–${timing.end.toTimeString().slice(0,5)}`;
                     return (
                       <div key={log.id||ri} title={`${log.action} · ${timeLabel} (${durLabel})`}
-                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:3,bottom:3,background:log.status==="error"?"#ef4444":sara.color,borderRadius:4,overflow:"hidden"}}/>
+                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:6,bottom:6,background:log.status==="error"?"#ef4444":sara.color,borderRadius:8,overflow:"hidden",backgroundImage:"linear-gradient(180deg, rgba(255,255,255,0.16), rgba(0,0,0,0.08))",boxShadow:"0 2px 6px rgba(0,0,0,0.18)"}}/>
                     );
                   })}
                 </div>
               </div>
+              )
             );
           })()}
           </div>
