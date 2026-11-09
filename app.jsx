@@ -39075,6 +39075,28 @@ function RoutineTaskModal({post, team=[], currentUser, onClose, onSave}) {
   const missed = post.routine_status==="missed";
   const [note,setNote] = useState("");
   const [busy,setBusy] = useState(false);
+  // Admins / account directors can edit the routine (this day's task, and optionally every future repeat).
+  const canEdit = ["admin","account_director"].includes(currentUser?.role);
+  const [editing,setEditing] = useState(false);
+  const [ef,setEf] = useState(null);
+  const [alsoFuture,setAlsoFuture] = useState(true);
+  const startEdit = () => { setEf({title:post.title||"", description:post.description||"", points:items.map(i=>i.text), due_time:post.due_time||"12:00", minutes:Number(post.estimated_minutes)||30, priority:post.priority||"medium"}); setEditing(true); };
+  const saveEdit = async () => {
+    const pts = ef.points.map(x=>x.trim()).filter(Boolean);
+    if(!ef.title.trim() || !pts.length) { alert("A title and at least one point are required."); return; }
+    setBusy(true);
+    // Keep ticks for points whose text is unchanged.
+    const next = pts.map(t=>{ const old = items.find(i=>i.text===t); return old ? old : {text:t, done:false}; });
+    await onSave(post.id, {title:ef.title.trim(), description:ef.description, checklist:JSON.stringify(next), due_time:ef.due_time, estimated_minutes:Number(ef.minutes)||30, priority:ef.priority});
+    if(alsoFuture) {
+      try {
+        const r = await qe("RecurringTask",{},"-created_at",200);
+        const mine = (r.entities||[]).filter(t=>Number(t.active)!==0 && t.assigned_to===post.assigned_to && t.title===post.title);
+        for(const t of mine) await ue("RecurringTask", t.id, {title:ef.title.trim(), description:ef.description, checklist:JSON.stringify(pts), due_time:ef.due_time, estimated_minutes:Number(ef.minutes)||30, priority:ef.priority});
+      } catch(e) {}
+    }
+    setBusy(false); setEditing(false);
+  };
   const toggle = async (idx) => {
     if(closed || missed || !isOwnerOrBoss) return;
     const next = items.map((it,i)=>i===idx ? (it.done ? {...it,done:false,by:null,at:null} : {...it,done:true,by:currentUser?.email||"",at:new Date().toISOString()}) : it);
@@ -39091,7 +39113,32 @@ function RoutineTaskModal({post, team=[], currentUser, onClose, onSave}) {
   return (
     <Modal open onClose={onClose} title={post.title} subtitle={`🔁 Routine task · ${owner?.name||post.assigned_to||""} · due ${post.due_date?fmtDate(post.due_date):""}${post.due_time?` at ${post.due_time}`:""}`} width={520}>
       <div style={{display:"flex",flexDirection:"column",gap:12,padding:"6px 0"}}>
-        {post.description&&<p style={{fontSize:13,color:"var(--text2)"}}>{post.description}</p>}
+        {canEdit&&!editing&&<button type="button" onClick={startEdit} style={{alignSelf:"flex-end",fontSize:12,fontWeight:700,padding:"5px 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer"}}>✎ Edit routine</button>}
+        {editing&&ef&&(
+          <div style={{display:"flex",flexDirection:"column",gap:10,padding:12,border:"1px solid var(--border2)",borderRadius:10,background:"var(--surface2)"}}>
+            <Field label="Title"><input value={ef.title} onChange={e=>setEf({...ef,title:e.target.value})} style={inputSt}/></Field>
+            <Field label="Checklist points">
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {ef.points.map((pt,i)=>(
+                  <div key={i} style={{display:"flex",gap:6}}>
+                    <input value={pt} onChange={e=>setEf({...ef,points:ef.points.map((x,j)=>j===i?e.target.value:x)})} style={{...inputSt,flex:1}}/>
+                    {ef.points.length>1&&<button type="button" onClick={()=>setEf({...ef,points:ef.points.filter((_,j)=>j!==i)})} style={{border:"1px solid var(--border2)",background:"var(--surface)",borderRadius:8,padding:"0 10px",cursor:"pointer",color:"#ef4444",fontWeight:800}}>×</button>}
+                  </div>
+                ))}
+                <button type="button" onClick={()=>setEf({...ef,points:[...ef.points,""]})} style={{alignSelf:"flex-start",fontSize:12,fontWeight:700,color:"var(--accent)",background:"none",border:"none",cursor:"pointer",padding:0}}>+ Add point</button>
+              </div>
+            </Field>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+              <Field label="Due time"><input type="time" value={ef.due_time} onChange={e=>setEf({...ef,due_time:e.target.value})} style={inputSt}/></Field>
+              <Field label="Minutes"><input type="number" min={5} step={5} value={ef.minutes} onChange={e=>setEf({...ef,minutes:e.target.value})} style={inputSt}/></Field>
+              <Field label="Priority"><select value={ef.priority} onChange={e=>setEf({...ef,priority:e.target.value})} style={inputSt}>{["low","medium","high","urgent"].map(x=><option key={x} value={x}>{x}</option>)}</select></Field>
+            </div>
+            <Field label="Notes"><textarea value={ef.description} onChange={e=>setEf({...ef,description:e.target.value})} rows={2} style={{...inputSt,resize:"vertical"}}/></Field>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,fontWeight:600}}><input type="checkbox" checked={alsoFuture} onChange={e=>setAlsoFuture(e.target.checked)}/> Also apply to future repeats</label>
+            <div style={{display:"flex",gap:8}}><Btn onClick={saveEdit} disabled={busy}>{busy?"Saving…":"Save changes"}</Btn><Btn variant="secondary" onClick={()=>setEditing(false)}>Cancel</Btn></div>
+          </div>
+        )}
+        {post.description&&!editing&&<p style={{fontSize:13,color:"var(--text2)"}}>{post.description}</p>}
         <div style={{height:8,borderRadius:99,background:"var(--surface2)",overflow:"hidden"}}><div style={{width:`${items.length?done/items.length*100:0}%`,height:"100%",background:closed?(post.routine_flag==="issue"?"#f59e0b":"#16a34a"):"var(--accent)",transition:"width 0.2s"}}/></div>
         <p style={{fontSize:12,color:"var(--text3)",fontWeight:700}}>{done} of {items.length} points done</p>
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
