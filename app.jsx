@@ -1271,6 +1271,7 @@ const SB_TABLE = {
   ReplyBotSetting:"reply_bot_settings",
   DailyReportSettings:"daily_report_settings",
   MaiReportSettings:"mai_report_settings",
+  RecurringTask:"recurring_tasks",
   TaskLog:"task_logs",
   RolePermission:"role_permissions",
   LeaveRequest:"leave_requests",
@@ -4336,6 +4337,7 @@ function StagePipeline({post}) {
 // Live task timer with time remaining. Reads the timer entries through a bridge the App refreshes on every render,
 // so it can sit anywhere (timeline blocks, My Tasks cards, the task modal) without prop-drilling.
 const timerBridge = {entries:[]};
+const roleBridge = {role:""}; // signed-in user's role, refreshed by the App every render
 function postTimerInfo(post) {
   const rows = (timerBridge.entries||[]).filter(t=>t.post_id===post.id);
   if(!rows.length) return null;
@@ -38922,7 +38924,125 @@ function TimelineAddPicker({slot, onPick, onClose, inline=false}) {
       <button onClick={()=>onPick("post",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.tasks} size={13} stroke="var(--text2)"/> Post</button>
       <button onClick={()=>onPick("calendar",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.calPlus} size={13} stroke="var(--text2)"/> Calendar Plan</button>
       <button onClick={()=>onPick("existing",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.link||Icons.plug} size={13} stroke="var(--text2)"/> Existing Task</button>
+      {["admin","account_director"].includes(roleBridge.role)&&<button onClick={()=>onPick("repeat",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.refresh||Icons.link||Icons.plug} size={13} stroke="var(--text2)"/> Repeated Task</button>}
     </div>
+  );
+}
+
+// Timeline > Repeated Task: set a task once and have it created again on the schedule you choose (daily, work days, weekly, every N days, monthly).
+function RepeatTaskModal({open, onClose, slot, projects=[], team=[], clients=[], currentUser, onCreateFirst}) {
+  const WD = [[0,"Sun"],[1,"Mon"],[2,"Tue"],[3,"Wed"],[4,"Thu"],[5,"Fri"],[6,"Sat"]];
+  const member0 = team.find(m=>m.email===slot?.assigned_to);
+  const stageFor = (m) => ROLE_OWNED_STAGE[m?.role] || "design";
+  const [f,setF] = useState({
+    title:"", project_id:"", description:"", assigned_to:slot?.assigned_to||"", stage:stageFor(member0), priority:"medium",
+    due_time:(slot?.due_time)||"12:00", minutes:60,
+    rule:"daily", days:[0,1,2,3,4], interval:2, start_date:slot?.due_date||new Date().toISOString().split("T")[0], end_date:"", never:true,
+  });
+  const [list,setList] = useState([]);
+  const [saving,setSaving] = useState(false);
+  const [msg,setMsg] = useState("");
+  const set = (k,v) => setF(p=>({...p,[k]:v}));
+  const load = async () => { const r = await qe("RecurringTask",{},"-created_at",200).catch(()=>({entities:[]})); setList((r.entities||[]).filter(x=>Number(x.active)!==0)); };
+  useEffect(()=>{ load(); },[]);
+  const toggleDay = d => set("days", f.days.includes(d)?f.days.filter(x=>x!==d):[...f.days,d].sort());
+  const canSave = f.title.trim() && f.project_id && f.assigned_to && f.due_time && f.start_date && (f.rule!=="weekly" || f.days.length) && (f.rule!=="interval" || Number(f.interval)>=1);
+  const describe = (r) => r.rule_type==="daily" ? "Every day" : r.rule_type==="monthly" ? "Monthly" : r.rule_type==="interval" ? `Every ${r.rule_interval} days` : (()=>{ let d=[]; try{d=JSON.parse(r.rule_days||"[]");}catch(e){} return d.length===5&&[0,1,2,3,4].every(x=>d.includes(x))?"Work days (Sun–Thu)":"Weekly: "+d.map(x=>WD[x]?.[1]).join(", "); })();
+  const save = async () => {
+    if(!canSave) return;
+    setSaving(true); setMsg("");
+    const proj = projects.find(p=>p.id===f.project_id);
+    const row = {
+      title:f.title.trim(), description:f.description, project_id:f.project_id, client_id:proj?.client_id||"", client_name:proj?.client_name||"",
+      assigned_to:f.assigned_to, stage:f.stage, priority:f.priority, post_type:"design", due_time:f.due_time, estimated_minutes:Number(f.minutes)||60,
+      rule_type: f.rule==="workdays"?"weekly":f.rule, rule_days: JSON.stringify(f.rule==="workdays"?[0,1,2,3,4]:f.days), rule_interval:Number(f.interval)||1,
+      start_date:f.start_date, end_date:f.never?null:(f.end_date||null), active:1, created_by:currentUser?.email||"",
+    };
+    // The first occurrence is created right now (when it starts today or later); the server creates every later one.
+    const todayStr = new Date().toISOString().split("T")[0];
+    const startsToday = f.start_date === todayStr;
+    const matchesToday = f.rule==="daily" || f.rule==="interval" || f.rule==="monthly" || f.rule==="workdays" && [0,1,2,3,4].includes(new Date().getDay()) || f.rule==="weekly" && f.days.includes(new Date().getDay());
+    if(startsToday ? matchesToday : true) {
+      row.last_generated_date = f.start_date;
+    }
+    try {
+      const res = await ce("RecurringTask",[row]);
+      if(!res?.entities?.[0]?.id) throw new Error("save failed");
+      if(onCreateFirst && (startsToday ? matchesToday : true)) {
+        await onCreateFirst({title:row.title, project_id:row.project_id, client_id:row.client_id, client_name:row.client_name, description:row.description, assigned_to:row.assigned_to,
+          due_date:f.start_date, due_time:row.due_time, estimated_minutes:row.estimated_minutes, priority:row.priority, stage:row.stage, platform:"", post_type:row.post_type});
+      }
+      setMsg("Saved ✓ — it will repeat automatically.");
+      setF(p=>({...p,title:"",description:""}));
+      load();
+    } catch(e) { setMsg("Couldn't save — has the migration been run? (recurring_tasks table)"); }
+    setSaving(false);
+  };
+  const stop = async (id) => { await ue("RecurringTask", id, {active:0}).catch(()=>{}); load(); };
+  const chip = (on) => ({padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700,cursor:"pointer",border:`1px solid ${on?"var(--accent)":"var(--border2)"}`,background:on?"var(--accent)":"transparent",color:on?"#fff":"var(--text2)"});
+  const eligible = eligibleAssignees(f.stage, team);
+  return (
+    <Modal open={open} onClose={onClose} title="Repeated Task" width={620}>
+      <div style={{display:"flex",flexDirection:"column",gap:12,padding:"10px 0"}}>
+        <Field label="Task Title" required><input value={f.title} onChange={e=>set("title",e.target.value)} placeholder="e.g. Post daily story for Bino" style={inputSt} autoFocus/></Field>
+        <Field label="Project" required>
+          <select value={f.project_id} onChange={e=>set("project_id",e.target.value)} style={inputSt}>
+            <option value="">— Select project —</option>
+            {projects.map(p=><option key={p.id} value={p.id}>{p.title} · {p.client_name}</option>)}
+          </select>
+        </Field>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <Field label="Assigned to" required>
+            <select value={f.assigned_to} onChange={e=>{const m=team.find(x=>x.email===e.target.value); set("assigned_to",e.target.value); if(m) set("stage",stageFor(m));}} style={inputSt}>
+              <option value="">— Select —</option>
+              {(eligible.length?eligible:team).map(m=><option key={m.email} value={m.email}>{m.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Priority">
+            <select value={f.priority} onChange={e=>set("priority",e.target.value)} style={inputSt}>{["low","medium","high","urgent"].map(x=><option key={x} value={x}>{x}</option>)}</select>
+          </Field>
+          <Field label="Due time" required><input type="time" value={f.due_time} onChange={e=>set("due_time",e.target.value)} style={inputSt}/></Field>
+          <Field label="Duration (minutes)"><input type="number" min={5} step={5} value={f.minutes} onChange={e=>set("minutes",e.target.value)} style={inputSt}/></Field>
+        </div>
+        <Field label="Notes (optional)"><textarea value={f.description} onChange={e=>set("description",e.target.value)} rows={2} style={{...inputSt,resize:"vertical"}}/></Field>
+        <div>
+          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",marginBottom:6}}>Repeat</p>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {[["daily","Every day"],["workdays","Work days (Sun–Thu)"],["weekly","Weekly (pick days)"],["interval","Every N days"],["monthly","Monthly"]].map(([k,l])=><button key={k} onClick={()=>set("rule",k)} style={chip(f.rule===k)}>{l}</button>)}
+          </div>
+          {f.rule==="weekly"&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>{WD.map(([d,l])=><button key={d} onClick={()=>toggleDay(d)} style={chip(f.days.includes(d))}>{l}</button>)}</div>}
+          {f.rule==="interval"&&<div style={{marginTop:8,fontSize:13,display:"flex",alignItems:"center",gap:8}}>Every <input type="number" min={1} value={f.interval} onChange={e=>set("interval",e.target.value)} style={{...inputSt,width:80}}/> days</div>}
+          {f.rule==="monthly"&&<p style={{fontSize:12,color:"var(--text3)",marginTop:6}}>On the same day of the month as the start date.</p>}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <Field label="Starts on" required><input type="date" value={f.start_date} onChange={e=>set("start_date",e.target.value)} style={inputSt}/></Field>
+          <Field label="Ends">
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <label style={{fontSize:12,display:"flex",alignItems:"center",gap:4}}><input type="checkbox" checked={f.never} onChange={e=>set("never",e.target.checked)}/> Never</label>
+              {!f.never&&<input type="date" value={f.end_date} onChange={e=>set("end_date",e.target.value)} style={inputSt}/>}
+            </div>
+          </Field>
+        </div>
+        <div style={{display:"flex",gap:10,alignItems:"center"}}>
+          <Btn onClick={save} disabled={!canSave||saving}>{saving?"Saving…":"Create repeating task"}</Btn>
+          {msg&&<span style={{fontSize:12,color:"var(--text2)"}}>{msg}</span>}
+        </div>
+        {list.length>0&&(
+          <div style={{borderTop:"1px solid var(--border)",paddingTop:10}}>
+            <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",marginBottom:6}}>Active repeating tasks</p>
+            {list.map(r=>(
+              <div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:"1px solid var(--border)"}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.title}</p>
+                  <p style={{fontSize:11,color:"var(--text3)"}}>{describe(r)} · {r.due_time} · {(team.find(m=>m.email===r.assigned_to)?.name)||r.assigned_to}</p>
+                </div>
+                <button onClick={()=>stop(r.id)} style={{fontSize:11,fontWeight:700,color:"#ef4444",background:"none",border:"1px solid #ef444455",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}>Stop</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 
@@ -48692,6 +48812,7 @@ function App() {
   const [addPostPresetSlot,setAddPostPresetSlot] = useState(null);
   const [addTaskPresetSlot,setAddTaskPresetSlot] = useState(null);
   const [assignExistingSlot,setAssignExistingSlot] = useState(null);
+  const [repeatSlot,setRepeatSlot] = useState(null);
   const [showAddProject,setShowAddProject] = useState(false);
   const [addProjectForClient,setAddProjectForClient] = useState(null);
   const [showCreateBrief,setShowCreateBrief] = useState(false);
@@ -50205,6 +50326,7 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
   };
 
   timerBridge.entries = data.timeEntries||[];
+  roleBridge.role = currentUser?.role||"";
   perfBridge.logs = data.perfLogs||[]; perfBridge.mai = data.maiReportSessions||[];
   clientAssetsBridge.assets = data.assets; clientAssetsBridge.addAsset = addAsset; clientAssetsBridge.clients = data.clients||[];
 
@@ -53027,6 +53149,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
           else if(type==="task"){ setAddTaskPresetSlot(slot); setShowAddTask(true); }
           else if(type==="calendar"){ setCalendarPreselectedClient(null); setShowFABCalendar(true); }
           else if(type==="existing"){ setAssignExistingSlot(slot); }
+          else if(type==="repeat" && ["admin","account_director"].includes(currentUser?.role)){ setRepeatSlot(slot); }
         }} onMoveTask={assignExistingTaskToSlot}/>}
         {(page==="my_performance"||page==="reports")&&<MyPerformancePage currentUser={currentUser} posts={data.posts} timeEntries={data.timeEntries||[]} perfLogs={data.perfLogs||[]} aiInsights={data.aiInsights||[]}/>}
         {page==="account"&&(
@@ -53217,6 +53340,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
 
     {showAddTask&&<AddGenericTaskModal open onClose={()=>{setShowAddTask(false);setAddTaskForClient(null);setAddTaskPresetSlot(null);}} projects={data.projects} team={data.team} onAdd={addPost} onCreateProject={addProjectQuick} presetClient={addTaskForClient} presetSlot={addTaskPresetSlot} clients={data.clients} currentUser={currentUser}/>}
 
+    {repeatSlot&&<RepeatTaskModal open onClose={()=>setRepeatSlot(null)} slot={repeatSlot} projects={data.projects} team={data.team.filter(m=>m.status!=="inactive")} clients={data.clients} currentUser={currentUser} onCreateFirst={addPost}/>}
     {assignExistingSlot&&<AssignExistingTaskModal open onClose={()=>setAssignExistingSlot(null)} slot={assignExistingSlot} posts={data.posts} team={data.team} clients={data.clients} onAssign={assignExistingTaskToSlot} onPushAndAssign={pushConflictAndAssignTask}/>}
 
     {/* New Project Wizard — used by FAB, Dashboard, Projects page */}
