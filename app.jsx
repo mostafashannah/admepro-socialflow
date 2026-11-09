@@ -39039,14 +39039,11 @@ function RepeatTaskModal({open, onClose, slot, projects=[], team=[], clients=[],
           </div>
         </Field>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          <Field label="Assigned to" required>
-            <select value={f.assigned_to} onChange={e=>{const m=team.find(x=>x.email===e.target.value); set("assigned_to",e.target.value); if(m) set("stage",stageFor(m));}} style={inputSt}>
-              <option value="">— Select —</option>
-              {(()=>{ const people = team.filter(m=>m.role!=="client");
-                const prod = people.filter(m=>ROLE_OWNED_STAGE[m.role]); const acct = people.filter(m=>ACCOUNT_ROLES.includes(m.role)); const rest = people.filter(m=>!ROLE_OWNED_STAGE[m.role] && !ACCOUNT_ROLES.includes(m.role));
-                const opts = arr => arr.map(m=><option key={m.email} value={m.email}>{m.name}{m.title?` — ${m.title}`:""}</option>);
-                return <>{prod.length>0&&<optgroup label="Production">{opts(prod)}</optgroup>}{acct.length>0&&<optgroup label="Account team">{opts(acct)}</optgroup>}{rest.length>0&&<optgroup label="Others">{opts(rest)}</optgroup>}</>; })()}
-            </select>
+          <Field label="Assigned to (slot owner)">
+            <div style={{...inputSt,display:"flex",alignItems:"center",gap:8,background:"var(--surface2)",cursor:"default"}}>
+              <Avatar name={member0?.name||"?"} size={22} role={member0?.role} photoUrl={member0?.avatar_url}/>
+              <span style={{fontWeight:700,fontSize:13}}>{member0?.name||slot?.assigned_to||"—"}</span>
+            </div>
           </Field>
           <Field label="Priority">
             <select value={f.priority} onChange={e=>set("priority",e.target.value)} style={inputSt}>{["low","medium","high","urgent"].map(x=><option key={x} value={x}>{x}</option>)}</select>
