@@ -38933,7 +38933,9 @@ function TimelineAddPicker({slot, onPick, onClose, inline=false}) {
 function RepeatTaskModal({open, onClose, slot, projects=[], team=[], clients=[], currentUser, onCreateFirst}) {
   const WD = [[0,"Sun"],[1,"Mon"],[2,"Tue"],[3,"Wed"],[4,"Thu"],[5,"Fri"],[6,"Sat"]];
   const member0 = team.find(m=>m.email===slot?.assigned_to);
-  const stageFor = (m) => ROLE_OWNED_STAGE[m?.role] || "design";
+  const ACCOUNT_ROLES = ["account_manager","account_director","account_executive","business_development"];
+  // Production staff start at their own stage; the account team starts at Brief (planning) since they have no design/content stage.
+  const stageFor = (m) => ROLE_OWNED_STAGE[m?.role] || (ACCOUNT_ROLES.includes(m?.role) ? "planning" : "design");
   const [f,setF] = useState({
     title:"", project_id:"", project_ids:[], description:"", assigned_to:slot?.assigned_to||"", stage:stageFor(member0), priority:"medium",
     due_time:(slot?.due_time)||"12:00", minutes:60,
@@ -39040,7 +39042,10 @@ function RepeatTaskModal({open, onClose, slot, projects=[], team=[], clients=[],
           <Field label="Assigned to" required>
             <select value={f.assigned_to} onChange={e=>{const m=team.find(x=>x.email===e.target.value); set("assigned_to",e.target.value); if(m) set("stage",stageFor(m));}} style={inputSt}>
               <option value="">— Select —</option>
-              {(eligible.length?eligible:team).map(m=><option key={m.email} value={m.email}>{m.name}</option>)}
+              {(()=>{ const people = team.filter(m=>m.role!=="client");
+                const prod = people.filter(m=>ROLE_OWNED_STAGE[m.role]); const acct = people.filter(m=>ACCOUNT_ROLES.includes(m.role)); const rest = people.filter(m=>!ROLE_OWNED_STAGE[m.role] && !ACCOUNT_ROLES.includes(m.role));
+                const opts = arr => arr.map(m=><option key={m.email} value={m.email}>{m.name}{m.title?` — ${m.title}`:""}</option>);
+                return <>{prod.length>0&&<optgroup label="Production">{opts(prod)}</optgroup>}{acct.length>0&&<optgroup label="Account team">{opts(acct)}</optgroup>}{rest.length>0&&<optgroup label="Others">{opts(rest)}</optgroup>}</>; })()}
             </select>
           </Field>
           <Field label="Priority">
