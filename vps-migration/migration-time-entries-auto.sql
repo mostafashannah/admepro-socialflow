@@ -1,0 +1,1 @@
+ALTER TABLE time_entries ADD COLUMN auto_started TINYINT(1) NOT NULL DEFAULT 0;
