@@ -4329,6 +4329,39 @@ function StagePipeline({post}) {
 // ════════════════════════════════════════════════════════════════
 // POST CARD
 // ════════════════════════════════════════════════════════════════
+// Live task timer with time remaining. Reads the timer entries through a bridge the App refreshes on every render,
+// so it can sit anywhere (timeline blocks, My Tasks cards, the task modal) without prop-drilling.
+const timerBridge = {entries:[]};
+function postTimerInfo(post) {
+  const rows = (timerBridge.entries||[]).filter(t=>t.post_id===post.id);
+  if(!rows.length) return null;
+  let tracked = 0, running = false, who = "";
+  rows.forEach(t=>{
+    tracked += Number(t.total_seconds)||0;
+    if(t.status==="active") { running = true; who = t.user_name||who; tracked += Math.max(0, Math.floor((Date.now()-parseSqlUtc(t.started_at).getTime())/1000)); }
+  });
+  const est = estimateDuration(post)*60;
+  return {tracked, running, who, remaining: est - tracked};
+}
+function LiveTimerBadge({post, big=false, light=false}) {
+  const [,setTick] = useState(0);
+  const info = postTimerInfo(post);
+  useEffect(()=>{ if(!info?.running) return; const id=setInterval(()=>setTick(x=>x+1),1000); return ()=>clearInterval(id); },[info?.running]);
+  if(!info || (!info.running && info.tracked<=0)) return null;
+  const hms = sec => { const t=Math.max(0,Math.floor(sec)); return `${String(Math.floor(t/3600)).padStart(2,"0")}:${String(Math.floor(t%3600/60)).padStart(2,"0")}:${String(t%60).padStart(2,"0")}`; };
+  const human = sec => { const t=Math.abs(Math.round(sec/60)); return t>=60 ? `${Math.floor(t/60)}h ${t%60}m` : `${t}m`; };
+  const over = info.remaining < 0;
+  const color = light ? "#fff" : (over ? "#ef4444" : "#10b981");
+  return (
+    <span style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:big?15:10,fontWeight:800,color,fontFamily:"monospace",whiteSpace:"nowrap",...(big?{background:over?"#ef444418":"#10b98118",padding:"8px 12px",borderRadius:8}:{})}}>
+      <span>{info.running?"▶":"⏸"}</span>
+      <span>{hms(info.tracked)}</span>
+      <span style={{fontFamily:"inherit",fontWeight:700,opacity:light?0.95:1}}>· {over ? `${human(info.remaining)} over` : `${human(info.remaining)} left`}</span>
+      {big&&info.who&&<span style={{fontFamily:"sans-serif",fontWeight:600,fontSize:11,color:"var(--text3)"}}>({info.who})</span>}
+    </span>
+  );
+}
+
 function PostCard({post,project,team,onClick}) {
   const stage = STAGE_MAP[post.stage]||STAGES[0];
   const assignee = team?.find(t=>t.email===post.assigned_to);
@@ -4368,6 +4401,7 @@ function PostCard({post,project,team,onClick}) {
           {(Array.isArray(post.platforms)&&post.platforms.length ? post.platforms : [post.platform]).map(pl=><PChip key={pl} platform={pl} xs/>)}
         </div>
       </div>
+      <LiveTimerBadge post={post}/>
       <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
         <Badge label={post.post_type||"post"} color="#6b7280" xs/>
         <Badge label={post.priority||"medium"} color={PRI_COLOR[post.priority]||"#3b82f6"} xs/>
@@ -7236,6 +7270,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
               </div>
             </div>
           )}
+          <LiveTimerBadge post={post} big/>
           {currentUser?.email===post.assigned_to ? (
             <TimeTracker postId={post.id} userEmail={currentUser?.email} timeEntries={timeEntries||[]} onStart={onStartTimer} onPause={onPauseTimer} onResume={onResumeTimer}/>
           ) : (
@@ -38394,6 +38429,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
                       <div style={{flex:1,minWidth:0}}>
                         <p style={{fontSize:14,fontWeight:600,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.title}</p>
                         {project && <p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{project.title}</p>}
+                        <LiveTimerBadge post={post}/>
                       </div>
                       {post.scheduled_date && (()=>{ const dc = dueDateColor(post.scheduled_date); return (
                         <span style={{fontSize:11,fontWeight:700,color:dc,background:dc+"1a",borderRadius:99,padding:"4px 9px",whiteSpace:"nowrap",flexShrink:0}}>
@@ -39295,7 +39331,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                           <div style={{display:"flex",flexDirection:"column",minWidth:0,flex:1,lineHeight:1.25}}>
                             <span style={{fontSize:11.5,color:"#fff",fontWeight:800,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
                             {widthPct>8&&<span style={{fontSize:9.5,color:"#fff",opacity:0.9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slot.start_time}–{slot.end_time}{slot.overdue?" · OVERDUE":slot.completed_today?" · Done":""}</span>}
-                            {widthPct>12&&<span style={{fontSize:9,color:"#fff",opacity:0.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{[post?.client_name, stage?.label].filter(Boolean).join(" · ")}</span>}
+                            {widthPct>12&&(post&&postTimerInfo(post) ? <LiveTimerBadge post={post} light/> : <span style={{fontSize:9,color:"#fff",opacity:0.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{[post?.client_name, stage?.label].filter(Boolean).join(" · ")}</span>)}
                           </div>
                         </div>
                       </div>
@@ -39456,6 +39492,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                           <span style={{fontSize:12,flexShrink:0}}>{PLT_ICON[post.platform]||""}</span>
                           <TaskThumb post={post} team={team} size={22}/><span style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{post.title}</span>
                           {isActive && <span style={{fontSize:11,fontFamily:"monospace",color:"#10b981",fontWeight:800,background:"#10b98122",padding:"1px 5px",borderRadius:4}}>{fmtSecs(trackedSecs)}</span>}
+                          <LiveTimerBadge post={post}/>
                         </div>
                         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                           <span style={{fontSize:10,color:"var(--text3)"}}>{slot.start_time}–{slot.end_time}</span>
@@ -49903,6 +49940,7 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
     return a;
   };
 
+  timerBridge.entries = data.timeEntries||[];
   clientAssetsBridge.assets = data.assets; clientAssetsBridge.addAsset = addAsset; clientAssetsBridge.clients = data.clients||[];
 
   const updateAsset = async (id, patch) => {

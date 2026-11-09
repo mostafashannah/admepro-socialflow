@@ -26,19 +26,43 @@ foreach ($pdo->query("SELECT email, name, role FROM team_members WHERE status = 
     if (isset($OWNED[$m['role']])) $members[strtolower($m['email'])] = $m;
 }
 
-// Slot window for a post, or null when it has none / isn't in its owner's stage.
-$slotFor = function (array $p) use ($OWNED, $members, $WORK_START, $WORK_END) {
-    if (empty($p['due_time']) || !preg_match('/^(\d{1,2}):(\d{2})/', $p['due_time'], $mm)) return null;
+// Today's tasks per owner, laid out exactly like the Timeline: highest priority first, each anchored at
+// (due_time - estimate), and a task that collides with one already placed is pushed to start right after it.
+$todayPosts = $pdo->prepare("SELECT id, title, project_id, stage, priority, scheduled_date, assigned_to, design_assigned_to, content_assigned_to, due_date, due_time, estimated_minutes
+    FROM posts WHERE LEFT(due_date, 10) = ? AND due_time IS NOT NULL AND due_time <> '' AND stage IN ('design','content_creation') AND (is_plan_parent IS NULL OR is_plan_parent = 0)");
+$todayPosts->execute([date('Y-m-d', strtotime($today))]);
+$prio = ['urgent' => 4, 'high' => 3, 'medium' => 2, 'low' => 1];
+$byOwner = [];
+foreach ($todayPosts->fetchAll(PDO::FETCH_ASSOC) as $p) {
+    if (!preg_match('/^(\d{1,2}):(\d{2})/', $p['due_time'], $mm)) continue;
     $stage = $p['stage'];
-    if ($stage !== 'design' && $stage !== 'content_creation') return null;
     $owner = $stage === 'design' ? ($p['design_assigned_to'] ?: $p['assigned_to']) : ($p['content_assigned_to'] ?: $p['assigned_to']);
     $m = $members[strtolower((string)$owner)] ?? null;
-    if (!$m || $OWNED[$m['role']] !== $stage) return null;
-    $est = (int)$p['estimated_minutes'] > 0 ? (int)$p['estimated_minutes'] : 60;
-    $due = (int)$mm[1] * 60 + (int)$mm[2];
-    $start = max($WORK_START, min($due - $est, $WORK_END - $est));
-    return ['member' => $m, 'start' => $start, 'end' => $start + $est];
-};
+    if (!$m || $OWNED[$m['role']] !== $stage) continue;
+    $score = ($prio[$p['priority']] ?? 1) * 10;
+    if (!empty($p['scheduled_date'])) $score += max(0, 7 - (int)floor((strtotime($p['scheduled_date']) - time()) / 86400));
+    $p['_score'] = $score; $p['_due'] = (int)$mm[1] * 60 + (int)$mm[2];
+    $p['_est'] = (int)$p['estimated_minutes'] > 0 ? (int)$p['estimated_minutes'] : 60;
+    $p['_member'] = $m;
+    $byOwner[strtolower($m['email'])][] = $p;
+}
+$placed = []; // post_id => [start, end, member, post]
+foreach ($byOwner as $list) {
+    usort($list, fn($a, $b) => $b['_score'] <=> $a['_score']);
+    $taken = [];
+    foreach ($list as $p) {
+        $est = $p['_est'];
+        $cursor = max($WORK_START, min($p['_due'] - $est, $WORK_END - $est));
+        $guard = 0;
+        do {
+            $hit = null;
+            foreach ($taken as $t) { if ($t[0] < $cursor + $est && $t[1] > $cursor) { $hit = $t; break; } }
+            if ($hit) $cursor = $hit[1];
+        } while ($hit && $guard++ < 50);
+        $taken[] = [$cursor, $cursor + $est];
+        $placed[$p['id']] = ['start' => $cursor, 'end' => $cursor + $est, 'member' => $p['_member'], 'post' => $p];
+    }
+}
 
 $debug = in_array('debug', $argv ?? [], true);
 $dbg = function ($m) use ($debug) { if ($debug) echo "  · $m\n"; };
@@ -47,34 +71,28 @@ $started = 0; $paused = 0;
 
 // 1) Pause auto-started timers whose slot has ended or whose task moved on.
 $act = $pdo->query("SELECT * FROM time_entries WHERE status = 'active' AND auto_started = 1")->fetchAll(PDO::FETCH_ASSOC);
-$getPost = $pdo->prepare("SELECT id, stage, assigned_to, design_assigned_to, content_assigned_to, due_date, due_time, estimated_minutes FROM posts WHERE id = ?");
 foreach ($act as $e) {
-    $getPost->execute([$e['post_id']]); $p = $getPost->fetch(PDO::FETCH_ASSOC);
-    $slot = $p ? $slotFor($p) : null;
-    $stillRunning = $p && $slot && substr((string)$p['due_date'], 0, 10) === $today && $nowMins < $slot['end'];
-    if ($stillRunning) continue;
+    $slot = $placed[$e['post_id']] ?? null;
+    if ($slot && $nowMins < $slot['end']) continue; // still inside its slot
     $st = strtotime(str_replace('T', ' ', rtrim((string)$e['started_at'], 'Z')) . ' UTC');
     $total = (float)$e['total_seconds'] + ($st ? max(0, time() - $st) : 0);
     $pdo->prepare("UPDATE time_entries SET status = 'paused', paused_at = ?, total_seconds = ? WHERE id = ?")->execute([$utcNow, $total, $e['id']]);
     $paused++;
 }
 
-// 2) Start timers for slots that are open right now.
-$posts = $pdo->prepare("SELECT id, title, project_id, stage, assigned_to, design_assigned_to, content_assigned_to, due_date, due_time, estimated_minutes
-    FROM posts WHERE LEFT(due_date, 10) = ? AND due_time IS NOT NULL AND due_time <> '' AND stage IN ('design','content_creation') AND (is_plan_parent IS NULL OR is_plan_parent = 0)");
-$posts->execute([$today]);
+// 2) Start timers for slots that are open right now (earliest slot first).
 $hasActive = $pdo->prepare("SELECT 1 FROM time_entries WHERE user_email = ? AND status = 'active' LIMIT 1");
 $hasToday = $pdo->prepare("SELECT 1 FROM time_entries WHERE user_email = ? AND post_id = ? AND date = ? LIMIT 1");
 $ins = $pdo->prepare("INSERT INTO time_entries (id, post_id, post_title, user_email, user_name, started_at, date, status, total_seconds, project_id, auto_started) VALUES (UUID(), ?, ?, ?, ?, ?, ?, 'active', 0, ?, 1)");
-foreach ($posts->fetchAll(PDO::FETCH_ASSOC) as $p) {
-    $slot = $slotFor($p);
-    if (!$slot) { $dbg("{$p['title']}: no slot (no owner match / stage / due_time)"); continue; }
+uasort($placed, fn($a, $b) => $a['start'] <=> $b['start']);
+foreach ($placed as $pid => $slot) {
+    $p = $slot['post'];
     $dbg("{$p['title']}: slot " . sprintf('%02d:%02d', intdiv($slot['start'], 60), $slot['start'] % 60) . '-' . sprintf('%02d:%02d', intdiv($slot['end'], 60), $slot['end'] % 60) . " owner {$slot['member']['email']}");
     if ($nowMins < $slot['start'] || $nowMins >= $slot['end']) { $dbg('   outside slot now'); continue; }
     $m = $slot['member'];
     $hasActive->execute([$m['email']]); if ($hasActive->fetchColumn()) { $dbg('   owner already has a running timer'); continue; }
-    $hasToday->execute([$m['email'], $p['id'], $utcDate]); if ($hasToday->fetchColumn()) { $dbg('   already has an entry today'); continue; }
-    $ins->execute([$p['id'], $p['title'], $m['email'], $m['name'], $utcNow, $utcDate, $p['project_id'] ?: '']);
+    $hasToday->execute([$m['email'], $pid, $utcDate]); if ($hasToday->fetchColumn()) { $dbg('   already has an entry today'); continue; }
+    $ins->execute([$pid, $p['title'], $m['email'], $m['name'], $utcNow, $utcDate, $p['project_id'] ?: '']);
     $started++;
 }
 echo json_encode(['started' => $started, 'paused' => $paused, 'at' => $now->format('H:i')]) . "\n";
