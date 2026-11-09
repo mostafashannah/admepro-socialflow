@@ -32072,17 +32072,38 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
         <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Manage agency branding, configuration, and integrations</p>
       </div>
 
-      {/* Tab nav */}
-      <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexWrap:"nowrap",overflowX:"auto"}}>
-        {[["branding","Branding"],["integrations","Integrations"],["email","Email"],["ai_model","AI Agents"],["durations","Task Estimates"],["contract","Contract & Policy"],["flags","Feature Flags"],["daily_report","Daily Report"],["storage","Storage"],["syslog","System Log"]].map(([k,l])=>(
-          <button key={k} onClick={()=>setSettingsTab(k)} style={{padding:"9px 20px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${settingsTab===k?"var(--accent)":"transparent"}`,color:settingsTab===k?"var(--accent)":"var(--text2)",transition:"all 0.15s",display:"flex",alignItems:"center",gap:6,position:"relative"}}>
-            {l}
-            {k==="syslog"&&(activityLogs||[]).filter(a=>a.status==="error").length>0&&(
-              <span style={{background:"#ef4444",color:"#fff",borderRadius:99,fontSize:9,fontWeight:800,padding:"1px 6px"}}>{(activityLogs||[]).filter(a=>a.status==="error").length}</span>
+      {/* Tab nav — grouped: a few main sections, each with its own small sub-tabs */}
+      {(()=>{
+        const GROUPS = [
+          {k:"general", label:"General", subs:[["branding","Branding"],["flags","Feature Flags"]]},
+          {k:"connections", label:"Connections", subs:[["integrations","Integrations"],["email","Email"]]},
+          {k:"ai", label:"AI & Tasks", subs:[["ai_model","AI Agents"],["durations","Task Estimates"]]},
+          {k:"reports", label:"Reports", subs:[["daily_report","Daily Reports"]]},
+          {k:"people", label:"People & Policy", subs:[["contract","Contract & Policy"]]},
+          {k:"system", label:"System", subs:[["storage","Storage"],["syslog","System Log"]]},
+        ];
+        const group = GROUPS.find(g=>g.subs.some(([k])=>k===settingsTab)) || GROUPS[0];
+        const errCount = (activityLogs||[]).filter(a=>a.status==="error").length;
+        return (
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexWrap:"nowrap",overflowX:"auto"}}>
+              {GROUPS.map(g=>{ const on = g.k===group.k; return (
+                <button key={g.k} onClick={()=>setSettingsTab(g.subs[0][0])} style={{padding:"10px 20px",fontSize:14,fontWeight:700,borderBottom:`3px solid ${on?"var(--accent)":"transparent"}`,color:on?"var(--accent)":"var(--text2)",transition:"all 0.15s",display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+                  {g.label}
+                  {g.k==="system"&&errCount>0&&<span style={{background:"#ef4444",color:"#fff",borderRadius:99,fontSize:9,fontWeight:800,padding:"1px 6px"}}>{errCount}</span>}
+                </button>
+              ); })}
+            </div>
+            {group.subs.length>1&&(
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {group.subs.map(([k,l])=>(
+                  <button key={k} onClick={()=>setSettingsTab(k)} style={{padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,border:`1px solid ${settingsTab===k?"var(--accent)":"var(--border2)"}`,background:settingsTab===k?"var(--accent)":"var(--surface)",color:settingsTab===k?"#fff":"var(--text2)",cursor:"pointer"}}>{l}</button>
+                ))}
+              </div>
             )}
-          </button>
-        ))}
-      </div>
+          </div>
+        );
+      })()}
 
       {/* ── BRANDING TAB ── */}
       {settingsTab==="branding"&&(
