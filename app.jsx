@@ -4351,6 +4351,26 @@ function postTimerInfo(post) {
   const est = estimateDuration(post)*60;
   return {tracked, running, who, remaining: est - tracked};
 }
+// The delay counter only runs inside working hours (11:00–21:00, Sun–Thu): it freezes at 9 PM (the block stays red) and resumes at 11 AM the next work day.
+const DELAY_WINDOW = {from:11, to:21};
+function workingDelaySecs(startMs, endMs) {
+  if(endMs <= startMs) return 0;
+  let total = 0;
+  const day = new Date(startMs); day.setHours(0,0,0,0);
+  const last = new Date(endMs); last.setHours(0,0,0,0);
+  for(let n=0; day <= last && n < 120; n++, day.setDate(day.getDate()+1)) {
+    const dow = day.getDay(); if(dow===5 || dow===6) continue; // Fri / Sat weekend
+    const ws = new Date(day); ws.setHours(DELAY_WINDOW.from,0,0,0);
+    const we = new Date(day); we.setHours(DELAY_WINDOW.to,0,0,0);
+    const a = Math.max(ws.getTime(), startMs), b = Math.min(we.getTime(), endMs);
+    if(b > a) total += b - a;
+  }
+  return Math.floor(total/1000);
+}
+function insideDelayWindow(ms=Date.now()) {
+  const d = new Date(ms); const dow = d.getDay(); if(dow===5 || dow===6) return false;
+  const h = d.getHours() + d.getMinutes()/60; return h >= DELAY_WINDOW.from && h < DELAY_WINDOW.to;
+}
 // Delay counter: from the task's due time until it is moved to review (live while it is still with its owner).
 function postDelayInfo(post) {
   if(!post?.due_date) return null;
@@ -4366,9 +4386,9 @@ function postDelayInfo(post) {
     if(c) endTs = c;
   }
   if(!endTs) return null;
-  const secs = Math.floor((endTs - dueTs.getTime())/1000);
+  const secs = workingDelaySecs(dueTs.getTime(), endTs);
   if(secs <= 0) return null;
-  return {secs, live: inOwnerStage};
+  return {secs, live: inOwnerStage, pausedNow: inOwnerStage && !insideDelayWindow()};
 }
 function DelayBadge({post, light=false, big=false}) {
   const [,setTick] = useState(0);
@@ -4382,8 +4402,8 @@ function DelayBadge({post, light=false, big=false}) {
   const color = light ? "#fff" : "#ef4444";
   return (
     <span style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:big?14:10,fontWeight:800,color,fontFamily:"monospace",whiteSpace:"nowrap",...(big?{background:"#ef444418",padding:"8px 12px",borderRadius:8}:{})}}>
-      <span>{info.live?"⏰":"✓"}</span>
-      <span>{info.live?`Delayed ${hms}`:`Delivered ${human} late`}</span>
+      <span>{info.live?(info.pausedNow?"⏸":"⏰"):"✓"}</span>
+      <span>{info.live?`Delayed ${hms}${info.pausedNow?" (paused)":""}`:`Delivered ${human} late`}</span>
     </span>
   );
 }
