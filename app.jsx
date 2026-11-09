@@ -840,7 +840,9 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
   // its own due_date has passed relative to right now — not tied to
   // date===today anymore, since it no longer gets moved onto today's view;
   // it shows red on its own original day instead.
-  const isOverduePost = (p) => !!(p.due_date && p.due_date < today && p.stage === ROLE_OWNED_STAGE[userRole]);
+  // Overdue = still in their own stage after the due date, OR after today's due_time has passed (delay counts live until it moves to review).
+  const nowMinsDay = new Date().getHours()*60 + new Date().getMinutes();
+  const isOverduePost = (p) => !!(p.stage === ROLE_OWNED_STAGE[userRole] && p.due_date && (p.due_date < today || (p.due_date === today && p.due_time && timeToMins(p.due_time)!=null && nowMinsDay > timeToMins(p.due_time))));
   myPosts.sort((a,b) => priorityScore(b) - priorityScore(a));
 
   // Use due_time as the anchor when available, otherwise pack sequentially
@@ -4345,6 +4347,42 @@ function postTimerInfo(post) {
   const est = estimateDuration(post)*60;
   return {tracked, running, who, remaining: est - tracked};
 }
+// Delay counter: from the task's due time until it is moved to review (live while it is still with its owner).
+function postDelayInfo(post) {
+  if(!post?.due_date) return null;
+  const hhmm = (post.due_time && /^\d{1,2}:\d{2}/.test(post.due_time)) ? post.due_time.slice(0,5) : "23:59";
+  const [h,m] = hhmm.split(":").map(Number);
+  const dueTs = new Date(`${String(post.due_date).slice(0,10)}T00:00:00`); dueTs.setHours(h, m, 0, 0);
+  const inOwnerStage = ["design","content_creation"].includes(post.stage);
+  let endTs = null;
+  if(inOwnerStage) endTs = Date.now();
+  else {
+    const c = [post.design_completed_at, post.content_completed_at].filter(Boolean).map(x=>parseSqlUtc(x).getTime()).sort((a,b)=>b-a)[0];
+    if(c) endTs = c;
+  }
+  if(!endTs) return null;
+  const secs = Math.floor((endTs - dueTs.getTime())/1000);
+  if(secs <= 0) return null;
+  return {secs, live: inOwnerStage};
+}
+function DelayBadge({post, light=false, big=false}) {
+  const [,setTick] = useState(0);
+  const info = postDelayInfo(post);
+  useEffect(()=>{ if(!info?.live) return; const id=setInterval(()=>setTick(x=>x+1),1000); return ()=>clearInterval(id); },[info?.live]);
+  if(!info) return null;
+  const t = Math.max(0, info.secs);
+  const hms = `${String(Math.floor(t/3600)).padStart(2,"0")}:${String(Math.floor(t%3600/60)).padStart(2,"0")}:${String(t%60).padStart(2,"0")}`;
+  const mins = Math.round(t/60);
+  const human = mins>=60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins}m`;
+  const color = light ? "#fff" : "#ef4444";
+  return (
+    <span style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:big?14:10,fontWeight:800,color,fontFamily:"monospace",whiteSpace:"nowrap",...(big?{background:"#ef444418",padding:"8px 12px",borderRadius:8}:{})}}>
+      <span>{info.live?"⏰":"✓"}</span>
+      <span>{info.live?`Delayed ${hms}`:`Delivered ${human} late`}</span>
+    </span>
+  );
+}
+
 function LiveTimerBadge({post, big=false, light=false}) {
   const [,setTick] = useState(0);
   const info = postTimerInfo(post);
@@ -4403,6 +4441,7 @@ function PostCard({post,project,team,onClick}) {
           {(Array.isArray(post.platforms)&&post.platforms.length ? post.platforms : [post.platform]).map(pl=><PChip key={pl} platform={pl} xs/>)}
         </div>
       </div>
+      <DelayBadge post={post}/>
       <LiveTimerBadge post={post}/>
       <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
         <Badge label={post.post_type||"post"} color="#6b7280" xs/>
@@ -7272,6 +7311,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
               </div>
             </div>
           )}
+          <DelayBadge post={post} big/>
           <LiveTimerBadge post={post} big/>
           {currentUser?.email===post.assigned_to ? (
             <TimeTracker postId={post.id} userEmail={currentUser?.email} timeEntries={timeEntries||[]} onStart={onStartTimer} onPause={onPauseTimer} onResume={onResumeTimer}/>
@@ -38521,6 +38561,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
                       <div style={{flex:1,minWidth:0}}>
                         <p style={{fontSize:14,fontWeight:600,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.title}</p>
                         {project && <p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{project.title}</p>}
+                        <DelayBadge post={post}/>
                         <LiveTimerBadge post={post}/>
                       </div>
                       {post.scheduled_date && (()=>{ const dc = dueDateColor(post.scheduled_date); return (
@@ -39511,7 +39552,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                           <div style={{display:"flex",flexDirection:"column",minWidth:0,flex:1,lineHeight:1.25}}>
                             <span style={{fontSize:11.5,color:"#fff",fontWeight:800,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
                             {widthPct>8&&<span style={{fontSize:9.5,color:"#fff",opacity:0.9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slot.start_time}–{slot.end_time}{slot.overdue?" · OVERDUE":slot.completed_today?" · Done":""}</span>}
-                            {widthPct>12&&(post&&postTimerInfo(post) ? <LiveTimerBadge post={post} light/> : <span style={{fontSize:9,color:"#fff",opacity:0.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{[post?.client_name, stage?.label].filter(Boolean).join(" · ")}</span>)}
+                            {widthPct>12&&(post&&postDelayInfo(post) ? <DelayBadge post={post} light/> : post&&postTimerInfo(post) ? <LiveTimerBadge post={post} light/> : <span style={{fontSize:9,color:"#fff",opacity:0.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{[post?.client_name, stage?.label].filter(Boolean).join(" · ")}</span>)}
                           </div>
                         </div>
                       </div>
