@@ -13,7 +13,7 @@ $pdo = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]);
 
 $OWNED = ['content_creator' => 'content_creation', 'graphic_designer' => 'design', 'senior_graphic_designer' => 'design', 'video_editor' => 'design', 'senior_video_editor' => 'design'];
-$WORK_START = 11 * 60; $WORK_END = 21 * 60;
+$WORK_START = 11 * 60; $WORK_END = 23 * 60;
 
 $now = new DateTime('now', new DateTimeZone('Africa/Cairo'));
 $today = $now->format('Y-m-d');

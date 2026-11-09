@@ -612,7 +612,7 @@ const POST_TYPE_DURATIONS = {
   campaign: 240, ad_creative: 120, blog: 240,
 };
 const WORKING_START = 11; // 11am
-const WORKING_END = 21; // 9pm
+const WORKING_END = 23; // 11pm
 const WORKING_MINS = (WORKING_END - WORKING_START) * 60; // 540 mins
 
 // ── Smart Schedule Engine ──────────────────────────────────────
