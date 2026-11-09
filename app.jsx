@@ -38934,6 +38934,9 @@ function TimelineAddPicker({slot, onPick, onClose, inline=false}) {
   );
 }
 
+// "HH:MM" plus/minus minutes (clamped to the day). Routine tasks take a START time in the forms, but the app's slot/alert/delay logic runs on the
+// due time (= end of the slot), so the form converts: due = start + duration.
+function hhmmShift(hhmm, mins) { const [h,m] = String(hhmm||"00:00").split(":").map(Number); const t = Math.max(0, Math.min(23*60+59, h*60+(m||0)+mins)); return `${String(Math.floor(t/60)).padStart(2,"0")}:${String(t%60).padStart(2,"0")}`; }
 // Routine task helpers (checklist stored on the post as JSON [{text, done, by, at}]).
 function routineItems(post) { try { const x = Array.isArray(post?.checklist) ? post.checklist : JSON.parse(post?.checklist||"[]"); return Array.isArray(x) ? x : []; } catch(e) { return []; } }
 function routineCounts(post) { const it = routineItems(post); return {done: it.filter(i=>i.done).length, total: it.length}; }
@@ -38952,7 +38955,7 @@ function RepeatTaskModal({open, onClose, slot, team=[], currentUser, onCreateFir
   const member0 = team.find(m=>m.email===slot?.assigned_to);
   const [f,setF] = useState({
     title:"", points:[""], description:"", priority:"medium",
-    due_time:(slot?.due_time)||"12:00", minutes:30,
+    start_time:(slot?.due_time)||"12:00", minutes:30,
     rule:"daily", days:[0,1,2,3,4], interval:2, start_date:slot?.due_date||new Date().toISOString().split("T")[0], end_date:"", never:true,
   });
   const [list,setList] = useState([]);
@@ -38963,7 +38966,7 @@ function RepeatTaskModal({open, onClose, slot, team=[], currentUser, onCreateFir
   useEffect(()=>{ load(); },[]);
   const toggleDay = d => set("days", f.days.includes(d)?f.days.filter(x=>x!==d):[...f.days,d].sort());
   const points = f.points.map(x=>x.trim()).filter(Boolean);
-  const canSave = f.title.trim() && points.length>0 && slot?.assigned_to && f.due_time && f.start_date && (f.rule!=="weekly" || f.days.length) && (f.rule!=="interval" || Number(f.interval)>=1);
+  const canSave = f.title.trim() && points.length>0 && slot?.assigned_to && f.start_time && f.start_date && (f.rule!=="weekly" || f.days.length) && (f.rule!=="interval" || Number(f.interval)>=1);
   const describe = (r) => r.rule_type==="daily" ? "Every day" : r.rule_type==="monthly" ? "Monthly" : r.rule_type==="once" ? "Once" : r.rule_type==="interval" ? `Every ${r.rule_interval} days` : (()=>{ let d=[]; try{d=JSON.parse(r.rule_days||"[]");}catch(e){} return d.length===5&&[0,1,2,3,4].every(x=>d.includes(x))?"Work days (Sun–Thu)":"Weekly: "+d.map(x=>WD[x]?.[1]).join(", "); })();
   const save = async () => {
     if(!canSave) return;
@@ -38977,7 +38980,7 @@ function RepeatTaskModal({open, onClose, slot, team=[], currentUser, onCreateFir
     try {
       const row = {
         title:f.title.trim(), description:f.description, project_id:"", client_id:"", client_name:"", assigned_to:slot.assigned_to, stage:"planning", priority:f.priority, post_type:"routine",
-        due_time:f.due_time, estimated_minutes:Number(f.minutes)||30, checklist:JSON.stringify(points),
+        due_time:hhmmShift(f.start_time, Number(f.minutes)||30), estimated_minutes:Number(f.minutes)||30, checklist:JSON.stringify(points),
         rule_type: f.rule==="workdays"?"weekly":f.rule, rule_days: JSON.stringify(f.rule==="workdays"?[0,1,2,3,4]:f.days), rule_interval:Number(f.interval)||1,
         start_date:f.start_date, end_date:f.never?null:(f.end_date||null), active:1, created_by:currentUser?.email||"",
       };
@@ -39019,7 +39022,7 @@ function RepeatTaskModal({open, onClose, slot, team=[], currentUser, onCreateFir
             </div>
           </Field>
           <Field label="Priority"><select value={f.priority} onChange={e=>set("priority",e.target.value)} style={inputSt}>{["low","medium","high","urgent"].map(x=><option key={x} value={x}>{x}</option>)}</select></Field>
-          <Field label="Due time" required><input type="time" value={f.due_time} onChange={e=>set("due_time",e.target.value)} style={inputSt}/></Field>
+          <Field label="Start time" required><input type="time" value={f.start_time} onChange={e=>set("start_time",e.target.value)} style={inputSt}/></Field>
           <Field label="Duration (minutes)"><input type="number" min={5} step={5} value={f.minutes} onChange={e=>set("minutes",e.target.value)} style={inputSt}/></Field>
         </div>
         <div>
@@ -39052,7 +39055,7 @@ function RepeatTaskModal({open, onClose, slot, team=[], currentUser, onCreateFir
               <div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:"1px solid var(--border)"}}>
                 <div style={{flex:1,minWidth:0}}>
                   <p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.title} <span style={{fontWeight:600,color:"var(--text3)"}}>({n} point{n!==1?"s":""})</span></p>
-                  <p style={{fontSize:11,color:"var(--text3)"}}>{describe(r)} · {r.due_time} · {(team.find(m=>m.email===r.assigned_to)?.name)||r.assigned_to}</p>
+                  <p style={{fontSize:11,color:"var(--text3)"}}>{describe(r)} · {hhmmShift(r.due_time, -(Number(r.estimated_minutes)||30))}–{r.due_time} · {(team.find(m=>m.email===r.assigned_to)?.name)||r.assigned_to}</p>
                 </div>
                 <button onClick={()=>stop(r.id)} style={{fontSize:11,fontWeight:700,color:"#ef4444",background:"none",border:"1px solid #ef444455",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}>Stop</button>
               </div>
@@ -39080,19 +39083,19 @@ function RoutineTaskModal({post, team=[], currentUser, onClose, onSave}) {
   const [editing,setEditing] = useState(false);
   const [ef,setEf] = useState(null);
   const [alsoFuture,setAlsoFuture] = useState(true);
-  const startEdit = () => { setEf({title:post.title||"", description:post.description||"", points:items.map(i=>i.text), due_time:post.due_time||"12:00", minutes:Number(post.estimated_minutes)||30, priority:post.priority||"medium"}); setEditing(true); };
+  const startEdit = () => { setEf({title:post.title||"", description:post.description||"", points:items.map(i=>i.text), start_time:hhmmShift(post.due_time||"12:00", -(Number(post.estimated_minutes)||30)), minutes:Number(post.estimated_minutes)||30, priority:post.priority||"medium"}); setEditing(true); };
   const saveEdit = async () => {
     const pts = ef.points.map(x=>x.trim()).filter(Boolean);
     if(!ef.title.trim() || !pts.length) { alert("A title and at least one point are required."); return; }
     setBusy(true);
     // Keep ticks for points whose text is unchanged.
     const next = pts.map(t=>{ const old = items.find(i=>i.text===t); return old ? old : {text:t, done:false}; });
-    await onSave(post.id, {title:ef.title.trim(), description:ef.description, checklist:JSON.stringify(next), due_time:ef.due_time, estimated_minutes:Number(ef.minutes)||30, priority:ef.priority});
+    await onSave(post.id, {title:ef.title.trim(), description:ef.description, checklist:JSON.stringify(next), due_time:hhmmShift(ef.start_time, Number(ef.minutes)||30), estimated_minutes:Number(ef.minutes)||30, priority:ef.priority});
     if(alsoFuture) {
       try {
         const r = await qe("RecurringTask",{},"-created_at",200);
         const mine = (r.entities||[]).filter(t=>Number(t.active)!==0 && t.assigned_to===post.assigned_to && t.title===post.title);
-        for(const t of mine) await ue("RecurringTask", t.id, {title:ef.title.trim(), description:ef.description, checklist:JSON.stringify(pts), due_time:ef.due_time, estimated_minutes:Number(ef.minutes)||30, priority:ef.priority});
+        for(const t of mine) await ue("RecurringTask", t.id, {title:ef.title.trim(), description:ef.description, checklist:JSON.stringify(pts), due_time:hhmmShift(ef.start_time, Number(ef.minutes)||30), estimated_minutes:Number(ef.minutes)||30, priority:ef.priority});
       } catch(e) {}
     }
     setBusy(false); setEditing(false);
@@ -39129,7 +39132,7 @@ function RoutineTaskModal({post, team=[], currentUser, onClose, onSave}) {
               </div>
             </Field>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-              <Field label="Due time"><input type="time" value={ef.due_time} onChange={e=>setEf({...ef,due_time:e.target.value})} style={inputSt}/></Field>
+              <Field label="Start time"><input type="time" value={ef.start_time} onChange={e=>setEf({...ef,start_time:e.target.value})} style={inputSt}/></Field>
               <Field label="Minutes"><input type="number" min={5} step={5} value={ef.minutes} onChange={e=>setEf({...ef,minutes:e.target.value})} style={inputSt}/></Field>
               <Field label="Priority"><select value={ef.priority} onChange={e=>setEf({...ef,priority:e.target.value})} style={inputSt}>{["low","medium","high","urgent"].map(x=><option key={x} value={x}>{x}</option>)}</select></Field>
             </div>
