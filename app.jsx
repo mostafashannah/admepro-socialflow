@@ -39301,10 +39301,15 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   const nowMinsActive = new Date().getHours()*60 + new Date().getMinutes();
   const countActive = (slotList, timers) => {
     const ids = new Set((timers||[]).map(t=>t.post_id));
+    const late = new Set();
+    (slotList||[]).forEach(sl=>{ if(sl.overdue) late.add(sl.post_id); });
     if(isTodayView) (slotList||[]).forEach(sl=>{ if(!sl.completed_today && (sl.start_mins<=nowMinsActive)) ids.add(sl.post_id); });
-    return ids.size;
+    else ids.clear();
+    const delayed = [...ids].filter(id=>late.has(id)).length;
+    return {total: ids.size, delayed, onTime: ids.size - delayed};
   };
-  const summaryActiveNow = combinedView ? countActive(combinedSlots, combinedActiveTimers) : countActive(slots, activeTimers);
+  const activeBreakdown = combinedView ? countActive(combinedSlots, combinedActiveTimers) : countActive(slots, activeTimers);
+  const summaryActiveNow = activeBreakdown.total;
   const summaryTrackedSecs = combinedView ? combinedTrackedSecs : todayTrackedSecs;
   const summaryCompletionPct = combinedView ? combinedCompletionPct : completionPct;
 
@@ -39361,13 +39366,14 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
         {[
           {label:"Total Tasks",value:summaryTotalTasks,color:"var(--accent)"},
-          {label:"Active Now",value:summaryActiveNow,color:"#10b981"},
+          {label:"Active Now",value:summaryActiveNow,color:"#10b981",split:activeBreakdown},
           {label:"Time Tracked",value:fmtSecs(summaryTrackedSecs),color:"#3b82f6"},
           {label:"Completion",value:`${summaryCompletionPct}%`,color:"#f59e0b"},
         ].map(stat=>(
           <div key={stat.label} style={{padding:14,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",display:"flex",flexDirection:"column",gap:4}}>
             <p style={{fontSize:11,color:"var(--text3)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{stat.label}</p>
             <p style={{fontSize:20,fontWeight:800,color:stat.color,fontFamily:"monospace"}}>{stat.value}</p>
+            {stat.split&&<div style={{display:"flex",gap:10,fontSize:11,fontWeight:700}}><span style={{color:"#16a34a"}}>● {stat.split.onTime} on time</span><span style={{color:"#ef4444"}}>● {stat.split.delayed} delayed</span></div>}
           </div>
         ))}
       </div>
