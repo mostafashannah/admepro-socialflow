@@ -39077,7 +39077,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   const timelineMembers = (team||[])
     .filter(m=>m.status!=="inactive")
     .filter(m=>isAdminViewer || !["hr","accountant","office_boy","admin"].includes(m.role))
-    .filter(m=>isAdminViewer || !TIMELINE_EXCLUDED_NAMES.some(n=>(m.name||"").toLowerCase().includes(n)))
+    .filter(m=>isAdminViewer || currentUser?.role==="account_director" || !TIMELINE_EXCLUDED_NAMES.some(n=>(m.name||"").toLowerCase().includes(n)))
     .sort((a,b)=>{
       const ai = ROLE_SORT_ORDER.indexOf(a.role), bi = ROLE_SORT_ORDER.indexOf(b.role);
       return (ai===-1?99:ai) - (bi===-1?99:bi) || (a.name||"").localeCompare(b.name||"");
