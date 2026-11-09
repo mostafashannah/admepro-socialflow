@@ -73,7 +73,7 @@ $started = 0; $paused = 0;
 $act = $pdo->query("SELECT * FROM time_entries WHERE status = 'active' AND auto_started = 1")->fetchAll(PDO::FETCH_ASSOC);
 foreach ($act as $e) {
     $slot = $placed[$e['post_id']] ?? null;
-    if ($slot && $nowMins < $slot['end']) continue; // still inside its slot
+    if ($slot && $nowMins >= $slot['start'] && $nowMins < $slot['end']) continue; // still inside its slot (a timer outside it — e.g. started under an old layout — is paused)
     $st = strtotime(str_replace('T', ' ', rtrim((string)$e['started_at'], 'Z')) . ' UTC');
     $total = (float)$e['total_seconds'] + ($st ? max(0, time() - $st) : 0);
     $pdo->prepare("UPDATE time_entries SET status = 'paused', paused_at = ?, total_seconds = ? WHERE id = ?")->execute([$utcNow, $total, $e['id']]);
