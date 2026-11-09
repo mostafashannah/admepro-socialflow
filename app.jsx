@@ -39384,11 +39384,14 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
               .map(l=>({log:l, timing:parseAgentRunTiming(l.details)}))
               .filter(r=>r.timing && r.timing.start.toISOString().split("T")[0]===dateStr);
             if(!sara) return null;
-            if(sara.id!=="content_creator" && saraRuns.length===0) return null; // other agents only appear on days they were active
+            const agentKey = `agent_${sara.id}`;
+            // Idle agents (other than Sara) start stacked to a thin strip until expanded; an explicit choice always wins.
+            const agentCollapsed = (collapsedRows||{})[agentKey] !== undefined ? !!(collapsedRows||{})[agentKey] : (saraRuns.length===0 && sara.id!=="content_creator");
+            const toggleAgent = () => setCollapsedRows({...(collapsedRows||{}), [agentKey]: !agentCollapsed});
             const agentLabel = `${(sara.name||"").split(" — ")[0]} (AI)`; const agentRole = (sara.name||"").split(" — ")[1] || "AI Assistant";
             return (
-              (collapsedRows||{})[`agent_${sara.id}`] ? (
-              <div key={`agent-${sara.id}-timeline-row`} onClick={()=>toggleRow(`agent_${sara.id}`)} title="Click to expand" style={{display:"flex",alignItems:"center",padding:"8px 16px",borderBottom:"1px solid var(--border)",gap:10,cursor:"pointer",background:sara.color+"08"}}>
+              agentCollapsed ? (
+              <div key={`agent-${sara.id}-timeline-row`} onClick={toggleAgent} title="Click to expand" style={{display:"flex",alignItems:"center",padding:"8px 16px",borderBottom:"1px solid var(--border)",gap:10,cursor:"pointer",background:sara.color+"08"}}>
                 <div style={{width:150,flexShrink:0,position:"sticky",left:16,display:"flex",alignItems:"center",gap:8,background:"var(--surface)",zIndex:3}}>
                   <span style={{fontSize:11,color:"var(--text3)",width:12}}>▸</span>
                   <div style={{width:22,height:22,borderRadius:"50%",background:sara.color,flexShrink:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:11,fontWeight:800}}>{avatarUrl?<img src={avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"S"}</div>
@@ -39409,7 +39412,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     <p style={{fontSize:13,fontWeight:800,whiteSpace:"nowrap"}}>{agentLabel}</p>
                     <p style={{fontSize:10,fontWeight:600,color:"var(--text3)",whiteSpace:"nowrap"}}>{agentRole}</p>
                   </div>
-                  <button onClick={(e)=>{e.stopPropagation();toggleRow(`agent_${sara.id}`);}} title="Stack (collapse) this timeline" style={{marginLeft:"auto",flexShrink:0,width:22,height:22,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text3)",cursor:"pointer",fontSize:11,lineHeight:1}}>▾</button>
+                  <button onClick={(e)=>{e.stopPropagation();toggleAgent();}} title="Stack (collapse) this timeline" style={{marginLeft:"auto",flexShrink:0,width:22,height:22,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text3)",cursor:"pointer",fontSize:11,lineHeight:1}}>▾</button>
                 </div>
                 <div style={{position:"relative",flex:1,height:58,background:"var(--surface2)",borderRadius:10,
                   backgroundImage:`repeating-linear-gradient(to right, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${100/(WORKING_END-WORKING_START)}%)`}}>
