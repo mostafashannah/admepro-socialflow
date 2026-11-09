@@ -39174,7 +39174,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
               return {...slot, lane};
             });
             const laneCount = Math.max(1, lanesEnd.length);
-            const laneH = 30;
+            const laneH = 58; // taller blocks so each task can show more detail
             const rowH = laneCount*laneH + (laneCount-1)*3;
             return (
               <div key={member.email} style={{display:"flex",alignItems:"center",padding:"10px 16px",borderBottom:"1px solid var(--border)",gap:10}}>
@@ -39295,8 +39295,14 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                           setToast(` "${post.title}" copied — right-click a free slot (any day) to move it there`);
                         }:undefined}
                         style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,background:slot.overdue?"#ef4444":slot.completed_today?"#22c55e":(stage?.color||"var(--accent)"),borderRadius:5,cursor:post?(canMove?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 6px",...(slot.overdue?{boxShadow:"0 0 0 1px #b91c1c inset"}:{})}}>
-                        <span style={{display:"flex",alignItems:"center",minWidth:0}}>{post&&<TaskThumb post={post} team={team} size={14}/>}<span style={{fontSize:10,color:"#fff",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span></span>
-                        {widthPct>8&&<span style={{fontSize:8.5,color:"#fff",opacity:0.85,whiteSpace:"nowrap"}}>{slot.start_time}–{slot.end_time}</span>}
+                        <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
+                          {post&&<TaskThumb post={post} team={team} size={34}/>}
+                          <div style={{display:"flex",flexDirection:"column",minWidth:0,flex:1,lineHeight:1.25}}>
+                            <span style={{fontSize:11.5,color:"#fff",fontWeight:800,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
+                            {widthPct>8&&<span style={{fontSize:9.5,color:"#fff",opacity:0.9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slot.start_time}–{slot.end_time}{slot.overdue?" · OVERDUE":slot.completed_today?" · Done":""}</span>}
+                            {widthPct>12&&<span style={{fontSize:9,color:"#fff",opacity:0.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{[post?.client_name, stage?.label].filter(Boolean).join(" · ")}</span>}
+                          </div>
+                        </div>
                       </div>
                     );
                   })}
