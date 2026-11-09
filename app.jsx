@@ -32073,7 +32073,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 
       {/* Tab nav */}
       <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexWrap:"nowrap",overflowX:"auto"}}>
-        {[["branding","Branding"],["integrations","Integrations"],["email","Email"],["ai_model","AI Agents"],["durations","Task Estimates"],["contract","Contract & Policy"],["flags","Feature Flags"],["daily_report","Daily Report"],["mai_report","Mai Daily Report"],["storage","Storage"],["syslog","System Log"]].map(([k,l])=>(
+        {[["branding","Branding"],["integrations","Integrations"],["email","Email"],["ai_model","AI Agents"],["durations","Task Estimates"],["contract","Contract & Policy"],["flags","Feature Flags"],["daily_report","Daily Report"],["storage","Storage"],["syslog","System Log"]].map(([k,l])=>(
           <button key={k} onClick={()=>setSettingsTab(k)} style={{padding:"9px 20px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${settingsTab===k?"var(--accent)":"transparent"}`,color:settingsTab===k?"var(--accent)":"var(--text2)",transition:"all 0.15s",display:"flex",alignItems:"center",gap:6,position:"relative"}}>
             {l}
             {k==="syslog"&&(activityLogs||[]).filter(a=>a.status==="error").length>0&&(
@@ -32221,8 +32221,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
       )}
 
       {/* ── SYSTEM LOG TAB ── */}
-      {settingsTab==="daily_report"&&<DailyReportSettings/>}
-      {settingsTab==="mai_report"&&<MaiReportSettings/>}
+      {settingsTab==="daily_report"&&<div style={{display:"flex",flexDirection:"column",gap:14}}><DailyReportSettings/><MaiReportSettings/></div>}
       {settingsTab==="syslog"&&<SystemLogPage activityLogs={activityLogs} systemSessions={systemSessions} currentUser={currentUser} team={team} onRefresh={()=>{ onRefreshLogs&&onRefreshLogs(); onRefreshSessions&&onRefreshSessions(); }}/>}
 
       {/* ── STORAGE TAB ── */}
