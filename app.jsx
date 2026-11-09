@@ -39022,10 +39022,8 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
     }, 0);
 
   const activeTimers = (timeEntries||[]).filter(t => t.user_email===effectiveUser?.email && t.status==='active');
-  const completionPct = slots.length > 0 ? Math.round(slots.filter(s => {
-    const p = posts.find(p=>p.id===s.post_id);
-    return p && ["published","scheduled","approved"].includes(p.stage);
-  }).length / slots.length * 100) : 0;
+  // Done = the person finished their part (green block, moved on to review) — the timeline hides published/scheduled/approved tasks entirely, so counting those could never reach above 0.
+  const completionPct = slots.length > 0 ? Math.round(slots.filter(s => s.completed_today).length / slots.length * 100) : 0;
 
   // Same member list the combined timeline below renders one row per — the
   // summary bar (Total Tasks/Active Now/Time Tracked/Completion) previously
@@ -39054,10 +39052,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
     return acc + (Number(t.total_seconds)||0);
   },0), 0) : null;
   const combinedActiveTimers = combinedView ? timelineMembers.flatMap(m=>(timeEntries||[]).filter(t=>t.user_email===m.email && t.status==='active')) : null;
-  const combinedCompletionPct = combinedView && combinedSlots.length > 0 ? Math.round(combinedSlots.filter(s => {
-    const p = posts.find(p=>p.id===s.post_id);
-    return p && ["published","scheduled","approved"].includes(p.stage);
-  }).length / combinedSlots.length * 100) : 0;
+  const combinedCompletionPct = combinedView && combinedSlots.length > 0 ? Math.round(combinedSlots.filter(s => s.completed_today).length / combinedSlots.length * 100) : 0;
 
   const summaryTotalTasks = combinedView ? combinedSlots.length : slots.length;
   const summaryActiveNow = combinedView ? combinedActiveTimers.length : activeTimers.length;
