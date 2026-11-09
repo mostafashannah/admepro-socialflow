@@ -39079,6 +39079,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   const ROLE_SORT_ORDER = ["content_creator","graphic_designer","senior_graphic_designer","video_editor","senior_video_editor","account_manager","account_director","account_executive","business_development"];
   const timelineMembers = (team||[])
     .filter(m=>m.status!=="inactive")
+    .filter(m=>!["office_boy","accountant"].includes(m.role)) // never on the timeline, for anyone (admins and directors included)
     .filter(m=>isAdminViewer || !["hr","accountant","office_boy","admin"].includes(m.role))
     // Account managers / executives never see the account director's timeline.
     .filter(m=>!(["account_manager","account_executive"].includes(currentUser?.role) && m.role==="account_director"))
