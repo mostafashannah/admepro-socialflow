@@ -39371,7 +39371,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             // suffix agentAI() now logs) drawn as actual positioned bars on
             // the same hour scale as the human rows above — not a fake
             // proportional count, real clock times.
-            const sara = AI_AGENT_DEFS.find(a=>a.id==="content_creator");
+            return AI_AGENT_DEFS.map(sara=>{
             let agentsCfg=appSettings?.ai_agents; if(typeof agentsCfg==="string"){try{agentsCfg=JSON.parse(agentsCfg);}catch(e){agentsCfg={};}}
             const avatarUrl = (agentsCfg||{})[sara?.id]?.avatar_url;
             // Filter by the real run start time, not the naive performed_at
@@ -39384,13 +39384,15 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
               .map(l=>({log:l, timing:parseAgentRunTiming(l.details)}))
               .filter(r=>r.timing && r.timing.start.toISOString().split("T")[0]===dateStr);
             if(!sara) return null;
+            if(sara.id!=="content_creator" && saraRuns.length===0) return null; // other agents only appear on days they were active
+            const agentLabel = `${(sara.name||"").split(" — ")[0]} (AI)`; const agentRole = (sara.name||"").split(" — ")[1] || "AI Assistant";
             return (
-              (collapsedRows||{}).sara ? (
-              <div key="sara-timeline-row" onClick={()=>toggleRow("sara")} title="Click to expand" style={{display:"flex",alignItems:"center",padding:"8px 16px",borderBottom:"1px solid var(--border)",gap:10,cursor:"pointer",background:sara.color+"08"}}>
+              (collapsedRows||{})[`agent_${sara.id}`] ? (
+              <div key={`agent-${sara.id}-timeline-row`} onClick={()=>toggleRow(`agent_${sara.id}`)} title="Click to expand" style={{display:"flex",alignItems:"center",padding:"8px 16px",borderBottom:"1px solid var(--border)",gap:10,cursor:"pointer",background:sara.color+"08"}}>
                 <div style={{width:150,flexShrink:0,position:"sticky",left:16,display:"flex",alignItems:"center",gap:8,background:"var(--surface)",zIndex:3}}>
                   <span style={{fontSize:11,color:"var(--text3)",width:12}}>▸</span>
                   <div style={{width:22,height:22,borderRadius:"50%",background:sara.color,flexShrink:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:11,fontWeight:800}}>{avatarUrl?<img src={avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"S"}</div>
-                  <p style={{fontSize:12,fontWeight:700}}>Sara (AI)</p>
+                  <p style={{fontSize:12,fontWeight:700}}>{agentLabel}</p>
                 </div>
                 <div style={{position:"relative",flex:1,height:10,background:"var(--surface2)",borderRadius:5}}>
                   {saraRuns.map(({log,timing},ri)=>{ const sm=timing.start.getHours()*60+timing.start.getMinutes(); const l=Math.max(0,(sm-WORKING_START*60)/WORKING_MINS*100); return <div key={log.id||ri} style={{position:"absolute",left:`${l}%`,width:"1.2%",top:1,bottom:1,borderRadius:4,background:log.status==="error"?"#ef4444":sara.color}}/>; })}
@@ -39398,16 +39400,16 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                 <span style={{fontSize:11,color:"var(--text3)",fontWeight:700,flexShrink:0,minWidth:54,textAlign:"right"}}>{saraRuns.length} run{saraRuns.length!==1?"s":""}</span>
               </div>
               ) : (
-              <div key="sara-timeline-row" style={{display:"flex",alignItems:"center",padding:"14px 16px",borderBottom:"1px solid var(--border)",gap:10,background:sara.color+"08"}}>
+              <div key={`agent-${sara.id}-timeline-row`} style={{display:"flex",alignItems:"center",padding:"14px 16px",borderBottom:"1px solid var(--border)",gap:10,background:sara.color+"08"}}>
                 <div style={{width:150,flexShrink:0,position:"sticky",left:16,display:"flex",alignItems:"center",gap:10,background:"var(--surface)",zIndex:3}}>
                   <div style={{width:30,height:30,borderRadius:"50%",background:sara.color,flexShrink:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:13,fontWeight:800}}>
                     {avatarUrl?<img src={avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"S"}
                   </div>
                   <div style={{overflow:"hidden"}}>
-                    <p style={{fontSize:13,fontWeight:800,whiteSpace:"nowrap"}}>Sara (AI)</p>
-                    <p style={{fontSize:10,fontWeight:600,color:"var(--text3)",whiteSpace:"nowrap"}}>AI Assistant</p>
+                    <p style={{fontSize:13,fontWeight:800,whiteSpace:"nowrap"}}>{agentLabel}</p>
+                    <p style={{fontSize:10,fontWeight:600,color:"var(--text3)",whiteSpace:"nowrap"}}>{agentRole}</p>
                   </div>
-                  <button onClick={(e)=>{e.stopPropagation();toggleRow("sara");}} title="Stack (collapse) this timeline" style={{marginLeft:"auto",flexShrink:0,width:22,height:22,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text3)",cursor:"pointer",fontSize:11,lineHeight:1}}>▾</button>
+                  <button onClick={(e)=>{e.stopPropagation();toggleRow(`agent_${sara.id}`);}} title="Stack (collapse) this timeline" style={{marginLeft:"auto",flexShrink:0,width:22,height:22,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text3)",cursor:"pointer",fontSize:11,lineHeight:1}}>▾</button>
                 </div>
                 <div style={{position:"relative",flex:1,height:58,background:"var(--surface2)",borderRadius:10,
                   backgroundImage:`repeating-linear-gradient(to right, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${100/(WORKING_END-WORKING_START)}%)`}}>
@@ -39431,6 +39433,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
               </div>
               )
             );
+            });
           })()}
           </div>
           </div>
