@@ -11,7 +11,7 @@ function drDefaults(): array {
         'enabled' => 0,
         'send_time' => '19:00',
         'days' => [7, 1, 2, 3, 4], // ISO weekdays: Sun..Thu (Fri/Sat weekend)
-        'sections' => ['progress' => true, 'accounts_hint' => true, 'tasks_done' => true, 'tasks_open' => true, 'posting' => true, 'insights' => true, 'applications' => true],
+        'sections' => ['hours' => true, 'progress' => true, 'accounts_hint' => true, 'tasks_done' => true, 'tasks_open' => true, 'posting' => true, 'insights' => true, 'applications' => true],
         'client_ids' => [],   // empty = every account with Facebook/Instagram insights
         'recipients' => [],   // team-member emails; empty = every active admin
         'window_hours' => 24,
@@ -67,6 +67,38 @@ function drBuildReport(PDO $pdo, array $s): string {
     $h = max(1, (int)$s['window_hours']);
     $sec = $s['sections'];
     $out = ["📊 *Daily report — " . $now->format('D j M') . "*", "_Last {$h} hours_"];
+
+    if (!empty($sec['hours'])) {
+        // Total working hours today + average per person: tracked task time (timers) and on-site time (attendance check-in to check-out).
+        $hrs = function(float $sec): string { return number_format($sec / 3600, 1) . 'h'; };
+        $trk = [];
+        $te = $pdo->prepare("SELECT user_name, status, started_at, total_seconds FROM time_entries WHERE date = :t");
+        $te->execute([':t' => $today]);
+        foreach ($te->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $secs = (float)$r['total_seconds'];
+            if ($r['status'] === 'active' && $r['started_at']) { $st = strtotime(str_replace('T', ' ', rtrim((string)$r['started_at'], 'Z')) . ' UTC'); if ($st) $secs += max(0, time() - $st); }
+            $u = $r['user_name'] ?: 'Unknown';
+            $trk[$u] = ($trk[$u] ?? 0) + $secs;
+        }
+        $site = [];
+        $at = $pdo->prepare("SELECT member_name, check_in, check_out FROM attendance_records WHERE work_date = :t AND check_in IS NOT NULL AND check_in <> '' AND check_out IS NOT NULL AND check_out <> ''");
+        $at->execute([':t' => $today]);
+        foreach ($at->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $d = strtotime($r['check_out']) - strtotime($r['check_in']);
+            if ($d > 0 && $d < 20 * 3600) $site[$r['member_name']] = ($site[$r['member_name']] ?? 0) + $d;
+        }
+        $out[] = "";
+        $out[] = "⏱ *Working hours* (today)";
+        if ($site) $out[] = "On site: " . $hrs(array_sum($site)) . " total · avg " . $hrs(array_sum($site) / count($site)) . " per person (" . count($site) . ")";
+        else $out[] = "On site: no check-in/out pairs yet.";
+        if ($trk) {
+            $out[] = "Tracked on tasks: " . $hrs(array_sum($trk)) . " total · avg " . $hrs(array_sum($trk) / count($trk)) . " per person (" . count($trk) . ")";
+            arsort($trk);
+            foreach (array_slice($trk, 0, 8, true) as $u => $v) $out[] = "• {$u}: " . $hrs($v);
+        } else {
+            $out[] = "Tracked on tasks: no timers used today.";
+        }
+    }
 
     if (!empty($sec['progress'])) {
         // Brief task progress: finished in the window vs still open, plus who is behind.

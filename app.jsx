@@ -31821,10 +31821,10 @@ function ContractPolicySettingsPanel({appSettings, onSaveSettings}) {
 // Settings > Daily Report — what the WhatsApp daily report contains and when it goes out.
 function DailyReportSettings() {
   const DAYS = [[1,"Mon"],[2,"Tue"],[3,"Wed"],[4,"Thu"],[5,"Fri"],[6,"Sat"],[7,"Sun"]];
-  const SECTIONS = [["progress","Progress & out of timeline","Steps done, published, still open, and who is behind"],["accounts_hint","Accounts to watch","Short hint on accounts with an old last post or nothing scheduled"],["tasks_done","Work completed","Who finished which steps (by person and account)"],["tasks_open","Overdue & due today","Open tasks that are late, per person"],["posting","Daily posting","Posts published, going out today / tomorrow, and any that failed to publish"],["insights","Account insights","Followers and 7-day reach per account"],["applications","New applications","New candidates + how many await review"]];
+  const SECTIONS = [["hours","Working hours","Total hours and average per person (on-site and tracked)"],["progress","Progress & out of timeline","Steps done, published, still open, and who is behind"],["accounts_hint","Accounts to watch","Short hint on accounts with an old last post or nothing scheduled"],["tasks_done","Work completed","Who finished which steps (by person and account)"],["tasks_open","Overdue & due today","Open tasks that are late, per person"],["posting","Daily posting","Posts published, going out today / tomorrow, and any that failed to publish"],["insights","Account insights","Followers and 7-day reach per account"],["applications","New applications","New candidates + how many await review"]];
   const [loading,setLoading] = useState(true);
   const [rowId,setRowId] = useState(null);
-  const [f,setF] = useState({enabled:false,send_time:"19:00",days:[7,1,2,3,4],sections:{progress:true,accounts_hint:true,tasks_done:true,tasks_open:true,posting:true,insights:true,applications:true},client_ids:[],recipients:[],window_hours:24,last_sent_date:null});
+  const [f,setF] = useState({enabled:false,send_time:"19:00",days:[7,1,2,3,4],sections:{hours:true,progress:true,accounts_hint:true,tasks_done:true,tasks_open:true,posting:true,insights:true,applications:true},client_ids:[],recipients:[],window_hours:24,last_sent_date:null});
   const [team,setTeam] = useState([]);
   const [clients,setClients] = useState([]);
   const [saving,setSaving] = useState(false);
@@ -31838,7 +31838,7 @@ function DailyReportSettings() {
       setTeam((t.entities||[]).filter(m=>m.status==="active"&&m.whatsapp_number));
       setClients((c.entities||[]).filter(x=>x.status!=="inactive"));
       const row = (r.entities||[])[0];
-      if(row) { setRowId(row.id); setF({enabled:!!Number(row.enabled), send_time:row.send_time||"19:00", days:parse(row.days,[7,1,2,3,4]), sections:{progress:true,accounts_hint:true,tasks_done:true,tasks_open:true,posting:true,insights:true,applications:true,...parse(row.sections,{})}, client_ids:parse(row.client_ids,[]), recipients:parse(row.recipients,[]), window_hours:Number(row.window_hours)||24, last_sent_date:row.last_sent_date}); }
+      if(row) { setRowId(row.id); setF({enabled:!!Number(row.enabled), send_time:row.send_time||"19:00", days:parse(row.days,[7,1,2,3,4]), sections:{hours:true,progress:true,accounts_hint:true,tasks_done:true,tasks_open:true,posting:true,insights:true,applications:true,...parse(row.sections,{})}, client_ids:parse(row.client_ids,[]), recipients:parse(row.recipients,[]), window_hours:Number(row.window_hours)||24, last_sent_date:row.last_sent_date}); }
       setLoading(false);
     })();
   },[]);
