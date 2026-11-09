@@ -39190,7 +39190,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
               ))}
             </div>
           </div>
-          {timelineMembers.map(member=>{
+          {[...timelineMembers.filter(m=>!(collapsedRows||{})[m.email]), ...timelineMembers.filter(m=>!!(collapsedRows||{})[m.email])].map(member=>{ // stacked (collapsed) people sink to the bottom, above the AI agents
             const memberSlots = generateDailySchedule(posts, member.email, dateStr, member.role).map(slot=>{
               const ov = (scheduleOverrides||[]).find(o=>o.post_id===slot.post_id && o.user_email===member.email && o.date===dateStr);
               if(!ov) return slot;
