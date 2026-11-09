@@ -38935,45 +38935,51 @@ function RepeatTaskModal({open, onClose, slot, projects=[], team=[], clients=[],
   const member0 = team.find(m=>m.email===slot?.assigned_to);
   const stageFor = (m) => ROLE_OWNED_STAGE[m?.role] || "design";
   const [f,setF] = useState({
-    title:"", project_id:"", description:"", assigned_to:slot?.assigned_to||"", stage:stageFor(member0), priority:"medium",
+    title:"", project_id:"", project_ids:[], description:"", assigned_to:slot?.assigned_to||"", stage:stageFor(member0), priority:"medium",
     due_time:(slot?.due_time)||"12:00", minutes:60,
     rule:"daily", days:[0,1,2,3,4], interval:2, start_date:slot?.due_date||new Date().toISOString().split("T")[0], end_date:"", never:true,
   });
   const [list,setList] = useState([]);
   const [saving,setSaving] = useState(false);
   const [msg,setMsg] = useState("");
+  const [projQuery,setProjQuery] = useState("");
+  const [projMode,setProjMode] = useState("project"); // "project" = pick projects, "client" = pick whole clients
   const set = (k,v) => setF(p=>({...p,[k]:v}));
+  const allProjIds = projects.map(p=>p.id);
+  const togglePid = id => set("project_ids", f.project_ids.includes(id)?f.project_ids.filter(x=>x!==id):[...f.project_ids,id]);
+  const toggleGroup = ids => { const all = ids.every(i=>f.project_ids.includes(i)); set("project_ids", all ? f.project_ids.filter(x=>!ids.includes(x)) : [...new Set([...f.project_ids,...ids])]); };
   const load = async () => { const r = await qe("RecurringTask",{},"-created_at",200).catch(()=>({entities:[]})); setList((r.entities||[]).filter(x=>Number(x.active)!==0)); };
   useEffect(()=>{ load(); },[]);
   const toggleDay = d => set("days", f.days.includes(d)?f.days.filter(x=>x!==d):[...f.days,d].sort());
-  const canSave = f.title.trim() && f.project_id && f.assigned_to && f.due_time && f.start_date && (f.rule!=="weekly" || f.days.length) && (f.rule!=="interval" || Number(f.interval)>=1);
+  const canSave = f.title.trim() && f.project_ids.length>0 && f.assigned_to && f.due_time && f.start_date && (f.rule!=="weekly" || f.days.length) && (f.rule!=="interval" || Number(f.interval)>=1);
   const describe = (r) => r.rule_type==="daily" ? "Every day" : r.rule_type==="monthly" ? "Monthly" : r.rule_type==="interval" ? `Every ${r.rule_interval} days` : (()=>{ let d=[]; try{d=JSON.parse(r.rule_days||"[]");}catch(e){} return d.length===5&&[0,1,2,3,4].every(x=>d.includes(x))?"Work days (Sun–Thu)":"Weekly: "+d.map(x=>WD[x]?.[1]).join(", "); })();
   const save = async () => {
     if(!canSave) return;
     setSaving(true); setMsg("");
-    const proj = projects.find(p=>p.id===f.project_id);
-    const row = {
-      title:f.title.trim(), description:f.description, project_id:f.project_id, client_id:proj?.client_id||"", client_name:proj?.client_name||"",
-      assigned_to:f.assigned_to, stage:f.stage, priority:f.priority, post_type:"design", due_time:f.due_time, estimated_minutes:Number(f.minutes)||60,
-      rule_type: f.rule==="workdays"?"weekly":f.rule, rule_days: JSON.stringify(f.rule==="workdays"?[0,1,2,3,4]:f.days), rule_interval:Number(f.interval)||1,
-      start_date:f.start_date, end_date:f.never?null:(f.end_date||null), active:1, created_by:currentUser?.email||"",
-    };
-    // The first occurrence is created right now (when it starts today or later); the server creates every later one.
     const todayStr = new Date().toISOString().split("T")[0];
     const startsToday = f.start_date === todayStr;
     const matchesToday = f.rule==="daily" || f.rule==="interval" || f.rule==="monthly" || f.rule==="workdays" && [0,1,2,3,4].includes(new Date().getDay()) || f.rule==="weekly" && f.days.includes(new Date().getDay());
-    if(startsToday ? matchesToday : true) {
-      row.last_generated_date = f.start_date;
-    }
+    const createNow = startsToday ? matchesToday : true;
     try {
-      const res = await ce("RecurringTask",[row]);
-      if(!res?.entities?.[0]?.id) throw new Error("save failed");
-      if(onCreateFirst && (startsToday ? matchesToday : true)) {
-        await onCreateFirst({title:row.title, project_id:row.project_id, client_id:row.client_id, client_name:row.client_name, description:row.description, assigned_to:row.assigned_to,
-          due_date:f.start_date, due_time:row.due_time, estimated_minutes:row.estimated_minutes, priority:row.priority, stage:row.stage, platform:"", post_type:row.post_type});
+      for(const pid of f.project_ids) {
+        const proj = projects.find(p=>p.id===pid);
+        const row = {
+          title:f.title.trim(), description:f.description, project_id:pid, client_id:proj?.client_id||"", client_name:proj?.client_name||"",
+          assigned_to:f.assigned_to, stage:f.stage, priority:f.priority, post_type:"design", due_time:f.due_time, estimated_minutes:Number(f.minutes)||60,
+          rule_type: f.rule==="workdays"?"weekly":f.rule, rule_days: JSON.stringify(f.rule==="workdays"?[0,1,2,3,4]:f.days), rule_interval:Number(f.interval)||1,
+          start_date:f.start_date, end_date:f.never?null:(f.end_date||null), active:1, created_by:currentUser?.email||"",
+        };
+        // The first occurrence is created right now (when it starts today or later); the server creates every later one.
+        if(createNow) row.last_generated_date = f.start_date;
+        const res = await ce("RecurringTask",[row]);
+        if(!res?.entities?.[0]?.id) throw new Error("save failed");
+        if(onCreateFirst && createNow) {
+          await onCreateFirst({title:row.title, project_id:row.project_id, client_id:row.client_id, client_name:row.client_name, description:row.description, assigned_to:row.assigned_to,
+            due_date:f.start_date, due_time:row.due_time, estimated_minutes:row.estimated_minutes, priority:row.priority, stage:row.stage, platform:"", post_type:row.post_type});
+        }
       }
-      setMsg("Saved ✓ — it will repeat automatically.");
-      setF(p=>({...p,title:"",description:""}));
+      setMsg(`Saved ✓ — repeating for ${f.project_ids.length} project${f.project_ids.length!==1?"s":""}.`);
+      setF(p=>({...p,title:"",description:"",project_ids:[]}));
       load();
     } catch(e) { setMsg("Couldn't save — has the migration been run? (recurring_tasks table)"); }
     setSaving(false);
@@ -38985,11 +38991,50 @@ function RepeatTaskModal({open, onClose, slot, projects=[], team=[], clients=[],
     <Modal open={open} onClose={onClose} title="Repeated Task" width={620}>
       <div style={{display:"flex",flexDirection:"column",gap:12,padding:"10px 0"}}>
         <Field label="Task Title" required><input value={f.title} onChange={e=>set("title",e.target.value)} placeholder="e.g. Post daily story for Bino" style={inputSt} autoFocus/></Field>
-        <Field label="Project" required>
-          <select value={f.project_id} onChange={e=>set("project_id",e.target.value)} style={inputSt}>
-            <option value="">— Select project —</option>
-            {projects.map(p=><option key={p.id} value={p.id}>{p.title} · {p.client_name}</option>)}
-          </select>
+        <Field label={`Clients / Projects (${f.project_ids.length} selected)`} required>
+          <div style={{border:"1px solid var(--border2)",borderRadius:8,background:"var(--surface)",overflow:"hidden"}}>
+            <div style={{display:"flex",gap:6,padding:"8px 10px 0"}}>
+              {[["project","By project"],["client","By client"]].map(([k,l])=><button key={k} type="button" onClick={()=>setProjMode(k)} style={{padding:"4px 12px",borderRadius:99,fontSize:12,fontWeight:700,cursor:"pointer",border:`1px solid ${projMode===k?"var(--accent)":"var(--border2)"}`,background:projMode===k?"var(--accent)":"transparent",color:projMode===k?"#fff":"var(--text2)"}}>{l}</button>)}
+            </div>
+            <div style={{display:"flex",gap:8,alignItems:"center",padding:"8px 10px",borderBottom:"1px solid var(--border)"}}>
+              <input value={projQuery} onChange={e=>setProjQuery(e.target.value)} placeholder="Search client or project…" style={{...inputSt,flex:1,padding:"6px 10px"}}/>
+              <button type="button" onClick={()=>set("project_ids", f.project_ids.length===allProjIds.length?[]:allProjIds)} style={{fontSize:12,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"1px solid var(--border2)",background:f.project_ids.length===allProjIds.length?"var(--accent)":"var(--surface2)",color:f.project_ids.length===allProjIds.length?"#fff":"var(--text2)",cursor:"pointer",whiteSpace:"nowrap"}}>{f.project_ids.length===allProjIds.length?"Clear all":(projMode==="client"?"All clients":"All projects")}</button>
+            </div>
+            <div style={{maxHeight:200,overflowY:"auto",padding:"4px 0"}}>
+              {(()=>{
+                const q = projQuery.trim().toLowerCase();
+                const groups = {};
+                projects.forEach(pr=>{ const key = pr.client_name||"No client"; if(q && !key.toLowerCase().includes(q) && !(pr.title||"").toLowerCase().includes(q)) return; (groups[key]=groups[key]||[]).push(pr); });
+                const names = Object.keys(groups).sort();
+                if(!names.length) return <p style={{fontSize:12,color:"var(--text3)",padding:"8px 12px"}}>No match.</p>;
+                if(projMode==="client") return names.map(name=>{
+                  const ids = groups[name].map(x=>x.id);
+                  const allOn = ids.every(i=>f.project_ids.includes(i)), someOn = ids.some(i=>f.project_ids.includes(i));
+                  return (
+                    <label key={name} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 12px",fontSize:13,fontWeight:700,cursor:"pointer",borderBottom:"1px solid var(--border)"}}>
+                      <input type="checkbox" checked={allOn} ref={el=>{ if(el) el.indeterminate = !allOn && someOn; }} onChange={()=>toggleGroup(ids)}/> {name} <span style={{fontWeight:600,color:"var(--text3)",fontSize:11}}>({ids.length} project{ids.length!==1?"s":""})</span>
+                    </label>
+                  );
+                });
+                return names.map(name=>{
+                  const ids = groups[name].map(x=>x.id);
+                  const allOn = ids.every(i=>f.project_ids.includes(i)), someOn = ids.some(i=>f.project_ids.includes(i));
+                  return (
+                    <div key={name}>
+                      <label style={{display:"flex",alignItems:"center",gap:8,padding:"6px 12px",background:"var(--surface2)",fontSize:12,fontWeight:800,cursor:"pointer"}}>
+                        <input type="checkbox" checked={allOn} ref={el=>{ if(el) el.indeterminate = !allOn && someOn; }} onChange={()=>toggleGroup(ids)}/> {name} <span style={{fontWeight:600,color:"var(--text3)"}}>({ids.length})</span>
+                      </label>
+                      {groups[name].map(pr=>(
+                        <label key={pr.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 12px 5px 30px",fontSize:12,cursor:"pointer"}}>
+                          <input type="checkbox" checked={f.project_ids.includes(pr.id)} onChange={()=>togglePid(pr.id)}/> {pr.title}
+                        </label>
+                      ))}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
         </Field>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
           <Field label="Assigned to" required>
