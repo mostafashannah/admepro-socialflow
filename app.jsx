@@ -38969,10 +38969,11 @@ function RepeatTaskModal({open, onClose, slot, team=[], currentUser, onCreateFir
     if(!canSave) return;
     setSaving(true); setMsg("");
     const todayStr = new Date().toISOString().split("T")[0];
-    const dow = new Date().getDay();
-    const startsToday = f.start_date === todayStr;
-    const matchesToday = f.rule==="daily" || f.rule==="once" || f.rule==="interval" || f.rule==="monthly" || (f.rule==="workdays" && [0,1,2,3,4].includes(dow)) || (f.rule==="weekly" && f.days.includes(dow));
-    const createNow = startsToday ? matchesToday : false;
+    // The first task is created right now for the chosen start day (today or a future day) when the schedule includes that day;
+    // the server creates every later one on its own morning.
+    const dow = new Date(f.start_date+"T00:00:00").getDay();
+    const matchesStart = f.rule==="daily" || f.rule==="once" || f.rule==="interval" || f.rule==="monthly" || (f.rule==="workdays" && [0,1,2,3,4].includes(dow)) || (f.rule==="weekly" && f.days.includes(dow));
+    const createNow = f.start_date >= todayStr && matchesStart;
     try {
       const row = {
         title:f.title.trim(), description:f.description, project_id:"", client_id:"", client_name:"", assigned_to:slot.assigned_to, stage:"planning", priority:f.priority, post_type:"routine",
