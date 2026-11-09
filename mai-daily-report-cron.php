@@ -461,10 +461,15 @@ $maiWaSystem = "You are Mai, the agency's AI Account Executive, sending a WhatsA
 // The daily client check ping is retired for admins — the same hint now lives
 // inside the Daily Report. Never send the degraded "AI writer unavailable"
 // fallback to anyone either.
-$adminEmails = array_map('strtolower', array_column($admins, 'email'));
+// Controlled from Settings > Mai Daily Report: on/off switch and who receives it (empty list = everyone who would normally get it).
+$maiCfg = null;
+try { $maiCfg = $pdo->query("SELECT enabled, recipients FROM mai_report_settings ORDER BY created_at ASC LIMIT 1")->fetch(PDO::FETCH_ASSOC); } catch (Throwable $e) { $maiCfg = null; }
+if ($maiCfg && (string)$maiCfg['enabled'] === '0') { header('Content-Type: application/json'); echo json_encode(['skipped' => 'Mai daily report is switched off in Settings']); exit; }
+$maiAllowed = [];
+if ($maiCfg) { $dec = json_decode((string)$maiCfg['recipients'], true); if (is_array($dec)) $maiAllowed = array_map('strtolower', $dec); }
 foreach ($recipientFindings as $email => $entry) {
     if (empty($entry['clients'])) continue;
-    if (in_array(strtolower((string)$email), $adminEmails, true)) continue;
+    if ($maiAllowed && !in_array(strtolower((string)$email), $maiAllowed, true)) continue;
     $lines = [];
     foreach ($entry['clients'] as $name => $facts) {
         $parts = [];

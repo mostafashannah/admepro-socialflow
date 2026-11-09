@@ -1268,6 +1268,7 @@ const SB_TABLE = {
   CustomerMessage:"customer_messages",
   ReplyBotSetting:"reply_bot_settings",
   DailyReportSettings:"daily_report_settings",
+  MaiReportSettings:"mai_report_settings",
   TaskLog:"task_logs",
   RolePermission:"role_permissions",
   LeaveRequest:"leave_requests",
@@ -1320,6 +1321,7 @@ const SB_SCHEMA = {
   customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","attachment_url","sent_by","thread_status","draft_status","external_id"],
   task_logs: ["post_id","post_title","client_name","phase","round","assignee_email","assignee_name","assigned_by","assigned_at","completed_at","duration_mins","outcome"],
   daily_report_settings: ["enabled","send_time","days","sections","client_ids","recipients","window_hours","last_sent_date"],
+  mai_report_settings: ["enabled","recipients"],
   reply_bot_settings: ["client_id","client_name","enabled","mode","channels","tone","brain","dont_do","fallback_message","updated_by","external_bot","external_webhook_url","external_api_key"],
   pro_chat_sessions: ["user_email","client_id","title","messages","shared_with","is_shared_copy"],
 };
@@ -31853,6 +31855,62 @@ function ContractPolicySettingsPanel({appSettings, onSaveSettings}) {
 // ════════════════════════════════════════════════════════════════
 // SETTINGS PAGE
 // ════════════════════════════════════════════════════════════════
+// Settings > Mai Daily Report — on/off switch and who gets Mai's daily client check on WhatsApp.
+function MaiReportSettings() {
+  const [loading,setLoading] = useState(true);
+  const [rowId,setRowId] = useState(null);
+  const [enabled,setEnabled] = useState(false);
+  const [recipients,setRecipients] = useState([]);
+  const [team,setTeam] = useState([]);
+  const [saving,setSaving] = useState(false);
+  const [msg,setMsg] = useState("");
+  useEffect(()=>{
+    (async()=>{
+      const [r,t] = await Promise.all([qe("MaiReportSettings",{}).catch(()=>({entities:[]})), qe("TeamMember",{},null,300).catch(()=>({entities:[]}))]);
+      setTeam((t.entities||[]).filter(m=>m.status==="active"&&m.whatsapp_number));
+      const row = (r.entities||[])[0];
+      if(row) { setRowId(row.id); setEnabled(!!Number(row.enabled)); try { const x = typeof row.recipients==="string" ? JSON.parse(row.recipients) : row.recipients; setRecipients(Array.isArray(x)?x:[]); } catch(e){ setRecipients([]); } }
+      setLoading(false);
+    })();
+  },[]);
+  const toggle = (em) => setRecipients(r=>r.includes(em)?r.filter(x=>x!==em):[...r,em]);
+  const save = async () => {
+    setSaving(true); setMsg("");
+    const payload = {enabled:enabled?1:0, recipients:JSON.stringify(recipients)};
+    try {
+      if(rowId) { const r = await ue("MaiReportSettings", rowId, payload); if(r===null) throw new Error("save failed"); }
+      else { const r = await ce("MaiReportSettings",[payload]); const id = r?.entities?.[0]?.id; if(!id) throw new Error("save failed"); setRowId(id); }
+      setMsg("Saved ✓");
+    } catch(e) { setMsg("Couldn't save — has the migration been run? (mai_report_settings table)"); }
+    setSaving(false);
+  };
+  const chip = (on) => ({padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:600,cursor:"pointer",border:`1px solid ${on?"var(--accent)":"var(--border2)"}`,background:on?"var(--accent)":"transparent",color:on?"#fff":"var(--text2)"});
+  const card = {background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px",display:"flex",flexDirection:"column",gap:10};
+  if(loading) return <div style={{padding:30}}><Spinner size={20}/></div>;
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14,maxWidth:760}}>
+      <div style={card}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+          <div><h3 style={{fontSize:16,fontWeight:800}}>Mai — Daily Client Check</h3><p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>The morning WhatsApp from Mai about each client's posting pace and pipeline. Switch it off to stop it for everyone.</p></div>
+          <label style={{display:"flex",alignItems:"center",gap:8,fontWeight:700,fontSize:13,cursor:"pointer"}}><input type="checkbox" checked={enabled} onChange={e=>setEnabled(e.target.checked)}/> {enabled?"On":"Off"}</label>
+        </div>
+        <div>
+          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",marginBottom:6}}>Send to {recipients.length?`(${recipients.length} selected)`:"(everyone it applies to — pick people to limit it)"}</p>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {team.map(m=><button key={m.email} onClick={()=>toggle(m.email)} style={chip(recipients.map(x=>String(x).toLowerCase()).includes(String(m.email).toLowerCase()))}>{m.name}</button>)}
+            {!team.length&&<span style={{fontSize:12,color:"var(--text3)"}}>No active members with a WhatsApp number.</span>}
+          </div>
+          <p style={{fontSize:11,color:"var(--text3)",marginTop:8}}>Account managers only get findings for their own clients; admins get everything. Each person still needs "Daily client finance digest" on in their own notification settings.</p>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:10,alignItems:"center"}}>
+        <button onClick={save} disabled={saving} style={{padding:"10px 22px",borderRadius:"var(--rs)",background:"var(--accent)",color:"#fff",fontWeight:700,fontSize:13,border:"none",cursor:"pointer"}}>{saving?"Saving…":"Save"}</button>
+        {msg&&<span style={{fontSize:12,color:"var(--text2)"}}>{msg}</span>}
+      </div>
+    </div>
+  );
+}
+
 // Settings > Daily Report — what the WhatsApp daily report contains and when it goes out.
 function DailyReportSettings() {
   const DAYS = [[1,"Mon"],[2,"Tue"],[3,"Wed"],[4,"Thu"],[5,"Fri"],[6,"Sat"],[7,"Sun"]];
@@ -32003,7 +32061,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 
       {/* Tab nav */}
       <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexWrap:"nowrap",overflowX:"auto"}}>
-        {[["branding","Branding"],["integrations","Integrations"],["email","Email"],["ai_model","AI Agents"],["durations","Task Estimates"],["contract","Contract & Policy"],["flags","Feature Flags"],["daily_report","Daily Report"],["storage","Storage"],["syslog","System Log"]].map(([k,l])=>(
+        {[["branding","Branding"],["integrations","Integrations"],["email","Email"],["ai_model","AI Agents"],["durations","Task Estimates"],["contract","Contract & Policy"],["flags","Feature Flags"],["daily_report","Daily Report"],["mai_report","Mai Daily Report"],["storage","Storage"],["syslog","System Log"]].map(([k,l])=>(
           <button key={k} onClick={()=>setSettingsTab(k)} style={{padding:"9px 20px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${settingsTab===k?"var(--accent)":"transparent"}`,color:settingsTab===k?"var(--accent)":"var(--text2)",transition:"all 0.15s",display:"flex",alignItems:"center",gap:6,position:"relative"}}>
             {l}
             {k==="syslog"&&(activityLogs||[]).filter(a=>a.status==="error").length>0&&(
@@ -32152,6 +32210,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 
       {/* ── SYSTEM LOG TAB ── */}
       {settingsTab==="daily_report"&&<DailyReportSettings/>}
+      {settingsTab==="mai_report"&&<MaiReportSettings/>}
       {settingsTab==="syslog"&&<SystemLogPage activityLogs={activityLogs} systemSessions={systemSessions} currentUser={currentUser} team={team} onRefresh={()=>{ onRefreshLogs&&onRefreshLogs(); onRefreshSessions&&onRefreshSessions(); }}/>}
 
       {/* ── STORAGE TAB ── */}
