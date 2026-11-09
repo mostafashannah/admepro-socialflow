@@ -764,7 +764,10 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
       const _fd = isDesignerRole(userRole) ? "design_completed_dates" : userRole==="content_creator" ? "content_completed_dates" : null;
       let _h = [];
       try { const raw = _fd ? p[_fd] : null; _h = raw ? (Array.isArray(raw) ? raw : JSON.parse(raw)) : []; } catch(e) { _h = []; }
-      if (_h.some(h=>h && typeof h==="object" && h.date===date && h.by && h.by===userEmail)) return true;
+      // A task shows only on its own due day — finishing it on a later day does NOT carry it onto that day.
+      if ((!p.due_date || p.due_date===date) && _h.some(h=>h && typeof h==="object" && h.date===date && h.by && h.by===userEmail)) return true;
+      // On its due day, work this person finished (even if they clicked finish later) stays visible as done.
+      if (p.due_date && p.due_date===date && _h.some(h=>h && typeof h==="object" && h.by && h.by===userEmail)) return true;
     }
     if (!wasOwnerOf(p, userEmail, userRole)) return false;
     // A Calendar Plan parent card isn't a single time-boxed piece of work —
@@ -802,7 +805,8 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     try { const raw = completedDatesField ? p[completedDatesField] : null; completedHistory = raw ? (Array.isArray(raw) ? raw : JSON.parse(raw)) : []; } catch(e) { completedHistory = []; }
     // A completion stamped with someone else's name isn't this person's finished work.
     const completedOnViewedDay = completedHistory.some(h=>h.date===date && (!h.by || h.by===userEmail)) || !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
-    if (completedOnViewedDay) return true;
+    if (completedOnViewedDay && (!p.due_date || p.due_date===date)) return true;
+    if (p.due_date && p.due_date===date && (completedHistory.some(h=>!h.by||h.by===userEmail) || completedAt)) return true;
     if (ownedStage && p.stage !== ownedStage) return false;
     // Sent back for another round and now owned by SOMEONE ELSE — only the
     // current owner of this stage has it as active work; the earlier person
@@ -911,8 +915,10 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     // finished this day — the reset only affects its CURRENT cycle.
     let completedHistoryLocal = [];
     try { const raw = completedDatesField ? post[completedDatesField] : null; completedHistoryLocal = raw ? (Array.isArray(raw) ? raw : JSON.parse(raw)) : []; } catch(e) { completedHistoryLocal = []; }
-    const historyEntry = completedHistoryLocal.find(h=>h.date===date);
-    const completedToday = !!historyEntry || !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
+    // A task finished later than its due day still reads as DONE on its own due day (never on the later day).
+    const finishedLater = !!(post.due_date && post.due_date===date && (completedHistoryLocal.some(h=>!h.by||h.by===userEmail) || completedAt));
+    const historyEntry = completedHistoryLocal.find(h=>h.date===date) || (finishedLater ? [...completedHistoryLocal].reverse().find(h=>!h.by||h.by===userEmail) : null);
+    const completedToday = !!historyEntry || finishedLater || !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
     // The real-elapsed-time override only kicks in when the move actually
     // just happened (within the last 2 hours) — a fresh completion is
     // trustworthy live data worth showing honestly (e.g. a 1hr block
