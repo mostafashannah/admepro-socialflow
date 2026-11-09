@@ -39295,7 +39295,16 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   const combinedCompletionPct = combinedView && combinedSlots.length > 0 ? Math.round(combinedSlots.filter(s => s.completed_today).length / combinedSlots.length * 100) : 0;
 
   const summaryTotalTasks = combinedView ? combinedSlots.length : slots.length;
-  const summaryActiveNow = combinedView ? combinedActiveTimers.length : activeTimers.length;
+  // "Active now" = every task someone is on right now: running timers, tasks whose slot has started and aren't done yet,
+  // and delayed tasks still waiting to be moved to review (a late task is still open work). Counted once per task.
+  const isTodayView = dateStr === new Date().toISOString().split("T")[0];
+  const nowMinsActive = new Date().getHours()*60 + new Date().getMinutes();
+  const countActive = (slotList, timers) => {
+    const ids = new Set((timers||[]).map(t=>t.post_id));
+    if(isTodayView) (slotList||[]).forEach(sl=>{ if(!sl.completed_today && (sl.start_mins<=nowMinsActive)) ids.add(sl.post_id); });
+    return ids.size;
+  };
+  const summaryActiveNow = combinedView ? countActive(combinedSlots, combinedActiveTimers) : countActive(slots, activeTimers);
   const summaryTrackedSecs = combinedView ? combinedTrackedSecs : todayTrackedSecs;
   const summaryCompletionPct = combinedView ? combinedCompletionPct : completionPct;
 
