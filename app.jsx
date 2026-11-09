@@ -39023,6 +39023,64 @@ function TaskThumb({post, team=[], size=18}) {
   );
 }
 
+// Hover card on a person's name in the timeline: today's load and real time, delivery quality and an Uber-style star rating.
+const perfBridge = {logs:[], mai:[]};
+function StarRating({value, size=16}) {
+  const pct = Math.max(0, Math.min(100, value/5*100));
+  return (
+    <span style={{position:"relative",display:"inline-block",fontSize:size,lineHeight:1,letterSpacing:1}}>
+      <span style={{color:"var(--border2)"}}>★★★★★</span>
+      <span style={{position:"absolute",left:0,top:0,width:`${pct}%`,overflow:"hidden",whiteSpace:"nowrap",color:"#f59e0b"}}>★★★★★</span>
+    </span>
+  );
+}
+function MemberHoverCard({member, slots=[], dateStr, members=[], style, children}) {
+  const [pos,setPos] = useState(null);
+  const show = e => { const r = e.currentTarget.getBoundingClientRect(); setPos({x:Math.min(r.right+8, window.innerWidth-320), y:Math.max(8, Math.min(r.top-10, window.innerHeight-380))}); };
+  let card = null;
+  if(pos) {
+    const fmtH = sec => { const m = Math.round(sec/60); return m>=60 ? `${Math.floor(m/60)}h ${m%60}m` : `${m}m`; };
+    const plannedSecs = slots.reduce((a,x)=>a+(x.end_mins-x.start_mins)*60, 0);
+    const realSecs = (timerBridge.entries||[]).filter(t=>t.user_email===member.email && t.date===dateStr).reduce((a,t)=>a+(Number(t.total_seconds)||0)+(t.status==="active"?Math.max(0,Math.floor((Date.now()-parseSqlUtc(t.started_at).getTime())/1000)):0),0);
+    const done = slots.filter(x=>x.completed_today).length;
+    const perf = calcUserPerf(member.email, perfBridge.logs, perfBridge.mai);
+    const hasPerf = perf.total>0 || perf.maiScore!=null;
+    const stars = Math.round(perf.score/100*5*10)/10;
+    const ranked = members.map(m=>({m, p:calcUserPerf(m.email, perfBridge.logs, perfBridge.mai)})).filter(x=>x.p.total>0||x.p.maiScore!=null).sort((a,b)=>b.p.score-a.p.score);
+    const rank = ranked.findIndex(x=>x.m.email===member.email)+1;
+    const sentBack = (perf.logs||[]).filter(l=>Number(l.revision_count)>0).length;
+    const row = (l,v,c) => <div style={{display:"flex",justifyContent:"space-between",gap:12,fontSize:12,padding:"3px 0"}}><span style={{color:"var(--text3)"}}>{l}</span><span style={{fontWeight:700,color:c||"var(--text)"}}>{v}</span></div>;
+    card = ReactDOM.createPortal(
+      <div style={{position:"fixed",left:pos.x,top:pos.y,width:300,zIndex:99999,background:"var(--surface)",color:"var(--text)",border:"1px solid var(--border2)",borderRadius:12,boxShadow:"0 12px 32px rgba(0,0,0,0.35)",padding:14,pointerEvents:"none"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+          <Avatar name={member.name} size={38} role={member.role} photoUrl={member.avatar_url}/>
+          <div style={{minWidth:0}}>
+            <p style={{fontSize:14,fontWeight:800}}>{member.name}</p>
+            <p style={{fontSize:11,color:"var(--text3)"}}>{member.title||ROLES[member.role]?.label||""}</p>
+          </div>
+        </div>
+        <div style={{background:"var(--surface2)",borderRadius:10,padding:"10px 12px",marginBottom:10,textAlign:"center"}}>
+          {hasPerf ? <>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><span style={{fontSize:26,fontWeight:900}}>{stars.toFixed(1)}</span><StarRating value={stars} size={20}/></div>
+            <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{rank?`Rank #${rank} of ${ranked.length}`:""}{rank?" · ":""}based on {perf.total} task{perf.total!==1?"s":""}</p>
+          </> : <p style={{fontSize:12,color:"var(--text3)"}}>No rating yet — no finished tasks on record</p>}
+        </div>
+        <p style={{fontSize:10,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:2}}>Today</p>
+        {row("Tasks", `${slots.length}${slots.length?` (${done} done)`:""}`)}
+        {row("Planned hours", fmtH(plannedSecs))}
+        {row("Real execution time", realSecs>0?fmtH(realSecs):"—", realSecs>0?"#10b981":undefined)}
+        {hasPerf&&perf.total>0&&<>
+          <p style={{fontSize:10,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",margin:"8px 0 2px"}}>Overall</p>
+          {row("Delivered on time", `${perf.onTimeRate}%`, perf.onTimeRate>=80?"#10b981":perf.onTimeRate>=60?"#f59e0b":"#ef4444")}
+          {row("Quality score", `${perf.avgQuality}/100`)}
+          {row("Sent back for changes", `${sentBack} of ${perf.total} (avg ${perf.avgRevisions})`, sentBack/perf.total>0.3?"#ef4444":undefined)}
+          {row("Completion rate", `${perf.completionRate}%`)}
+        </>}
+      </div>, document.body);
+  }
+  return <div style={style} onMouseEnter={show} onMouseLeave={()=>setPos(null)}>{children}{card}</div>;
+}
+
 function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule, onShiftOverdue, initialJump, onJumpConsumed, onBackToCalendar, activityLogs=[], appSettings, onQuickAdd, onMoveTask}) {
   // Which free-slot "+" button currently has its Task/Post/Calendar Plan
   // picker open — holds the slot payload (assignee/date/time) it was
@@ -39321,14 +39379,14 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             );
             return (
               <div key={member.email} style={{display:"flex",alignItems:"center",padding:"14px 16px",borderBottom:"1px solid var(--border)",gap:10}}>
-                <div style={{width:150,flexShrink:0,position:"sticky",left:16,display:"flex",alignItems:"center",gap:10,background:"var(--surface)",zIndex:3}}>
+                <MemberHoverCard member={member} slots={lanedSlots} dateStr={dateStr} members={timelineMembers} style={{width:150,flexShrink:0,position:"sticky",left:16,display:"flex",alignItems:"center",gap:10,background:"var(--surface)",zIndex:3}}>
                   <Avatar name={member.name} size={30} role={member.role} photoUrl={member.avatar_url}/>
                   <div style={{overflow:"hidden"}}>
                     <p style={{fontSize:13,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.name}{member.email===currentUser?.email?" (You)":""}</p>
                     <p style={{fontSize:10,fontWeight:600,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.title||ROLES[member.role]?.label||""}</p>
                   </div>
                   <button onClick={(e)=>{e.stopPropagation();toggleRow(member.email);}} title="Stack (collapse) this timeline" style={{marginLeft:"auto",flexShrink:0,width:22,height:22,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text3)",cursor:"pointer",fontSize:11,lineHeight:1}}>▾</button>
-                </div>
+                </MemberHoverCard>
                 <div style={{position:"relative",flex:1,height:rowH,background:"var(--surface2)",borderRadius:10,cursor:(isAM&&onQuickAdd)?"copy":"default",
                   backgroundImage:`repeating-linear-gradient(to right, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${100/(WORKING_END-WORKING_START)}%)`}}
                   onClick={(isAM&&onQuickAdd)?(e)=>{
@@ -50082,6 +50140,7 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
   };
 
   timerBridge.entries = data.timeEntries||[];
+  perfBridge.logs = data.perfLogs||[]; perfBridge.mai = data.maiReportSessions||[];
   clientAssetsBridge.assets = data.assets; clientAssetsBridge.addAsset = addAsset; clientAssetsBridge.clients = data.clients||[];
 
   const updateAsset = async (id, patch) => {
