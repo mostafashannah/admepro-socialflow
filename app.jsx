@@ -31855,6 +31855,18 @@ function ContractPolicySettingsPanel({appSettings, onSaveSettings}) {
 // ════════════════════════════════════════════════════════════════
 // SETTINGS PAGE
 // ════════════════════════════════════════════════════════════════
+// Readable on/off switch: big pill, green with "ON" when active, grey with "OFF" when not.
+function SwitchToggle({on, onChange, disabled=false}) {
+  return (
+    <button type="button" role="switch" aria-checked={!!on} disabled={disabled} onClick={()=>!disabled&&onChange(!on)}
+      style={{position:"relative",width:84,height:34,borderRadius:99,border:"none",cursor:disabled?"not-allowed":"pointer",flexShrink:0,opacity:disabled?0.5:1,
+        background:on?"#16a34a":"#9ca3af",transition:"background 0.2s",boxShadow:"inset 0 1px 3px rgba(0,0,0,0.25)",color:"#fff",fontWeight:800,fontSize:12,letterSpacing:"0.06em"}}>
+      <span style={{position:"absolute",top:"50%",transform:"translateY(-50%)",[on?"left":"right"]:12}}>{on?"ON":"OFF"}</span>
+      <span style={{position:"absolute",top:4,left:on?54:4,width:26,height:26,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 4px rgba(0,0,0,0.35)"}}/>
+    </button>
+  );
+}
+
 // Settings > Mai Daily Report — on/off switch and who gets Mai's daily client check on WhatsApp.
 function MaiReportSettings() {
   const [loading,setLoading] = useState(true);
@@ -31892,7 +31904,7 @@ function MaiReportSettings() {
       <div style={card}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
           <div><h3 style={{fontSize:16,fontWeight:800}}>Mai — Daily Client Check</h3><p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>The morning WhatsApp from Mai about each client's posting pace and pipeline. Switch it off to stop it for everyone.</p></div>
-          <label style={{display:"flex",alignItems:"center",gap:8,fontWeight:700,fontSize:13,cursor:"pointer"}}><input type="checkbox" checked={enabled} onChange={e=>setEnabled(e.target.checked)}/> {enabled?"On":"Off"}</label>
+          <SwitchToggle on={enabled} onChange={setEnabled}/>
         </div>
         <div>
           <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",marginBottom:6}}>Send to {recipients.length?`(${recipients.length} selected)`:"(everyone it applies to — pick people to limit it)"}</p>
@@ -31964,7 +31976,7 @@ function DailyReportSettings() {
       <div style={card}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
           <div><h3 style={{fontSize:16,fontWeight:800}}>WhatsApp Daily Report</h3><p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>A summary sent to WhatsApp at the time you choose.{f.last_sent_date?` Last sent: ${String(f.last_sent_date).slice(0,10)}.`:""}</p></div>
-          <label style={{display:"flex",alignItems:"center",gap:8,fontWeight:700,fontSize:13,cursor:"pointer"}}><input type="checkbox" checked={f.enabled} onChange={e=>setF(p=>({...p,enabled:e.target.checked}))}/> {f.enabled?"On":"Off"}</label>
+          <SwitchToggle on={f.enabled} onChange={v=>setF(p=>({...p,enabled:v}))}/>
         </div>
         <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"center"}}>
           <label style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>Send at (Cairo time) <input type="time" value={f.send_time} onChange={e=>setF(p=>({...p,send_time:e.target.value}))} style={{marginLeft:8,padding:"6px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)"}}/></label>
