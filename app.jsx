@@ -39080,6 +39080,8 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   const timelineMembers = (team||[])
     .filter(m=>m.status!=="inactive")
     .filter(m=>isAdminViewer || !["hr","accountant","office_boy","admin"].includes(m.role))
+    // Account managers / executives never see the account director's timeline.
+    .filter(m=>!(["account_manager","account_executive"].includes(currentUser?.role) && m.role==="account_director"))
     .filter(m=>isAdminViewer || currentUser?.role==="account_director" || !TIMELINE_EXCLUDED_NAMES.some(n=>(m.name||"").trim().toLowerCase().split(/\s+/)[0]===n))
     .sort((a,b)=>{
       const ai = ROLE_SORT_ORDER.indexOf(a.role), bi = ROLE_SORT_ORDER.indexOf(b.role);
@@ -39371,6 +39373,8 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             // suffix agentAI() now logs) drawn as actual positioned bars on
             // the same hour scale as the human rows above — not a fake
             // proportional count, real clock times.
+            // AI agents are only for admins and account directors.
+            if(!(currentUser?.role==="admin" || currentUser?.role==="account_director")) return null;
             return AI_AGENT_DEFS.map(sara=>{
             let agentsCfg=appSettings?.ai_agents; if(typeof agentsCfg==="string"){try{agentsCfg=JSON.parse(agentsCfg);}catch(e){agentsCfg={};}}
             const avatarUrl = (agentsCfg||{})[sara?.id]?.avatar_url;
