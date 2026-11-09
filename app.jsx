@@ -39034,6 +39034,13 @@ function StarRating({value, size=16}) {
     </span>
   );
 }
+// Small Uber-style rating pill that sits on a person's avatar.
+function MemberRatingBadge({member}) {
+  const perf = calcUserPerf(member.email, perfBridge.logs, perfBridge.mai);
+  if(!(perf.total>0 || perf.maiScore!=null)) return null;
+  const stars = Math.round(perf.score/100*5*10)/10;
+  return <span title={`Overall rating ${stars.toFixed(1)} / 5`} style={{position:"absolute",left:"50%",bottom:-7,transform:"translateX(-50%)",background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:99,padding:"0 6px",fontSize:10,fontWeight:800,lineHeight:"15px",whiteSpace:"nowrap",boxShadow:"0 1px 3px rgba(0,0,0,0.25)",color:"var(--text)"}}>{stars.toFixed(1)} <span style={{color:"#f59e0b"}}>★</span></span>;
+}
 function MemberHoverCard({member, slots=[], dateStr, members=[], style, children}) {
   const [pos,setPos] = useState(null);
   const show = e => { const r = e.currentTarget.getBoundingClientRect(); setPos({x:Math.min(r.right+8, window.innerWidth-320), y:Math.max(8, Math.min(r.top-10, window.innerHeight-380))}); };
@@ -39380,7 +39387,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             return (
               <div key={member.email} style={{display:"flex",alignItems:"center",padding:"14px 16px",borderBottom:"1px solid var(--border)",gap:10}}>
                 <MemberHoverCard member={member} slots={lanedSlots} dateStr={dateStr} members={timelineMembers} style={{width:150,flexShrink:0,position:"sticky",left:16,display:"flex",alignItems:"center",gap:10,background:"var(--surface)",zIndex:3}}>
-                  <Avatar name={member.name} size={30} role={member.role} photoUrl={member.avatar_url}/>
+                  <span style={{position:"relative",display:"inline-flex",flexShrink:0,paddingBottom:2}}><Avatar name={member.name} size={30} role={member.role} photoUrl={member.avatar_url}/><MemberRatingBadge member={member}/></span>
                   <div style={{overflow:"hidden"}}>
                     <p style={{fontSize:13,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.name}{member.email===currentUser?.email?" (You)":""}</p>
                     <p style={{fontSize:10,fontWeight:600,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.title||ROLES[member.role]?.label||""}</p>
