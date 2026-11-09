@@ -29,7 +29,7 @@ foreach ($pdo->query("SELECT email, name, role FROM team_members WHERE status = 
 // Today's tasks per owner, laid out exactly like the Timeline: highest priority first, each anchored at
 // (due_time - estimate), and a task that collides with one already placed is pushed to start right after it.
 $todayPosts = $pdo->prepare("SELECT id, title, project_id, stage, priority, scheduled_date, assigned_to, design_assigned_to, content_assigned_to, due_date, due_time, estimated_minutes
-    FROM posts WHERE LEFT(due_date, 10) = ? AND due_time IS NOT NULL AND due_time <> '' AND stage IN ('design','content_creation') AND (is_plan_parent IS NULL OR is_plan_parent = 0)");
+    FROM posts WHERE LEFT(due_date, 10) = ? AND due_time IS NOT NULL AND due_time <> '' AND stage IN ('design','content_creation') AND (is_plan_parent IS NULL OR is_plan_parent = 0) ORDER BY created_at DESC");
 $todayPosts->execute([date('Y-m-d', strtotime($today))]);
 $prio = ['urgent' => 4, 'high' => 3, 'medium' => 2, 'low' => 1];
 $byOwner = [];
