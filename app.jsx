@@ -14903,7 +14903,7 @@ function AssetCard({asset:a, proj, allFolders=[], onUpdate, onDelete, selected, 
 // drag-and-drop of OS files onto the panel to upload into the open folder.
 // ════════════════════════════════════════════════════════════════
 function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAsset, storagePrefix="assets", storageKey="sf_extra_folders", extraTags=[], currentUser, categoryPrefix="", fixedFolders=[], storageLimitMb=null}) {
-  const isAdmin = currentUser?.role==="admin";
+  const isAdmin = ["admin","account_director"].includes(currentUser?.role); // may delete assets
   const fileInputRef = useRef(null);
   const [path, setPath] = useState([]);
   const [view, setView] = useState("grid");
