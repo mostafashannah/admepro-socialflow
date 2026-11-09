@@ -40,6 +40,9 @@ $slotFor = function (array $p) use ($OWNED, $members, $WORK_START, $WORK_END) {
     return ['member' => $m, 'start' => $start, 'end' => $start + $est];
 };
 
+$debug = in_array('debug', $argv ?? [], true);
+$dbg = function ($m) use ($debug) { if ($debug) echo "  · $m\n"; };
+$dbg('members timed: ' . count($members) . ' | now ' . $now->format('Y-m-d H:i') . " (mins $nowMins) | utc date $utcDate");
 $started = 0; $paused = 0;
 
 // 1) Pause auto-started timers whose slot has ended or whose task moved on.
@@ -65,10 +68,12 @@ $hasToday = $pdo->prepare("SELECT 1 FROM time_entries WHERE user_email = ? AND p
 $ins = $pdo->prepare("INSERT INTO time_entries (id, post_id, post_title, user_email, user_name, started_at, date, status, total_seconds, project_id, auto_started) VALUES (UUID(), ?, ?, ?, ?, ?, ?, 'active', 0, ?, 1)");
 foreach ($posts->fetchAll(PDO::FETCH_ASSOC) as $p) {
     $slot = $slotFor($p);
-    if (!$slot || $nowMins < $slot['start'] || $nowMins >= $slot['end']) continue;
+    if (!$slot) { $dbg("{$p['title']}: no slot (no owner match / stage / due_time)"); continue; }
+    $dbg("{$p['title']}: slot " . sprintf('%02d:%02d', intdiv($slot['start'], 60), $slot['start'] % 60) . '-' . sprintf('%02d:%02d', intdiv($slot['end'], 60), $slot['end'] % 60) . " owner {$slot['member']['email']}");
+    if ($nowMins < $slot['start'] || $nowMins >= $slot['end']) { $dbg('   outside slot now'); continue; }
     $m = $slot['member'];
-    $hasActive->execute([$m['email']]); if ($hasActive->fetchColumn()) continue;
-    $hasToday->execute([$m['email'], $p['id'], $utcDate]); if ($hasToday->fetchColumn()) continue;
+    $hasActive->execute([$m['email']]); if ($hasActive->fetchColumn()) { $dbg('   owner already has a running timer'); continue; }
+    $hasToday->execute([$m['email'], $p['id'], $utcDate]); if ($hasToday->fetchColumn()) { $dbg('   already has an entry today'); continue; }
     $ins->execute([$p['id'], $p['title'], $m['email'], $m['name'], $utcNow, $utcDate, $p['project_id'] ?: '']);
     $started++;
 }
