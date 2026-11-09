@@ -38855,6 +38855,46 @@ function AssignExistingTaskModal({open, onClose, slot, posts, team, clients, onA
   );
 }
 
+// Small media thumbnail shown before a task's name on the timeline; hovering it opens a card with the task's main details.
+function postMediaList(post) {
+  try {
+    const assets = Array.isArray(post?.design_assets) ? post.design_assets : parseJ(post?.design_assets||"[]");
+    const urls = Array.isArray(post?.design_urls) ? post.design_urls : parseJ(post?.design_urls||"[]");
+    const list = assets.length ? assets : urls.map(url=>({url}));
+    return list.map(a=>({url:a.url||a.file_url||a.data||"", type:a.type||""})).filter(a=>a.url);
+  } catch(e) { return []; }
+}
+function TaskThumb({post, team=[], size=18}) {
+  const [pos,setPos] = useState(null);
+  const media = postMediaList(post);
+  if(!media.length) return null;
+  const m0 = media[0];
+  const isVideo = (m0.type||"").startsWith("video") || /\.(mp4|mov|webm|m4v)/i.test(m0.url);
+  const stage = STAGE_MAP[post.stage];
+  const assignee = (team||[]).find(t=>t.email===(post.assigned_to||""));
+  const show = e => { const r = e.currentTarget.getBoundingClientRect(); setPos({x:Math.min(r.left, window.innerWidth-300), y: r.bottom+6 > window.innerHeight-260 ? Math.max(8,r.top-250) : r.bottom+6}); };
+  const brief = String(post.description||post.caption||"").replace(/\s+/g," ").trim();
+  return (
+    <span onMouseEnter={show} onMouseLeave={()=>setPos(null)} style={{display:"inline-flex",flexShrink:0,marginRight:4}}>
+      <span style={{width:size,height:size,borderRadius:4,overflow:"hidden",background:"rgba(0,0,0,0.25)",border:"1px solid rgba(255,255,255,0.6)",display:"inline-block"}}>
+        {isVideo ? <video src={m0.url+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <img src={m0.url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+      </span>
+      {pos && ReactDOM.createPortal(
+        <div style={{position:"fixed",left:pos.x,top:pos.y,width:280,zIndex:99999,background:"var(--surface)",color:"var(--text)",border:"1px solid var(--border2)",borderRadius:10,boxShadow:"0 10px 30px rgba(0,0,0,0.35)",padding:10,pointerEvents:"none",fontFamily:"inherit"}}>
+          <div style={{width:"100%",height:130,borderRadius:6,overflow:"hidden",background:"var(--surface2)",marginBottom:8}}>
+            {isVideo ? <video src={m0.url+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"contain"}}/> : <img src={m0.url} alt="" style={{width:"100%",height:"100%",objectFit:"contain"}}/>}
+          </div>
+          <p style={{fontSize:13,fontWeight:800,margin:"0 0 4px"}}>{post.title}</p>
+          <p style={{fontSize:11,color:"var(--text3)",margin:"0 0 2px"}}>{[post.client_name, post.platform, post.post_type].filter(Boolean).join(" · ")}</p>
+          <p style={{fontSize:11,color:"var(--text3)",margin:"0 0 2px"}}>{stage?`Stage: ${stage.label}`:""}{assignee?` · ${assignee.name}`:""}</p>
+          {post.due_date&&<p style={{fontSize:11,color:"var(--text3)",margin:"0 0 2px"}}>Due {fmtDate(post.due_date)}{post.due_time?` at ${post.due_time}`:""}</p>}
+          {media.length>1&&<p style={{fontSize:11,color:"var(--text3)",margin:"0 0 2px"}}>{media.length} files</p>}
+          {brief&&<p style={{fontSize:11,margin:"4px 0 0",lineHeight:1.45}}>{brief.length>140?brief.slice(0,140)+"…":brief}</p>}
+        </div>, document.body)}
+    </span>
+  );
+}
+
 function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule, onShiftOverdue, initialJump, onJumpConsumed, onBackToCalendar, activityLogs=[], appSettings, onQuickAdd, onMoveTask}) {
   // Which free-slot "+" button currently has its Task/Post/Calendar Plan
   // picker open — holds the slot payload (assignee/date/time) it was
@@ -39255,7 +39295,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                           setToast(` "${post.title}" copied — right-click a free slot (any day) to move it there`);
                         }:undefined}
                         style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,background:slot.overdue?"#ef4444":slot.completed_today?"#22c55e":(stage?.color||"var(--accent)"),borderRadius:5,cursor:post?(canMove?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 6px",...(slot.overdue?{boxShadow:"0 0 0 1px #b91c1c inset"}:{})}}>
-                        <span style={{fontSize:10,color:"#fff",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
+                        <span style={{display:"flex",alignItems:"center",minWidth:0}}>{post&&<TaskThumb post={post} team={team} size={14}/>}<span style={{fontSize:10,color:"#fff",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span></span>
                         {widthPct>8&&<span style={{fontSize:8.5,color:"#fff",opacity:0.85,whiteSpace:"nowrap"}}>{slot.start_time}–{slot.end_time}</span>}
                       </div>
                     );
@@ -39413,7 +39453,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                       onMouseLeave={e=>{e.currentTarget.style.background=stageColor+"22";}}>
                         <div style={{display:"flex",alignItems:"center",gap:8}}>
                           <span style={{fontSize:12,flexShrink:0}}>{PLT_ICON[post.platform]||""}</span>
-                          <span style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{post.title}</span>
+                          <TaskThumb post={post} team={team} size={22}/><span style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{post.title}</span>
                           {isActive && <span style={{fontSize:11,fontFamily:"monospace",color:"#10b981",fontWeight:800,background:"#10b98122",padding:"1px 5px",borderRadius:4}}>{fmtSecs(trackedSecs)}</span>}
                         </div>
                         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
@@ -39474,7 +39514,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                 const stage = STAGE_MAP[post.stage]||STAGES[0];
                 return (
                   <div key={slot.post_id} onClick={()=>onPostClick&&onPostClick(post)} style={{padding:"6px 10px",borderRadius:"var(--rs)",background:"var(--surface2)",border:`1px solid ${slot.overdue?"#ef444455":"var(--border)"}`,cursor:"pointer",display:"flex",flexDirection:"column",gap:2}}>
-                    <p style={{fontSize:11,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.title}</p>
+                    <div style={{display:"flex",alignItems:"center",minWidth:0}}><TaskThumb post={post} team={team} size={16}/><p style={{fontSize:11,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",margin:0}}>{post.title}</p></div>
                     <div style={{display:"flex",gap:6,alignItems:"center"}}>
                       <span style={{fontSize:9,color:"var(--text3)"}}>{slot.start_time}–{slot.end_time}</span>
                       <Badge label={stage.label} color={slot.overdue?"#ef4444":stage.color} xs/>
