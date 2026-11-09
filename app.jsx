@@ -39395,7 +39395,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
           <div style={{overflowX:"auto"}}>
           <div style={{minWidth:`${zoom*100}%`}}>
           <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:150,flexShrink:0,position:"sticky",left:16,fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",background:"var(--surface2)"}}>Combined Timeline</div>
+            <div style={{width:166,flexShrink:0,position:"sticky",left:0,marginLeft:-16,paddingLeft:16,alignSelf:"stretch",zIndex:4,fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",background:"var(--surface2)"}}>Combined Timeline</div>
             {/* Ruler lives in a name-column + flex-timeline split identical to each
                 member row below, so hour ticks (percentage-positioned) line up
                 exactly with the percentage-positioned task bars underneath them. */}
@@ -39431,7 +39431,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             const isCollapsed = !!(collapsedRows||{})[member.email];
             if(isCollapsed) return (
               <div key={member.email} onClick={()=>toggleRow(member.email)} title="Click to expand" style={{display:"flex",alignItems:"center",padding:"8px 16px",borderBottom:"1px solid var(--border)",gap:10,cursor:"pointer"}}>
-                <div style={{width:150,flexShrink:0,position:"sticky",left:16,display:"flex",alignItems:"center",gap:8,background:"var(--surface)",zIndex:3}}>
+                <div style={{width:166,flexShrink:0,position:"sticky",left:0,marginLeft:-16,paddingLeft:16,alignSelf:"stretch",zIndex:4,display:"flex",alignItems:"center",gap:8,background:"var(--surface)",zIndex:3}}>
                   <span style={{fontSize:11,color:"var(--text3)",width:12}}>▸</span>
                   <Avatar name={member.name} size={22} role={member.role} photoUrl={member.avatar_url}/>
                   <p style={{fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.name}</p>
@@ -39444,7 +39444,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             );
             return (
               <div key={member.email} style={{display:"flex",alignItems:"center",padding:"14px 16px",borderBottom:"1px solid var(--border)",gap:10}}>
-                <MemberHoverCard member={member} slots={lanedSlots} dateStr={dateStr} members={timelineMembers} style={{width:150,flexShrink:0,position:"sticky",left:16,display:"flex",alignItems:"center",gap:10,background:"var(--surface)",zIndex:3}}>
+                <MemberHoverCard member={member} slots={lanedSlots} dateStr={dateStr} members={timelineMembers} style={{width:166,flexShrink:0,position:"sticky",left:0,marginLeft:-16,paddingLeft:16,alignSelf:"stretch",zIndex:4,display:"flex",alignItems:"center",gap:10,background:"var(--surface)",zIndex:3}}>
                   <span style={{position:"relative",display:"inline-flex",flexShrink:0,paddingBottom:2}}><Avatar name={member.name} size={30} role={member.role} photoUrl={member.avatar_url}/><MemberRatingBadge member={member}/></span>
                   <div style={{overflow:"hidden"}}>
                     <p style={{fontSize:13,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.name}{member.email===currentUser?.email?" (You)":""}</p>
@@ -39612,7 +39612,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             return (
               agentCollapsed ? (
               <div key={`agent-${sara.id}-timeline-row`} onClick={toggleAgent} title="Click to expand" style={{display:"flex",alignItems:"center",padding:"8px 16px",borderBottom:"1px solid var(--border)",gap:10,cursor:"pointer",background:sara.color+"08"}}>
-                <div style={{width:150,flexShrink:0,position:"sticky",left:16,display:"flex",alignItems:"center",gap:8,background:"var(--surface)",zIndex:3}}>
+                <div style={{width:166,flexShrink:0,position:"sticky",left:0,marginLeft:-16,paddingLeft:16,alignSelf:"stretch",zIndex:4,display:"flex",alignItems:"center",gap:8,background:"var(--surface)",zIndex:3}}>
                   <span style={{fontSize:11,color:"var(--text3)",width:12}}>▸</span>
                   <div style={{width:22,height:22,borderRadius:"50%",background:sara.color,flexShrink:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:11,fontWeight:800}}>{avatarUrl?<img src={avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"S"}</div>
                   <p style={{fontSize:12,fontWeight:700}}>{agentLabel}</p>
@@ -39624,7 +39624,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
               </div>
               ) : (
               <div key={`agent-${sara.id}-timeline-row`} style={{display:"flex",alignItems:"center",padding:"14px 16px",borderBottom:"1px solid var(--border)",gap:10,background:sara.color+"08"}}>
-                <div style={{width:150,flexShrink:0,position:"sticky",left:16,display:"flex",alignItems:"center",gap:10,background:"var(--surface)",zIndex:3}}>
+                <div style={{width:166,flexShrink:0,position:"sticky",left:0,marginLeft:-16,paddingLeft:16,alignSelf:"stretch",zIndex:4,display:"flex",alignItems:"center",gap:10,background:"var(--surface)",zIndex:3}}>
                   <div style={{width:30,height:30,borderRadius:"50%",background:sara.color,flexShrink:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:13,fontWeight:800}}>
                     {avatarUrl?<img src={avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"S"}
                   </div>
