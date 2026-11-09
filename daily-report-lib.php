@@ -11,7 +11,7 @@ function drDefaults(): array {
         'enabled' => 0,
         'send_time' => '19:00',
         'days' => [7, 1, 2, 3, 4], // ISO weekdays: Sun..Thu (Fri/Sat weekend)
-        'sections' => ['hours' => true, 'progress' => true, 'accounts_hint' => true, 'tasks_done' => true, 'tasks_open' => true, 'posting' => true, 'insights' => true, 'applications' => true],
+        'sections' => ['routines' => true, 'hours' => true, 'progress' => true, 'accounts_hint' => true, 'tasks_done' => true, 'tasks_open' => true, 'posting' => true, 'insights' => true, 'applications' => true],
         'client_ids' => [],   // empty = every account with Facebook/Instagram insights
         'recipients' => [],   // team-member emails; empty = every active admin
         'window_hours' => 24,
@@ -67,6 +67,24 @@ function drBuildReport(PDO $pdo, array $s): string {
     $h = max(1, (int)$s['window_hours']);
     $sec = $s['sections'];
     $out = ["📊 *Daily report — " . $now->format('D j M') . "*", "_Last {$h} hours_"];
+
+    if (!empty($sec['routines'])) {
+        // Routine tasks (checklist tasks closed with an end note): today's completion, anything missed since yesterday, and problems reported.
+        $yday = (clone $now)->modify('-1 day')->format('Y-m-d');
+        $rt = $pdo->prepare("SELECT p.title, p.routine_status, p.routine_flag, p.routine_note, p.due_date, p.due_time, tm.name AS who FROM posts p LEFT JOIN team_members tm ON tm.email = p.assigned_to
+            WHERE p.is_routine = 1 AND LEFT(p.due_date,10) IN (:y, :t) ORDER BY p.due_date, p.due_time");
+        $rt->execute([':y' => $yday, ':t' => $today]);
+        $rows = $rt->fetchAll(PDO::FETCH_ASSOC);
+        $todayRows = array_filter($rows, fn($r) => substr($r['due_date'], 0, 10) === $today);
+        $doneN = count(array_filter($todayRows, fn($r) => $r['routine_status'] === 'done'));
+        $missed = array_filter($rows, fn($r) => $r['routine_status'] === 'missed' || ($r['routine_status'] === 'open' && substr($r['due_date'], 0, 10) < $today));
+        $issues = array_filter($rows, fn($r) => $r['routine_status'] === 'done' && $r['routine_flag'] === 'issue');
+        $out[] = "";
+        $out[] = "🔁 *Routine tasks* — " . $doneN . "/" . count($todayRows) . " done today";
+        if ($missed) { $out[] = "❌ Missed (" . count($missed) . "):"; foreach (array_slice($missed, 0, 8) as $r) $out[] = "• " . ($r['who'] ?: '—') . ": " . $r['title'] . " (" . substr($r['due_date'], 5, 5) . ")"; }
+        else $out[] = "No missed routines ✅";
+        foreach (array_slice($issues, 0, 5) as $r) $out[] = "⚠️ " . ($r['who'] ?: '—') . " reported on \"" . $r['title'] . "\": " . mb_substr(trim((string)$r['routine_note']), 0, 80);
+    }
 
     if (!empty($sec['hours'])) {
         // Total working hours today + average per person: tracked task time (timers) and on-site time (attendance check-in to check-out).

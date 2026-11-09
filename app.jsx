@@ -757,6 +757,8 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     // check, e.g. the double-booking conflict check in the assign modal,
     // which cares who holds it right now.)
     if (p.is_plan_parent) return false;
+    // Routine tasks belong to whoever they're assigned to, on their own due day, whatever their role/stage.
+    if (p.is_routine) return p.assigned_to === userEmail && (!p.due_date || String(p.due_date).slice(0,10) === date);
     // Work THIS person finished on the viewed day always shows for them as done
     // — even if the task has since been handed to someone else. (Each history
     // entry records who finished it; entries without a name are legacy.)
@@ -842,7 +844,7 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
   // it shows red on its own original day instead.
   // Overdue = still in their own stage after the due date, OR after today's due_time has passed (delay counts live until it moves to review).
   const nowMinsDay = new Date().getHours()*60 + new Date().getMinutes();
-  const isOverduePost = (p) => !!(p.stage === ROLE_OWNED_STAGE[userRole] && p.due_date && (p.due_date < today || (p.due_date === today && p.due_time && timeToMins(p.due_time)!=null && nowMinsDay > timeToMins(p.due_time))));
+  const isOverduePost = (p) => p.is_routine ? (p.routine_status==='missed' || (p.routine_status==='open' && !!(p.due_date && (p.due_date < today || (p.due_date === today && p.due_time && timeToMins(p.due_time)!=null && nowMinsDay > timeToMins(p.due_time)))))) : !!(p.stage === ROLE_OWNED_STAGE[userRole] && p.due_date && (p.due_date < today || (p.due_date === today && p.due_time && timeToMins(p.due_time)!=null && nowMinsDay > timeToMins(p.due_time))));
   myPosts.sort((a,b) => priorityScore(b) - priorityScore(a));
 
   // Use due_time as the anchor when available, otherwise pack sequentially
@@ -920,7 +922,7 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     // A task finished later than its due day still reads as DONE on its own due day (never on the later day).
     const finishedLater = !!(post.due_date && post.due_date===date && (completedHistoryLocal.some(h=>!h.by||h.by===userEmail) || completedAt));
     const historyEntry = completedHistoryLocal.find(h=>h.date===date) || (finishedLater ? [...completedHistoryLocal].reverse().find(h=>!h.by||h.by===userEmail) : null);
-    const completedToday = !!historyEntry || finishedLater || !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
+    const completedToday = !!historyEntry || finishedLater || (post.is_routine && post.routine_status==="done") || !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
     // The real-elapsed-time override only kicks in when the move actually
     // just happened (within the last 2 hours) — a fresh completion is
     // trustworthy live data worth showing honestly (e.g. a 1hr block
@@ -1302,7 +1304,7 @@ function sbTable(entityName) {
 // Known columns per table — used to strip unknown fields before POST/PATCH
 const SB_SCHEMA = {
   projects: ["title","description","client_id","client_name","status","start_date","end_date","platforms","team_members","project_type","posting_start","posting_end"],
-  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","assigned_to_extra","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","published_platforms","platform_post_ids","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected","sector","content_completed_at","design_completed_at","design_assigned_to","published_at","pre_approval_stage","design_completed_dates","content_completed_dates","is_plan_parent","plan_items"],
+  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","assigned_to_extra","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","published_platforms","platform_post_ids","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected","sector","content_completed_at","design_completed_at","design_assigned_to","published_at","pre_approval_stage","design_completed_dates","content_completed_dates","is_plan_parent","plan_items","is_routine","checklist","routine_status","routine_note","routine_flag","routine_completed_at"],
   // address/website/contact_person were never real columns on the clients
   // table (mysql-schema.sql only has name/email/phone/logo_url/industry/
   // status/account_manager_id/notes/platforms/portal_password/username) —
@@ -4355,11 +4357,12 @@ function postDelayInfo(post) {
   const hhmm = (post.due_time && /^\d{1,2}:\d{2}/.test(post.due_time)) ? post.due_time.slice(0,5) : "23:59";
   const [h,m] = hhmm.split(":").map(Number);
   const dueTs = new Date(`${String(post.due_date).slice(0,10)}T00:00:00`); dueTs.setHours(h, m, 0, 0);
-  const inOwnerStage = ["design","content_creation"].includes(post.stage);
+  const inOwnerStage = post.is_routine ? post.routine_status==="open" : ["design","content_creation"].includes(post.stage);
+  if(post.is_routine && post.routine_status==="missed") return null;
   let endTs = null;
   if(inOwnerStage) endTs = Date.now();
   else {
-    const c = [post.design_completed_at, post.content_completed_at].filter(Boolean).map(x=>parseSqlUtc(x).getTime()).sort((a,b)=>b-a)[0];
+    const c = [post.design_completed_at, post.content_completed_at, post.routine_completed_at].filter(Boolean).map(x=>parseSqlUtc(x).getTime()).sort((a,b)=>b-a)[0];
     if(c) endTs = c;
   }
   if(!endTs) return null;
@@ -4443,6 +4446,7 @@ function PostCard({post,project,team,onClick}) {
           {(Array.isArray(post.platforms)&&post.platforms.length ? post.platforms : [post.platform]).map(pl=><PChip key={pl} platform={pl} xs/>)}
         </div>
       </div>
+      <RoutineProgress post={post}/>
       <DelayBadge post={post}/>
       <LiveTimerBadge post={post}/>
       <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
@@ -31969,10 +31973,10 @@ function MaiReportSettings() {
 // Settings > Daily Report — what the WhatsApp daily report contains and when it goes out.
 function DailyReportSettings() {
   const DAYS = [[1,"Mon"],[2,"Tue"],[3,"Wed"],[4,"Thu"],[5,"Fri"],[6,"Sat"],[7,"Sun"]];
-  const SECTIONS = [["hours","Working hours","Total hours and average per person (on-site and tracked)"],["progress","Progress & out of timeline","Steps done, published, still open, and who is behind"],["accounts_hint","Accounts to watch","Short hint on accounts with an old last post or nothing scheduled"],["tasks_done","Work completed","Who finished which steps (by person and account)"],["tasks_open","Overdue & due today","Open tasks that are late, per person"],["posting","Daily posting","Posts published, going out today / tomorrow, and any that failed to publish"],["insights","Account insights","Followers and 7-day reach per account"],["applications","New applications","New candidates + how many await review"]];
+  const SECTIONS = [["routines","Routine tasks (done, missed, problems)","Completion of today's routines, anything missed since yesterday, and problems reported"],["hours","Working hours","Total hours and average per person (on-site and tracked)"],["progress","Progress & out of timeline","Steps done, published, still open, and who is behind"],["accounts_hint","Accounts to watch","Short hint on accounts with an old last post or nothing scheduled"],["tasks_done","Work completed","Who finished which steps (by person and account)"],["tasks_open","Overdue & due today","Open tasks that are late, per person"],["posting","Daily posting","Posts published, going out today / tomorrow, and any that failed to publish"],["insights","Account insights","Followers and 7-day reach per account"],["applications","New applications","New candidates + how many await review"]];
   const [loading,setLoading] = useState(true);
   const [rowId,setRowId] = useState(null);
-  const [f,setF] = useState({enabled:false,send_time:"19:00",days:[7,1,2,3,4],sections:{hours:true,progress:true,accounts_hint:true,tasks_done:true,tasks_open:true,posting:true,insights:true,applications:true},client_ids:[],recipients:[],window_hours:24,last_sent_date:null});
+  const [f,setF] = useState({enabled:false,send_time:"19:00",days:[7,1,2,3,4],sections:{routines:true,hours:true,progress:true,accounts_hint:true,tasks_done:true,tasks_open:true,posting:true,insights:true,applications:true},client_ids:[],recipients:[],window_hours:24,last_sent_date:null});
   const [team,setTeam] = useState([]);
   const [clients,setClients] = useState([]);
   const [saving,setSaving] = useState(false);
@@ -31986,7 +31990,7 @@ function DailyReportSettings() {
       setTeam((t.entities||[]).filter(m=>m.status==="active"&&m.whatsapp_number));
       setClients((c.entities||[]).filter(x=>x.status!=="inactive"));
       const row = (r.entities||[])[0];
-      if(row) { setRowId(row.id); setF({enabled:!!Number(row.enabled), send_time:row.send_time||"19:00", days:parse(row.days,[7,1,2,3,4]), sections:{hours:true,progress:true,accounts_hint:true,tasks_done:true,tasks_open:true,posting:true,insights:true,applications:true,...parse(row.sections,{})}, client_ids:parse(row.client_ids,[]), recipients:parse(row.recipients,[]), window_hours:Number(row.window_hours)||24, last_sent_date:row.last_sent_date}); }
+      if(row) { setRowId(row.id); setF({enabled:!!Number(row.enabled), send_time:row.send_time||"19:00", days:parse(row.days,[7,1,2,3,4]), sections:{routines:true,hours:true,progress:true,accounts_hint:true,tasks_done:true,tasks_open:true,posting:true,insights:true,applications:true,...parse(row.sections,{})}, client_ids:parse(row.client_ids,[]), recipients:parse(row.recipients,[]), window_hours:Number(row.window_hours)||24, last_sent_date:row.last_sent_date}); }
       setLoading(false);
     })();
   },[]);
@@ -38563,6 +38567,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
                       <div style={{flex:1,minWidth:0}}>
                         <p style={{fontSize:14,fontWeight:600,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.title}</p>
                         {project && <p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{project.title}</p>}
+                        <RoutineProgress post={post}/>
                         <DelayBadge post={post}/>
                         <LiveTimerBadge post={post}/>
                       </div>
@@ -38924,118 +38929,85 @@ function TimelineAddPicker({slot, onPick, onClose, inline=false}) {
       <button onClick={()=>onPick("post",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.tasks} size={13} stroke="var(--text2)"/> Post</button>
       <button onClick={()=>onPick("calendar",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.calPlus} size={13} stroke="var(--text2)"/> Calendar Plan</button>
       <button onClick={()=>onPick("existing",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.link||Icons.plug} size={13} stroke="var(--text2)"/> Existing Task</button>
-      {["admin","account_director"].includes(roleBridge.role)&&<button onClick={()=>onPick("repeat",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.refresh||Icons.link||Icons.plug} size={13} stroke="var(--text2)"/> Repeated Task</button>}
+      {["admin","account_director"].includes(roleBridge.role)&&<button onClick={()=>onPick("repeat",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.refresh||Icons.link||Icons.plug} size={13} stroke="var(--text2)"/> Routine Task</button>}
     </div>
   );
 }
 
-// Timeline > Repeated Task: set a task once and have it created again on the schedule you choose (daily, work days, weekly, every N days, monthly).
-function RepeatTaskModal({open, onClose, slot, projects=[], team=[], clients=[], currentUser, onCreateFirst}) {
+// Routine task helpers (checklist stored on the post as JSON [{text, done, by, at}]).
+function routineItems(post) { try { const x = Array.isArray(post?.checklist) ? post.checklist : JSON.parse(post?.checklist||"[]"); return Array.isArray(x) ? x : []; } catch(e) { return []; } }
+function routineCounts(post) { const it = routineItems(post); return {done: it.filter(i=>i.done).length, total: it.length}; }
+function RoutineProgress({post, light=false}) {
+  if(!post?.is_routine) return null;
+  const {done,total} = routineCounts(post);
+  const st = post.routine_status;
+  const label = st==="done" ? (post.routine_flag==="issue"?"⚠️ closed with a problem":"✓ closed") : st==="missed" ? "✗ missed" : `☑ ${done}/${total}`;
+  return <span style={{fontSize:10,fontWeight:800,color:light?"#fff":"var(--text2)",whiteSpace:"nowrap"}}>🔁 {label}</span>;
+}
+
+// Timeline > Routine Task (admin / account director): a checklist task for the slot owner — no client or project —
+// that repeats on the schedule you choose. The member ticks the points and closes it with an end note; no review needed.
+function RepeatTaskModal({open, onClose, slot, team=[], currentUser, onCreateFirst}) {
   const WD = [[0,"Sun"],[1,"Mon"],[2,"Tue"],[3,"Wed"],[4,"Thu"],[5,"Fri"],[6,"Sat"]];
   const member0 = team.find(m=>m.email===slot?.assigned_to);
-  const ACCOUNT_ROLES = ["account_manager","account_director","account_executive","business_development"];
-  // Production staff start at their own stage; the account team starts at Brief (planning) since they have no design/content stage.
-  const stageFor = (m) => ROLE_OWNED_STAGE[m?.role] || (ACCOUNT_ROLES.includes(m?.role) ? "planning" : "design");
   const [f,setF] = useState({
-    title:"", project_id:"", project_ids:[], description:"", assigned_to:slot?.assigned_to||"", stage:stageFor(member0), priority:"medium",
-    due_time:(slot?.due_time)||"12:00", minutes:60,
+    title:"", points:[""], description:"", priority:"medium",
+    due_time:(slot?.due_time)||"12:00", minutes:30,
     rule:"daily", days:[0,1,2,3,4], interval:2, start_date:slot?.due_date||new Date().toISOString().split("T")[0], end_date:"", never:true,
   });
   const [list,setList] = useState([]);
   const [saving,setSaving] = useState(false);
   const [msg,setMsg] = useState("");
-  const [projQuery,setProjQuery] = useState("");
-  const [projMode,setProjMode] = useState("project"); // "project" = pick projects, "client" = pick whole clients
   const set = (k,v) => setF(p=>({...p,[k]:v}));
-  const allProjIds = projects.map(p=>p.id);
-  const togglePid = id => set("project_ids", f.project_ids.includes(id)?f.project_ids.filter(x=>x!==id):[...f.project_ids,id]);
-  const toggleGroup = ids => { const all = ids.every(i=>f.project_ids.includes(i)); set("project_ids", all ? f.project_ids.filter(x=>!ids.includes(x)) : [...new Set([...f.project_ids,...ids])]); };
-  const load = async () => { const r = await qe("RecurringTask",{},"-created_at",200).catch(()=>({entities:[]})); setList((r.entities||[]).filter(x=>Number(x.active)!==0)); };
+  const load = async () => { const r = await qe("RecurringTask",{},"-created_at",200).catch(()=>({entities:[]})); setList((r.entities||[]).filter(x=>Number(x.active)!==0 && x.checklist)); };
   useEffect(()=>{ load(); },[]);
   const toggleDay = d => set("days", f.days.includes(d)?f.days.filter(x=>x!==d):[...f.days,d].sort());
-  const canSave = f.title.trim() && f.project_ids.length>0 && f.assigned_to && f.due_time && f.start_date && (f.rule!=="weekly" || f.days.length) && (f.rule!=="interval" || Number(f.interval)>=1);
-  const describe = (r) => r.rule_type==="daily" ? "Every day" : r.rule_type==="monthly" ? "Monthly" : r.rule_type==="interval" ? `Every ${r.rule_interval} days` : (()=>{ let d=[]; try{d=JSON.parse(r.rule_days||"[]");}catch(e){} return d.length===5&&[0,1,2,3,4].every(x=>d.includes(x))?"Work days (Sun–Thu)":"Weekly: "+d.map(x=>WD[x]?.[1]).join(", "); })();
+  const points = f.points.map(x=>x.trim()).filter(Boolean);
+  const canSave = f.title.trim() && points.length>0 && slot?.assigned_to && f.due_time && f.start_date && (f.rule!=="weekly" || f.days.length) && (f.rule!=="interval" || Number(f.interval)>=1);
+  const describe = (r) => r.rule_type==="daily" ? "Every day" : r.rule_type==="monthly" ? "Monthly" : r.rule_type==="once" ? "Once" : r.rule_type==="interval" ? `Every ${r.rule_interval} days` : (()=>{ let d=[]; try{d=JSON.parse(r.rule_days||"[]");}catch(e){} return d.length===5&&[0,1,2,3,4].every(x=>d.includes(x))?"Work days (Sun–Thu)":"Weekly: "+d.map(x=>WD[x]?.[1]).join(", "); })();
   const save = async () => {
     if(!canSave) return;
     setSaving(true); setMsg("");
     const todayStr = new Date().toISOString().split("T")[0];
+    const dow = new Date().getDay();
     const startsToday = f.start_date === todayStr;
-    const matchesToday = f.rule==="daily" || f.rule==="interval" || f.rule==="monthly" || f.rule==="workdays" && [0,1,2,3,4].includes(new Date().getDay()) || f.rule==="weekly" && f.days.includes(new Date().getDay());
-    const createNow = startsToday ? matchesToday : true;
+    const matchesToday = f.rule==="daily" || f.rule==="once" || f.rule==="interval" || f.rule==="monthly" || (f.rule==="workdays" && [0,1,2,3,4].includes(dow)) || (f.rule==="weekly" && f.days.includes(dow));
+    const createNow = startsToday ? matchesToday : false;
     try {
-      for(const pid of f.project_ids) {
-        const proj = projects.find(p=>p.id===pid);
-        const row = {
-          title:f.title.trim(), description:f.description, project_id:pid, client_id:proj?.client_id||"", client_name:proj?.client_name||"",
-          assigned_to:f.assigned_to, stage:f.stage, priority:f.priority, post_type:"design", due_time:f.due_time, estimated_minutes:Number(f.minutes)||60,
-          rule_type: f.rule==="workdays"?"weekly":f.rule, rule_days: JSON.stringify(f.rule==="workdays"?[0,1,2,3,4]:f.days), rule_interval:Number(f.interval)||1,
-          start_date:f.start_date, end_date:f.never?null:(f.end_date||null), active:1, created_by:currentUser?.email||"",
-        };
-        // The first occurrence is created right now (when it starts today or later); the server creates every later one.
-        if(createNow) row.last_generated_date = f.start_date;
-        const res = await ce("RecurringTask",[row]);
-        if(!res?.entities?.[0]?.id) throw new Error("save failed");
-        if(onCreateFirst && createNow) {
-          await onCreateFirst({title:row.title, project_id:row.project_id, client_id:row.client_id, client_name:row.client_name, description:row.description, assigned_to:row.assigned_to,
-            due_date:f.start_date, due_time:row.due_time, estimated_minutes:row.estimated_minutes, priority:row.priority, stage:row.stage, platform:"", post_type:row.post_type});
-        }
+      const row = {
+        title:f.title.trim(), description:f.description, project_id:"", client_id:"", client_name:"", assigned_to:slot.assigned_to, stage:"planning", priority:f.priority, post_type:"routine",
+        due_time:f.due_time, estimated_minutes:Number(f.minutes)||30, checklist:JSON.stringify(points),
+        rule_type: f.rule==="workdays"?"weekly":f.rule, rule_days: JSON.stringify(f.rule==="workdays"?[0,1,2,3,4]:f.days), rule_interval:Number(f.interval)||1,
+        start_date:f.start_date, end_date:f.never?null:(f.end_date||null), active:1, created_by:currentUser?.email||"",
+      };
+      if(createNow) row.last_generated_date = f.start_date;
+      const res = await ce("RecurringTask",[row]);
+      if(!res?.entities?.[0]?.id) throw new Error("save failed");
+      if(onCreateFirst && createNow) {
+        await onCreateFirst({title:row.title, description:row.description, assigned_to:row.assigned_to, due_date:f.start_date, due_time:row.due_time, estimated_minutes:row.estimated_minutes,
+          priority:row.priority, stage:"planning", platform:"", post_type:"routine", is_routine:1, routine_status:"open", checklist:JSON.stringify(points.map(t=>({text:t,done:false})))});
       }
-      setMsg(`Saved ✓ — repeating for ${f.project_ids.length} project${f.project_ids.length!==1?"s":""}.`);
-      setF(p=>({...p,title:"",description:"",project_ids:[]}));
+      setMsg("Saved ✓ — it will be created automatically on schedule.");
+      setF(p=>({...p,title:"",points:[""],description:""}));
       load();
-    } catch(e) { setMsg("Couldn't save — has the migration been run? (recurring_tasks table)"); }
+    } catch(e) { setMsg("Couldn't save — have the routine migrations been run?"); }
     setSaving(false);
   };
   const stop = async (id) => { await ue("RecurringTask", id, {active:0}).catch(()=>{}); load(); };
   const chip = (on) => ({padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700,cursor:"pointer",border:`1px solid ${on?"var(--accent)":"var(--border2)"}`,background:on?"var(--accent)":"transparent",color:on?"#fff":"var(--text2)"});
-  const eligible = eligibleAssignees(f.stage, team);
   return (
-    <Modal open={open} onClose={onClose} title="Repeated Task" width={620}>
+    <Modal open={open} onClose={onClose} title="Routine Task" width={620}>
       <div style={{display:"flex",flexDirection:"column",gap:12,padding:"10px 0"}}>
-        <Field label="Task Title" required><input value={f.title} onChange={e=>set("title",e.target.value)} placeholder="e.g. Post daily story for Bino" style={inputSt} autoFocus/></Field>
-        <Field label={`Clients / Projects (${f.project_ids.length} selected)`} required>
-          <div style={{border:"1px solid var(--border2)",borderRadius:8,background:"var(--surface)",overflow:"hidden"}}>
-            <div style={{display:"flex",gap:6,padding:"8px 10px 0"}}>
-              {[["project","By project"],["client","By client"]].map(([k,l])=><button key={k} type="button" onClick={()=>setProjMode(k)} style={{padding:"4px 12px",borderRadius:99,fontSize:12,fontWeight:700,cursor:"pointer",border:`1px solid ${projMode===k?"var(--accent)":"var(--border2)"}`,background:projMode===k?"var(--accent)":"transparent",color:projMode===k?"#fff":"var(--text2)"}}>{l}</button>)}
-            </div>
-            <div style={{display:"flex",gap:8,alignItems:"center",padding:"8px 10px",borderBottom:"1px solid var(--border)"}}>
-              <input value={projQuery} onChange={e=>setProjQuery(e.target.value)} placeholder="Search client or project…" style={{...inputSt,flex:1,padding:"6px 10px"}}/>
-              <button type="button" onClick={()=>set("project_ids", f.project_ids.length===allProjIds.length?[]:allProjIds)} style={{fontSize:12,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"1px solid var(--border2)",background:f.project_ids.length===allProjIds.length?"var(--accent)":"var(--surface2)",color:f.project_ids.length===allProjIds.length?"#fff":"var(--text2)",cursor:"pointer",whiteSpace:"nowrap"}}>{f.project_ids.length===allProjIds.length?"Clear all":(projMode==="client"?"All clients":"All projects")}</button>
-            </div>
-            <div style={{maxHeight:200,overflowY:"auto",padding:"4px 0"}}>
-              {(()=>{
-                const q = projQuery.trim().toLowerCase();
-                const groups = {};
-                projects.forEach(pr=>{ const key = (clients.find(c=>c.id===pr.client_id)?.name)||pr.client_name||"No client"; if(q && !key.toLowerCase().includes(q) && !(pr.title||"").toLowerCase().includes(q)) return; (groups[key]=groups[key]||[]).push(pr); });
-                const names = Object.keys(groups).sort();
-                if(!names.length) return <p style={{fontSize:12,color:"var(--text3)",padding:"8px 12px"}}>No match.</p>;
-                if(projMode==="client") return names.map(name=>{
-                  const ids = groups[name].map(x=>x.id);
-                  const allOn = ids.every(i=>f.project_ids.includes(i)), someOn = ids.some(i=>f.project_ids.includes(i));
-                  return (
-                    <label key={name} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 12px",fontSize:13,fontWeight:700,cursor:"pointer",borderBottom:"1px solid var(--border)"}}>
-                      <input type="checkbox" checked={allOn} ref={el=>{ if(el) el.indeterminate = !allOn && someOn; }} onChange={()=>toggleGroup(ids)}/> {name} <span style={{fontWeight:600,color:"var(--text3)",fontSize:11}}>({ids.length} project{ids.length!==1?"s":""})</span>
-                    </label>
-                  );
-                });
-                return names.map(name=>{
-                  const ids = groups[name].map(x=>x.id);
-                  const allOn = ids.every(i=>f.project_ids.includes(i)), someOn = ids.some(i=>f.project_ids.includes(i));
-                  return (
-                    <div key={name}>
-                      <label style={{display:"flex",alignItems:"center",gap:8,padding:"6px 12px",background:"var(--surface2)",fontSize:12,fontWeight:800,cursor:"pointer"}}>
-                        <input type="checkbox" checked={allOn} ref={el=>{ if(el) el.indeterminate = !allOn && someOn; }} onChange={()=>toggleGroup(ids)}/> {name} <span style={{fontWeight:600,color:"var(--text3)"}}>({ids.length})</span>
-                      </label>
-                      {groups[name].map(pr=>(
-                        <label key={pr.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 12px 5px 30px",fontSize:12,cursor:"pointer"}}>
-                          <input type="checkbox" checked={f.project_ids.includes(pr.id)} onChange={()=>togglePid(pr.id)}/> {pr.title}
-                        </label>
-                      ))}
-                    </div>
-                  );
-                });
-              })()}
-            </div>
+        <Field label="Routine title" required><input value={f.title} onChange={e=>set("title",e.target.value)} placeholder="e.g. Daily inbox & comments check" style={inputSt} autoFocus/></Field>
+        <Field label="Checklist points" required hint="The task is finished when every point is ticked and the member adds an end note.">
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {f.points.map((pt,i)=>(
+              <div key={i} style={{display:"flex",gap:6}}>
+                <input value={pt} onChange={e=>set("points",f.points.map((x,j)=>j===i?e.target.value:x))} placeholder={`Point ${i+1}`} style={{...inputSt,flex:1}}/>
+                {f.points.length>1&&<button type="button" onClick={()=>set("points",f.points.filter((_,j)=>j!==i))} style={{border:"1px solid var(--border2)",background:"var(--surface2)",borderRadius:8,padding:"0 10px",cursor:"pointer",color:"#ef4444",fontWeight:800}}>×</button>}
+              </div>
+            ))}
+            <button type="button" onClick={()=>set("points",[...f.points,""])} style={{alignSelf:"flex-start",fontSize:12,fontWeight:700,color:"var(--accent)",background:"none",border:"none",cursor:"pointer",padding:0}}>+ Add point</button>
           </div>
         </Field>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
@@ -39045,17 +39017,14 @@ function RepeatTaskModal({open, onClose, slot, projects=[], team=[], clients=[],
               <span style={{fontWeight:700,fontSize:13}}>{member0?.name||slot?.assigned_to||"—"}</span>
             </div>
           </Field>
-          <Field label="Priority">
-            <select value={f.priority} onChange={e=>set("priority",e.target.value)} style={inputSt}>{["low","medium","high","urgent"].map(x=><option key={x} value={x}>{x}</option>)}</select>
-          </Field>
+          <Field label="Priority"><select value={f.priority} onChange={e=>set("priority",e.target.value)} style={inputSt}>{["low","medium","high","urgent"].map(x=><option key={x} value={x}>{x}</option>)}</select></Field>
           <Field label="Due time" required><input type="time" value={f.due_time} onChange={e=>set("due_time",e.target.value)} style={inputSt}/></Field>
           <Field label="Duration (minutes)"><input type="number" min={5} step={5} value={f.minutes} onChange={e=>set("minutes",e.target.value)} style={inputSt}/></Field>
         </div>
-        <Field label="Notes (optional)"><textarea value={f.description} onChange={e=>set("description",e.target.value)} rows={2} style={{...inputSt,resize:"vertical"}}/></Field>
         <div>
           <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",marginBottom:6}}>Repeat</p>
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            {[["daily","Every day"],["workdays","Work days (Sun–Thu)"],["weekly","Weekly (pick days)"],["interval","Every N days"],["monthly","Monthly"]].map(([k,l])=><button key={k} onClick={()=>set("rule",k)} style={chip(f.rule===k)}>{l}</button>)}
+            {[["once","Just once"],["daily","Every day"],["workdays","Work days (Sun–Thu)"],["weekly","Weekly (pick days)"],["interval","Every N days"],["monthly","Monthly"]].map(([k,l])=><button key={k} onClick={()=>set("rule",k)} style={chip(f.rule===k)}>{l}</button>)}
           </div>
           {f.rule==="weekly"&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>{WD.map(([d,l])=><button key={d} onClick={()=>toggleDay(d)} style={chip(f.days.includes(d))}>{l}</button>)}</div>}
           {f.rule==="interval"&&<div style={{marginTop:8,fontSize:13,display:"flex",alignItems:"center",gap:8}}>Every <input type="number" min={1} value={f.interval} onChange={e=>set("interval",e.target.value)} style={{...inputSt,width:80}}/> days</div>}
@@ -39063,29 +39032,92 @@ function RepeatTaskModal({open, onClose, slot, projects=[], team=[], clients=[],
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
           <Field label="Starts on" required><input type="date" value={f.start_date} onChange={e=>set("start_date",e.target.value)} style={inputSt}/></Field>
-          <Field label="Ends">
+          {f.rule!=="once"&&<Field label="Ends">
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
               <label style={{fontSize:12,display:"flex",alignItems:"center",gap:4}}><input type="checkbox" checked={f.never} onChange={e=>set("never",e.target.checked)}/> Never</label>
               {!f.never&&<input type="date" value={f.end_date} onChange={e=>set("end_date",e.target.value)} style={inputSt}/>}
             </div>
-          </Field>
+          </Field>}
         </div>
+        <Field label="Notes (optional)"><textarea value={f.description} onChange={e=>set("description",e.target.value)} rows={2} style={{...inputSt,resize:"vertical"}}/></Field>
         <div style={{display:"flex",gap:10,alignItems:"center"}}>
-          <Btn onClick={save} disabled={!canSave||saving}>{saving?"Saving…":"Create repeating task"}</Btn>
+          <Btn onClick={save} disabled={!canSave||saving}>{saving?"Saving…":"Create routine task"}</Btn>
           {msg&&<span style={{fontSize:12,color:"var(--text2)"}}>{msg}</span>}
         </div>
         {list.length>0&&(
           <div style={{borderTop:"1px solid var(--border)",paddingTop:10}}>
-            <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",marginBottom:6}}>Active repeating tasks</p>
-            {list.map(r=>(
+            <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",marginBottom:6}}>Active routine tasks</p>
+            {list.map(r=>{ let n=0; try{ n=JSON.parse(r.checklist||"[]").length; }catch(e){} return (
               <div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:"1px solid var(--border)"}}>
                 <div style={{flex:1,minWidth:0}}>
-                  <p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.title}</p>
+                  <p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.title} <span style={{fontWeight:600,color:"var(--text3)"}}>({n} point{n!==1?"s":""})</span></p>
                   <p style={{fontSize:11,color:"var(--text3)"}}>{describe(r)} · {r.due_time} · {(team.find(m=>m.email===r.assigned_to)?.name)||r.assigned_to}</p>
                 </div>
                 <button onClick={()=>stop(r.id)} style={{fontSize:11,fontWeight:700,color:"#ef4444",background:"none",border:"1px solid #ef444455",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}>Stop</button>
               </div>
-            ))}
+            ); })}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// Opens when someone clicks a routine task: tick the points, then close it with an end note ("all good" or a problem report).
+function RoutineTaskModal({post, team=[], currentUser, onClose, onSave}) {
+  const items = routineItems(post);
+  const owner = team.find(m=>m.email===post.assigned_to);
+  const isOwnerOrBoss = currentUser?.email===post.assigned_to || ["admin","account_director"].includes(currentUser?.role);
+  const done = items.filter(i=>i.done).length;
+  const allDone = items.length>0 && done===items.length;
+  const closed = post.routine_status==="done";
+  const missed = post.routine_status==="missed";
+  const [note,setNote] = useState("");
+  const [busy,setBusy] = useState(false);
+  const toggle = async (idx) => {
+    if(closed || missed || !isOwnerOrBoss) return;
+    const next = items.map((it,i)=>i===idx ? (it.done ? {...it,done:false,by:null,at:null} : {...it,done:true,by:currentUser?.email||"",at:new Date().toISOString()}) : it);
+    await onSave(post.id, {checklist:JSON.stringify(next)});
+  };
+  const close = async (flag) => {
+    if(!allDone) return;
+    const text = note.trim() || (flag==="ok" ? "All good" : "");
+    if(flag==="issue" && !text) { alert("Please describe the problem."); return; }
+    setBusy(true);
+    await onSave(post.id, {routine_status:"done", routine_flag:flag, routine_note:text, routine_completed_at:new Date().toISOString().slice(0,19).replace("T"," ")});
+    setBusy(false);
+  };
+  return (
+    <Modal open onClose={onClose} title={post.title} subtitle={`🔁 Routine task · ${owner?.name||post.assigned_to||""} · due ${post.due_date?fmtDate(post.due_date):""}${post.due_time?` at ${post.due_time}`:""}`} width={520}>
+      <div style={{display:"flex",flexDirection:"column",gap:12,padding:"6px 0"}}>
+        {post.description&&<p style={{fontSize:13,color:"var(--text2)"}}>{post.description}</p>}
+        <div style={{height:8,borderRadius:99,background:"var(--surface2)",overflow:"hidden"}}><div style={{width:`${items.length?done/items.length*100:0}%`,height:"100%",background:closed?(post.routine_flag==="issue"?"#f59e0b":"#16a34a"):"var(--accent)",transition:"width 0.2s"}}/></div>
+        <p style={{fontSize:12,color:"var(--text3)",fontWeight:700}}>{done} of {items.length} points done</p>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {items.map((it,i)=>(
+            <label key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:8,border:"1px solid var(--border)",background:it.done?"#16a34a14":"var(--surface)",cursor:(closed||missed||!isOwnerOrBoss)?"default":"pointer"}}>
+              <input type="checkbox" checked={!!it.done} disabled={closed||missed||!isOwnerOrBoss} onChange={()=>toggle(i)} style={{width:18,height:18}}/>
+              <span style={{flex:1,fontSize:14,fontWeight:600,textDecoration:it.done?"line-through":"none",color:it.done?"var(--text3)":"var(--text)"}}>{it.text}</span>
+              {it.done&&it.at&&<span style={{fontSize:10,color:"var(--text3)"}}>{new Date(it.at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span>}
+            </label>
+          ))}
+        </div>
+        {missed&&<div style={{padding:"10px 12px",borderRadius:8,background:"#ef444418",color:"#dc2626",fontSize:13,fontWeight:700}}>✗ This routine was not closed in time and has expired as missed.</div>}
+        {closed&&(
+          <div style={{padding:"10px 12px",borderRadius:8,background:post.routine_flag==="issue"?"#f59e0b18":"#16a34a18",fontSize:13}}>
+            <p style={{fontWeight:800,color:post.routine_flag==="issue"?"#b45309":"#15803d"}}>{post.routine_flag==="issue"?"⚠️ Closed — problem reported":"✓ Closed — all good"}</p>
+            {post.routine_note&&<p style={{marginTop:4}}>{post.routine_note}</p>}
+          </div>
+        )}
+        {!closed&&!missed&&isOwnerOrBoss&&(
+          <div style={{display:"flex",flexDirection:"column",gap:8,borderTop:"1px solid var(--border)",paddingTop:10}}>
+            <Field label="End note" hint={allDone?"Say how it went — or report anything that isn't right.":"Tick every point first, then close it with a note."}>
+              <textarea value={note} onChange={e=>setNote(e.target.value)} rows={2} disabled={!allDone} placeholder="All good — or describe the problem…" style={{...inputSt,resize:"vertical"}}/>
+            </Field>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <Btn onClick={()=>close("ok")} disabled={!allDone||busy}>✓ All good — close it</Btn>
+              <Btn variant="secondary" onClick={()=>close("issue")} disabled={!allDone||busy}>⚠️ Report a problem & close</Btn>
+            </div>
           </div>
         )}
       </div>
@@ -39735,7 +39767,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                           {post&&<TaskThumb post={post} team={team} size={34}/>}
                           <div style={{display:"flex",flexDirection:"column",minWidth:0,flex:1,lineHeight:1.25}}>
                             <span style={{fontSize:11.5,color:"#fff",fontWeight:800,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
-                            {widthPct>8&&<span style={{fontSize:9.5,color:"#fff",opacity:0.9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slot.start_time}–{slot.end_time}{slot.overdue?" · OVERDUE":slot.completed_today?" · Done":""}</span>}
+                            {widthPct>8&&<span style={{fontSize:9.5,color:"#fff",opacity:0.9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slot.start_time}–{slot.end_time}{post?.is_routine?` · 🔁 ${routineCounts(post).done}/${routineCounts(post).total}`:""}{slot.overdue?" · OVERDUE":slot.completed_today?" · Done":""}</span>}
                             {widthPct>12&&(post&&postDelayInfo(post) ? <DelayBadge post={post} light/> : post&&postTimerInfo(post) ? <LiveTimerBadge post={post} light/> : <span style={{fontSize:9,color:"#fff",opacity:0.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{[post?.client_name, stage?.label].filter(Boolean).join(" · ")}</span>)}
                           </div>
                         </div>
@@ -51138,6 +51170,18 @@ Return ONLY the JSON array, no markdown.`;
     setToast(decision==="postponed" ? `Deduction of EGP ${Math.round(ded).toLocaleString()} postponed to next month` : "Vacation deduction approved");
   };
 
+  // Routine tasks have no client/project, so they skip addPost's project check.
+  const addRoutinePost = async (postData) => {
+    const local = {...postData, id:uid(), created_date:new Date().toISOString(), created_by_email: currentUser?.email||""};
+    return await b44Create("Post","posts", local, postData);
+  };
+  const saveRoutine = async (id, patch) => {
+    setData(d=>({...d, posts:d.posts.map(p=>p.id===id?{...p,...patch}:p)}));
+    if(selectedPost?.id===id) setSelectedPost(sp=>sp?{...sp,...patch}:sp);
+    await ue("Post", id, patch).catch(()=>{});
+    if(patch.routine_status==="done") setToast(patch.routine_flag==="issue" ? "Routine closed — problem reported" : "Routine closed ✓");
+  };
+
   const applyTerminationDeduction = async (run, amount, st) => {
     const prev = Number(run.termination_deduction)||0;
     const amt = st==="applied" ? Math.max(0, Number(amount)||0) : 0;
@@ -53324,6 +53368,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
       // live row so the editor always reflects the latest plan_items instead
       // of a stale snapshot from the moment the card was opened.
       const _livePost = data.posts.find(p=>p.id===selectedPost.id) || selectedPost;
+      if(_livePost.is_routine) return <RoutineTaskModal post={_livePost} team={data.team} currentUser={currentUser} onClose={()=>setSelectedPost(null)} onSave={saveRoutine}/>;
       const _proj = data.projects.find(p=>p.id===_livePost.project_id);
       const _clientId = _proj?.client_id || _livePost.client_id;
       const _clientKnowledge = (data.clientKnowledge||[]).find(k=>k.client_id===_clientId);
@@ -53393,7 +53438,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
 
     {showAddTask&&<AddGenericTaskModal open onClose={()=>{setShowAddTask(false);setAddTaskForClient(null);setAddTaskPresetSlot(null);}} projects={data.projects} team={data.team} onAdd={addPost} onCreateProject={addProjectQuick} presetClient={addTaskForClient} presetSlot={addTaskPresetSlot} clients={data.clients} currentUser={currentUser}/>}
 
-    {repeatSlot&&<RepeatTaskModal open onClose={()=>setRepeatSlot(null)} slot={repeatSlot} projects={data.projects} team={data.team.filter(m=>m.status!=="inactive")} clients={data.clients} currentUser={currentUser} onCreateFirst={addPost}/>}
+    {repeatSlot&&<RepeatTaskModal open onClose={()=>setRepeatSlot(null)} slot={repeatSlot} team={data.team.filter(m=>m.status!=="inactive")} currentUser={currentUser} onCreateFirst={addRoutinePost}/>}
     {assignExistingSlot&&<AssignExistingTaskModal open onClose={()=>setAssignExistingSlot(null)} slot={assignExistingSlot} posts={data.posts} team={data.team} clients={data.clients} onAssign={assignExistingTaskToSlot} onPushAndAssign={pushConflictAndAssignTask}/>}
 
     {/* New Project Wizard — used by FAB, Dashboard, Projects page */}

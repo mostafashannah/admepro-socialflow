@@ -19,6 +19,13 @@ $rows = $pdo->query("SELECT * FROM recurring_tasks WHERE active = 1")->fetchAll(
 $ins = $pdo->prepare("INSERT INTO posts (id, title, description, project_id, client_id, client_name, assigned_to, due_date, due_time, estimated_minutes, priority, stage, platform, post_type, created_by_email)
     VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, 'recurring')");
 $mark = $pdo->prepare("UPDATE recurring_tasks SET last_generated_date = ? WHERE id = ?");
+$insRoutine = $pdo->prepare("INSERT INTO posts (id, title, description, assigned_to, due_date, due_time, estimated_minutes, priority, stage, platform, post_type, created_by_email, is_routine, checklist, routine_status)
+    VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, 'planning', '', 'routine', 'recurring', 1, ?, 'open')");
+$deactivate = $pdo->prepare("UPDATE recurring_tasks SET active = 0 WHERE id = ?");
+// Routine tasks nobody finished by the end of their day expire as missed (never carried over).
+$expired = $pdo->prepare("UPDATE posts SET routine_status = 'missed' WHERE is_routine = 1 AND routine_status = 'open' AND LEFT(due_date, 10) < ?");
+$expired->execute([$today]);
+$missedNow = $expired->rowCount();
 foreach ($rows as $r) {
     $start = substr((string)$r['start_date'], 0, 10);
     if ($today < $start) { $dbg("{$r['title']}: not started yet"); continue; }
@@ -28,15 +35,26 @@ foreach ($rows as $r) {
     $interval = max(1, (int)$r['rule_interval']);
     $diff = (int)round((strtotime($today) - strtotime($start)) / 86400);
     switch ($r['rule_type']) {
+        case 'once':     $due = ($today === $start); break;
         case 'weekly':   $due = in_array($dow, array_map('intval', $days), true); break;
         case 'interval': $due = ($diff % $interval) === 0; break;
         case 'monthly':  $due = ((int)substr($start, 8, 2) === (int)$now->format('j')); break;
         default:         $due = true; // daily
     }
     if (!$due) { $dbg("{$r['title']}: not due today"); continue; }
+    $items = json_decode((string)($r['checklist'] ?? ''), true);
+    if (is_array($items) && $items) {
+        $list = array_map(fn($t) => ['text' => (string)$t, 'done' => false], $items);
+        $insRoutine->execute([$r['title'], $r['description'], $r['assigned_to'], $today, $r['due_time'], (int)$r['estimated_minutes'] > 0 ? (int)$r['estimated_minutes'] : 60,
+            $r['priority'] ?: 'medium', json_encode($list, JSON_UNESCAPED_UNICODE)]);
+        $mark->execute([$today, $r['id']]);
+        if ($r['rule_type'] === 'once') $deactivate->execute([$r['id']]);
+        $created++; $dbg("{$r['title']}: routine created for {$r['assigned_to']}");
+        continue;
+    }
     $ins->execute([$r['title'], $r['description'], $r['project_id'], $r['client_id'], $r['client_name'], $r['assigned_to'], $today, $r['due_time'],
         (int)$r['estimated_minutes'] > 0 ? (int)$r['estimated_minutes'] : 60, $r['priority'] ?: 'medium', $r['stage'] ?: 'design', $r['post_type'] ?: 'design']);
     $mark->execute([$today, $r['id']]);
     $created++; $dbg("{$r['title']}: created for {$r['assigned_to']}");
 }
-echo json_encode(['created' => $created, 'at' => $now->format('H:i')]) . "\n";
+echo json_encode(['created' => $created, 'expired_missed' => $missedNow, 'at' => $now->format('H:i')]) . "\n";

@@ -21,24 +21,31 @@ $nowMins = (int)$now->format('H') * 60 + (int)$now->format('i');
 $utcNow = gmdate('Y-m-d H:i:s');
 $utcDate = gmdate('Y-m-d');
 
-$members = [];
+$members = []; $allMembers = [];
 foreach ($pdo->query("SELECT email, name, role FROM team_members WHERE status = 'active'")->fetchAll(PDO::FETCH_ASSOC) as $m) {
+    $allMembers[strtolower($m['email'])] = $m;
     if (isset($OWNED[$m['role']])) $members[strtolower($m['email'])] = $m;
 }
 
 // Today's tasks per owner, laid out exactly like the Timeline: highest priority first, each anchored at
 // (due_time - estimate), and a task that collides with one already placed is pushed to start right after it.
-$todayPosts = $pdo->prepare("SELECT id, title, client_name, project_id, stage, priority, scheduled_date, assigned_to, design_assigned_to, content_assigned_to, due_date, due_time, estimated_minutes
-    FROM posts WHERE LEFT(due_date, 10) = ? AND due_time IS NOT NULL AND due_time <> '' AND stage IN ('design','content_creation') AND (is_plan_parent IS NULL OR is_plan_parent = 0) ORDER BY created_at DESC");
+$todayPosts = $pdo->prepare("SELECT id, title, client_name, project_id, stage, priority, scheduled_date, is_routine, assigned_to, design_assigned_to, content_assigned_to, due_date, due_time, estimated_minutes
+    FROM posts WHERE LEFT(due_date, 10) = ? AND due_time IS NOT NULL AND due_time <> '' AND ((stage IN ('design','content_creation') AND (is_routine IS NULL OR is_routine = 0)) OR (is_routine = 1 AND routine_status = 'open')) AND (is_plan_parent IS NULL OR is_plan_parent = 0) ORDER BY created_at DESC");
 $todayPosts->execute([date('Y-m-d', strtotime($today))]);
 $prio = ['urgent' => 4, 'high' => 3, 'medium' => 2, 'low' => 1];
 $byOwner = [];
 foreach ($todayPosts->fetchAll(PDO::FETCH_ASSOC) as $p) {
     if (!preg_match('/^(\d{1,2}):(\d{2})/', $p['due_time'], $mm)) continue;
     $stage = $p['stage'];
-    $owner = $stage === 'design' ? ($p['design_assigned_to'] ?: $p['assigned_to']) : ($p['content_assigned_to'] ?: $p['assigned_to']);
-    $m = $members[strtolower((string)$owner)] ?? null;
-    if (!$m || $OWNED[$m['role']] !== $stage) continue;
+    if (!empty($p['is_routine'])) {
+        // Routine tasks belong to whoever they're assigned to, whatever their role.
+        $m = $allMembers[strtolower((string)$p['assigned_to'])] ?? null;
+        if (!$m) continue;
+    } else {
+        $owner = $stage === 'design' ? ($p['design_assigned_to'] ?: $p['assigned_to']) : ($p['content_assigned_to'] ?: $p['assigned_to']);
+        $m = $members[strtolower((string)$owner)] ?? null;
+        if (!$m || $OWNED[$m['role']] !== $stage) continue;
+    }
     $score = ($prio[$p['priority']] ?? 1) * 10;
     if (!empty($p['scheduled_date'])) $score += max(0, 7 - (int)floor((strtotime($p['scheduled_date']) - time()) / 86400));
     $p['_score'] = $score; $p['_due'] = (int)$mm[1] * 60 + (int)$mm[2];
@@ -154,7 +161,7 @@ try {
                     alertEmailHtml($m['name'], 'Your task is starting now', 'your scheduled task has started. Your timer is running — focus on it and deliver by the due time.', $p['title'], $rows, '#16a34a'));
             } else {
                 $ok = alertSend($m['email'], '[SocialFlow] 5 minutes left: ' . $p['title'],
-                    alertEmailHtml($m['name'], '⏰ 5 minutes left', 'this task is due in 5 minutes. Deliver it and move it to the next stage now — closing it on time improves your score.', $p['title'], $rows, '#f59e0b'));
+                    alertEmailHtml($m['name'], '⏰ 5 minutes left', !empty($p['is_routine']) ? 'this routine task is due in 5 minutes. Tick the last points and close it with your end note now — closing it on time improves your score.' : 'this task is due in 5 minutes. Deliver it and move it to the next stage now — closing it on time improves your score.', $p['title'], $rows, '#f59e0b'));
             }
             if ($ok) $sentAlerts++;
             $dbg("alert $kind -> {$m['email']} ({$p['title']}): " . ($ok ? 'sent' : 'FAILED'));
