@@ -91,7 +91,17 @@ foreach ($placed as $pid => $slot) {
     if ($nowMins < $slot['start'] || $nowMins >= $slot['end']) { $dbg('   outside slot now'); continue; }
     $m = $slot['member'];
     $hasActive->execute([$m['email']]); if ($hasActive->fetchColumn()) { $dbg('   owner already has a running timer'); continue; }
-    $hasToday->execute([$m['email'], $pid, $utcDate]); if ($hasToday->fetchColumn()) { $dbg('   already has an entry today'); continue; }
+    // An entry for this task already exists today: if the script started it and paused it (slot ended / layout changed),
+    // resume it now that its slot is open again; a task the person paused by hand is left alone.
+    $existing = $pdo->prepare("SELECT id, status, auto_started FROM time_entries WHERE user_email = ? AND post_id = ? AND date = ? ORDER BY created_at DESC LIMIT 1");
+    $existing->execute([$m['email'], $pid, $utcDate]); $ex = $existing->fetch(PDO::FETCH_ASSOC);
+    if ($ex) {
+        if ($ex['status'] === 'paused' && (int)$ex['auto_started'] === 1) {
+            $pdo->prepare("UPDATE time_entries SET status = 'active', started_at = ? WHERE id = ?")->execute([$utcNow, $ex['id']]);
+            $started++; $dbg('   resumed paused auto timer');
+        } else { $dbg('   already has an entry today'); }
+        continue;
+    }
     $ins->execute([$pid, $p['title'], $m['email'], $m['name'], $utcNow, $utcDate, $p['project_id'] ?: '']);
     $started++;
 }
