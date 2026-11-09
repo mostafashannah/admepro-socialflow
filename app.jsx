@@ -48592,7 +48592,7 @@ function App() {
         // refresh. Sorted descending (newest first) instead, same fix
         // pattern as Leads below.
         qe("Comment",{},"-created_at",5000), // 0
-        qe("Asset"), // 1
+        qe("Asset",{},"-created_at",5000), // 1 — default limit(500), unsorted, silently dropped the newest uploads once the library grew past 500
         qe("TimeLog"), // 2
         qe("Template"), // 3
         qe("Quote",{},"-created_at"), // 4
@@ -48619,7 +48619,7 @@ function App() {
         qe("ContentPillar",{},"-created_at"), // 25
         qe("EmailLog",{},"-sent_at",200), // 26
         qe("ActivityLog",{},"-performed_at",500), // 27
-        qe("NotificationPrefs"), // 28
+        qe("NotificationPrefs",{},null,2000), // 28
         qe("ClientTask",{},"-created_at"), // 29
         qe("ClientMemory",{},"-updated_at"), // 30
         qe("GeneratedLead",{},"-created_at"), // 31
