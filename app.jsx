@@ -3670,6 +3670,10 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c", photoIsDark=true}) => 
   <style>{`
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Bricolage+Grotesque:wght@600;700;800&display=swap');
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    .client-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+    @media(max-width:1600px){.client-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+    @media(max-width:1024px){.client-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:640px){.client-grid{grid-template-columns:minmax(0,1fr)}}
     :root{
       ${cssVars};
       --accent:${accentColor};
@@ -11867,7 +11871,7 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
         <div style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--text3)"}}><Ico d={Icons.search} size={15}/></div>
         <input value={search} onChange={e=>setSearch(e.target.value)} aria-label="Search clients" placeholder="Search clients…" style={{...inputSt,paddingLeft:36}}/>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,320px))",gap:10}}>
+      <div className="client-grid" style={{display:"grid",gap:12}}>
         {filtered.map(client=>{
           const isHidden = client.status==="hidden";
           const cProjects = projects.filter(p=>p.client_id===client.id||p.client_name===client.name);
