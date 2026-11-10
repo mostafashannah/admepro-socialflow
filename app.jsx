@@ -11138,6 +11138,12 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
   const liveToday = work.filter(p=>String(p.scheduled_date||"").slice(0,10)===todayStr);
   const liveReady = liveToday.filter(p=>["scheduled","published"].includes(p.stage)).length;
   const hrsToday = timeEntries.filter(t=>String(t.date||"").slice(0,10)===todayStr).reduce((a,t)=>{ let s=num(t.total_seconds); if(t.status==="active"&&t.started_at) s+=Math.max(0,(Date.now()-tms(t.started_at))/1000); return a+s; },0)/3600;
+  // Admin-only: tracked time averaged over people actually working today (non-empty timeline), with and without the account team.
+  const secsOf = em => timeEntries.filter(t=>t.user_email===em && String(t.date||"").slice(0,10)===todayStr).reduce((a,t)=>a+num(t.total_seconds)+(t.status==="active"&&t.started_at?Math.max(0,(Date.now()-tms(t.started_at))/1000):0),0);
+  const workingToday = team.filter(m=>m.status==="active" && !["admin","accountant","office_boy","client","hr"].includes(m.role) && (()=>{ try { return generateDailySchedule(posts, m.email, todayStr, m.role).length>0; } catch(e) { return false; } })());
+  const prodToday = workingToday.filter(m=>!["account_manager","account_executive","account_director"].includes(m.role));
+  const fmtH = sec => { const h=Math.floor(sec/3600), mm=Math.floor(sec%3600/60); return `${h}h ${String(mm).padStart(2,"0")}m`; };
+  const teamSecs = workingToday.reduce((a,m)=>a+secsOf(m.email),0), prodSecs = prodToday.reduce((a,m)=>a+secsOf(m.email),0);
   // ── Finance (simple cash view: money actually received / spent, by month)
   // Same rules as the Finance page's "This Month In/Out": invoice payments + subscription payments +
   // manual income/expenses, with outstanding (instalment) items counted in the month each
@@ -11242,7 +11248,10 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
         {tile("Finished today", doneToday, "task stages completed", "#10b981", Icons.check)}
         {tile("Delayed now", delayed, delayed?"open tasks past due":"everyone on time", delayed?"#ef4444":"#10b981", Icons.alert, ()=>setPage("my_timeline"))}
         {tile("Going live today", liveToday.length, `${liveReady} scheduled / published`, liveToday.length&&liveReady<liveToday.length?"#f59e0b":"#0ea5e9", Icons.send)}
-        {tile("Tracked today", hrsToday.toFixed(1)+"h", "team timer hours", "#8b5cf6", Icons.clock)}
+        {tile("Tracked today", hrsToday.toFixed(1)+"h", isDirector?"team timer hours":<>
+          <span style={{display:"block"}}>Team avg <b style={{color:"var(--text)"}}>{workingToday.length?fmtH(teamSecs/workingToday.length):"—"}</b> ({workingToday.length})</span>
+          <span style={{display:"block"}}>Without account avg <b style={{color:"var(--text)"}}>{prodToday.length?fmtH(prodSecs/prodToday.length):"—"}</b> ({prodToday.length})</span>
+        </>, "#8b5cf6", Icons.clock)}
       </div>
 
       {/* Finance */}
