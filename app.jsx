@@ -10891,6 +10891,21 @@ function HRDashboard({team,perfLogs,currentUser,setPage}) {
 // time_entries, live task state) and the score is the SAME one the Team
 // Performance page shows (calcAllPerf), so the two never disagree.
 // ════════════════════════════════════════════════════════════════
+// Accumulated average working hours per day: tracked timer time ÷ number of days the person actually
+// tracked time (days with no timer at all = not working, not counted). sinceStr = "YYYY-MM-DD" or "" for all time.
+function avgDailyHours(email, entries, sinceStr="") {
+  const byDay = {};
+  (entries||timerBridge.entries||[]).forEach(t=>{
+    if(t.user_email!==email || !t.date || (sinceStr && String(t.date).slice(0,10) < sinceStr)) return;
+    let s = Number(t.total_seconds)||0;
+    if(t.status==="active" && t.started_at) { const st = parseSqlUtc(t.started_at); if(st && !isNaN(st)) s += Math.max(0,(Date.now()-st.getTime())/1000); }
+    const d = String(t.date).slice(0,10); byDay[d] = (byDay[d]||0) + s;
+  });
+  const days = Object.values(byDay).filter(v=>v>=60).length;
+  const total = Object.values(byDay).reduce((a,v)=>a+v,0);
+  return {days, totalHrs: total/3600, avg: days ? total/3600/days : 0};
+}
+const fmtHrsMin = h => { const m = Math.round((h||0)*60); return `${Math.floor(m/60)}h ${String(m%60).padStart(2,"0")}m`; };
 function TeamInsightsPanel({data, dateRange, filterUser, filterClient, onSaveInsights}) {
   const {isMobile} = useResponsive();
   const team = data.team||[], posts = data.posts||[], projects = data.projects||[];
@@ -10922,9 +10937,10 @@ function TeamInsightsPanel({data, dateRange, filterUser, filterClient, onSaveIns
     const lp = liveScorePenalty(m.email);
     const open = posts.filter(p=>!p.is_routine && !p.is_plan_parent && ["design","content_creation"].includes(p.stage) && ((p.stage==="design"?(p.design_assigned_to||p.assigned_to):(p.content_assigned_to||p.assigned_to))===m.email)).length;
     const sp = scoreOf(m.email);
-    return {m, score: sp.score??0, done: L.length, onTimePct: L.length?Math.round(onT/L.length*100):null, avgRev: L.length?revs/L.length:null, returned: returns.filter(l=>l.user_email===m.email).length, hrs, open, delayed: lp.openDelayed, delayHrs: lp.delayHours, mai: sp.maiScore};
+    const ad = avgDailyHours(m.email, timeEntries, since ? new Date(since).toISOString().slice(0,10) : "");
+    return {m, avgDay: ad.avg, avgDays: ad.days, score: sp.score??0, done: L.length, onTimePct: L.length?Math.round(onT/L.length*100):null, avgRev: L.length?revs/L.length:null, returned: returns.filter(l=>l.user_email===m.email).length, hrs, open, delayed: lp.openDelayed, delayHrs: lp.delayHours, mai: sp.maiScore};
   });
-  const sorters = {score:(a,b)=>b.score-a.score, done:(a,b)=>b.done-a.done, delayed:(a,b)=>b.delayed-a.delayed, hrs:(a,b)=>b.hrs-a.hrs};
+  const sorters = {score:(a,b)=>b.score-a.score, done:(a,b)=>b.done-a.done, delayed:(a,b)=>b.delayed-a.delayed, hrs:(a,b)=>b.hrs-a.hrs, avgday:(a,b)=>b.avgDay-a.avgDay};
   rows.sort(sorters[sortBy]||sorters.score);
   // Team-level KPIs
   const done = logs.length, onTime = logs.filter(l=>yes(l.on_time)).length;
@@ -11015,13 +11031,13 @@ Return ONLY a JSON array of 5 objects: [{"title":"short","insight":"2 sentences 
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,flexWrap:"wrap"}}>
           {h("Team performance", `Finished work ${rangeLabel} · live status right now`, Icons.users, "linear-gradient(135deg,#6366f1,#8b5cf6)")}
           <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{padding:"6px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:12}}>
-            <option value="score">Sort: score</option><option value="done">Sort: finished</option><option value="delayed">Sort: delayed now</option><option value="hrs">Sort: hours tracked</option>
+            <option value="score">Sort: score</option><option value="done">Sort: finished</option><option value="delayed">Sort: delayed now</option><option value="hrs">Sort: hours tracked</option><option value="avgday">Sort: avg hours / day</option>
           </select>
         </div>
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:720,display:"table"}}>
             <thead><tr style={{textAlign:"left",color:"var(--text3)",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em"}}>
-              {["Person","Score","Finished","On time","Avg revisions","Sent back","Open now","Delayed now","Tracked"].map(x=><th key={x} style={{padding:"8px 10px",fontWeight:800,borderBottom:"1px solid var(--border)"}}>{x}</th>)}
+              {["Person","Score","Finished","On time","Avg revisions","Sent back","Open now","Delayed now","Tracked","Avg / day"].map(x=><th key={x} style={{padding:"8px 10px",fontWeight:800,borderBottom:"1px solid var(--border)"}}>{x}</th>)}
             </tr></thead>
             <tbody>{rows.map(r=>(
               <tr key={r.m.id} style={{borderBottom:"1px solid var(--border)"}}>
@@ -11034,8 +11050,9 @@ Return ONLY a JSON array of 5 objects: [{"title":"short","insight":"2 sentences 
                 <td style={{padding:"10px"}}>{r.open||"—"}</td>
                 <td style={{padding:"10px"}}>{r.delayed?<span style={{fontWeight:800,color:"#ef4444",background:"#ef444418",padding:"2px 8px",borderRadius:99}}>{r.delayed} · {r.delayHrs.toFixed(0)}h</span>:<span style={{color:"#10b981",fontWeight:700}}>✓</span>}</td>
                 <td style={{padding:"10px"}}>{r.hrs?r.hrs.toFixed(1)+"h":"—"}</td>
+                <td style={{padding:"10px",fontWeight:800}} title={r.avgDays?`over ${r.avgDays} working day(s)`:""}>{r.avgDays?fmtHrsMin(r.avgDay):"—"}{r.avgDays?<span style={{display:"block",fontSize:10,color:"var(--text3)",fontWeight:600}}>{r.avgDays} day{r.avgDays>1?"s":""}</span>:null}</td>
               </tr>))}
-              {rows.length===0&&<tr><td colSpan={9} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>No team members match the filters.</td></tr>}
+              {rows.length===0&&<tr><td colSpan={10} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>No team members match the filters.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -23057,6 +23074,16 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
       })()}
 
       {tab==="overview"&&(<>
+        {(()=>{ const all=avgDailyHours(member.email,null,""); const m30=avgDailyHours(member.email,null,new Date(Date.now()-30*864e5).toISOString().slice(0,10)); const m7=avgDailyHours(member.email,null,new Date(Date.now()-7*864e5).toISOString().slice(0,10)); return (
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:16,display:"flex",gap:12,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,flex:"1 1 200px"}}><Ico d={Icons.clock} size={16} stroke="#8b5cf6"/><div><p style={{fontSize:13,fontWeight:800}}>Average working hours / day</p><p style={{fontSize:11,color:"var(--text3)"}}>Timer time ÷ days they actually tracked time</p></div></div>
+            {[["Last 7 days",m7],["Last 30 days",m30],["All time",all]].map(([l,r])=>(
+              <div key={l} style={{padding:"8px 14px",borderRadius:10,background:"var(--surface2)",border:"1px solid var(--border)",minWidth:120}}>
+                <p style={{fontSize:10,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>{l}</p>
+                <p style={{fontSize:18,fontWeight:800}}>{r.days?fmtHrsMin(r.avg):"—"}</p>
+                <p style={{fontSize:10,color:"var(--text3)"}}>{r.days} working day{r.days!==1?"s":""} · {r.totalHrs.toFixed(1)}h total</p>
+              </div>))}
+          </div>); })()}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
           <h3 style={{fontWeight:700,fontSize:14,marginBottom:8}}>Details</h3>
@@ -41457,6 +41484,7 @@ Based ONLY on this person's own numbers and task history above, give 3 specific,
       <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:12}}>
         {[
           {label:"Total Tracked", value:fmtSecs(totalTrackedSecs), color:"#3b82f6", sub:`last ${rangeDays} days`},
+          {label:"Avg / Day", value:(()=>{ const r=avgDailyHours(email, timeEntries, rangeStart); return r.days?fmtHrsMin(r.avg):"—"; })(), color:"#8b5cf6", sub:(()=>{ const r=avgDailyHours(email, timeEntries, ""); return `all time ${r.days?fmtHrsMin(r.avg):"—"} · ${r.days} working days`; })()},
           {label:"Tasks Assigned", value:myPosts.length, color:"var(--accent)", sub:`${completedPosts.length} completed`},
           {label:"Avg Efficiency", value:avgEfficiency>0?`${Math.round(avgEfficiency*100)}%`:"—", color:avgEfficiency>1.1?"#ef4444":avgEfficiency>0.8?"#10b981":"#f59e0b", sub:"actual vs estimated"},
           {label:"Perf Score", value:perfScore!==null?`${perfScore}`:"—", color:perfScore>=80?"#10b981":perfScore>=60?"#f59e0b":"#ef4444", sub:"100 = perfect timing"},
