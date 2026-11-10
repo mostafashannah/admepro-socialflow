@@ -40261,8 +40261,10 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   },0), 0) : null;
   // Average tracked time per WORKING person: only people whose timeline has at least one block
   // that day count (an empty timeline means they weren't working, so they don't drag the average down).
-  const workingMembers = combinedView ? timelineMembers.filter(m=>generateDailySchedule(posts, m.email, dateStr, m.role).length>0) : [];
-  const avgTrackedSecs = combinedView && workingMembers.length ? Math.round(combinedTrackedSecs / workingMembers.length) : 0;
+  // Admins aren't part of the working team for these averages (only production + account team count).
+  const workingMembers = combinedView ? timelineMembers.filter(m=>m.role!=="admin" && generateDailySchedule(posts, m.email, dateStr, m.role).length>0) : [];
+  const workingTrackedSecs = combinedView ? workingMembers.reduce((sum,m)=>sum + (timeEntries||[]).filter(t=>t.user_email===m.email && t.date===dateStr).reduce((acc,t)=>acc + (Number(t.total_seconds)||0) + (t.status==='active' ? Math.floor((Date.now()-parseSqlUtc(t.started_at).getTime())/1000) : 0),0), 0) : 0;
+  const avgTrackedSecs = combinedView && workingMembers.length ? Math.round(workingTrackedSecs / workingMembers.length) : 0;
   // Same, without the account team (AM / AE / AD) — production time only.
   const ACCT = ["account_manager","account_executive","account_director"];
   const prodWorking = workingMembers.filter(m=>!ACCT.includes(m.role));
@@ -40345,7 +40347,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
         {[
           {label:"Total Tasks",value:summaryTotalTasks,color:"var(--accent)"},
           {label:"Active Now",value:summaryActiveNow,color:"#10b981",split:activeBreakdown},
-          {label:"Time Tracked",value:fmtSecs(summaryTrackedSecs),color:"#3b82f6",note:combinedView?`Avg ${fmtSecs(avgTrackedSecs)} per person · ${workingMembers.length} working`:null,note2:combinedView?`Without account team: ${fmtSecs(prodTrackedSecs)} · avg ${fmtSecs(prodAvgSecs)} (${prodWorking.length})`:null},
+          {label:"Time Tracked",value:fmtSecs(summaryTrackedSecs),color:"#3b82f6",note:combinedView?`Team: ${fmtSecs(workingTrackedSecs)} · avg ${fmtSecs(avgTrackedSecs)} (${workingMembers.map(m=>(m.name||"").split(" ")[0]).join(", ")})`:null,note2:combinedView?`Without account team: ${fmtSecs(prodTrackedSecs)} · avg ${fmtSecs(prodAvgSecs)} (${prodWorking.map(m=>(m.name||"").split(" ")[0]).join(", ")})`:null},
           {label:"Completion",value:`${summaryCompletionPct}%`,color:"#f59e0b"},
         ].map(stat=>(
           <div key={stat.label} style={{padding:14,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",display:"flex",flexDirection:"column",gap:4}}>
