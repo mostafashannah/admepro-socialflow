@@ -3695,6 +3695,7 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c", photoIsDark=true}) => 
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Bricolage+Grotesque:wght@600;700;800&display=swap');
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     .client-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+    @media(max-width:640px){.chat-msg-col{min-width:0;max-width:100%!important}.chat-msg-col *{max-width:100%;overflow-wrap:anywhere}.chat-msg-col table{display:block;overflow-x:auto}}
     @media(max-width:1600px){.client-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
     @media(max-width:1024px){.client-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
     @media(max-width:640px){.client-grid{grid-template-columns:minmax(0,1fr)}}
@@ -3882,7 +3883,6 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c", photoIsDark=true}) => 
          no gap possible), its own padding-bottom absorbing the safe-area so
          the wrapper's box extends into it. Purely structural, no visible
          background of its own. */
-      html.sf-standalone .bottom-nav-float{top:var(--app-height);bottom:auto!important;transform:translate(-50%,-100%)!important}
       .bottom-nav-float{
         display:flex;flex-shrink:0;justify-content:center;
         position:fixed;left:50%;bottom:0;
@@ -45703,7 +45703,7 @@ function ChatMessage({msg, isTyping, onConfirm, onReject, onExecuteAction}) {
 
   return (
     <div style={{display:"flex",marginBottom:14,justifyContent:isBot?"flex-start":"flex-end"}} className="fade-in">
-      <div style={{maxWidth:isBot?"100%":"85%",width:isBot?"100%":undefined,minWidth:0,display:"flex",flexDirection:"column",gap:6,alignItems:isBot?"flex-start":"flex-end"}}>
+      <div className="chat-msg-col" style={{maxWidth:isBot?"100%":"85%",width:isBot?"100%":undefined,display:"flex",flexDirection:"column",gap:6,alignItems:isBot?"flex-start":"flex-end"}}>
         {(msg.attachments||[]).length>0 && (
           <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:isBot?"flex-start":"flex-end"}}>
             {msg.attachments.map(a=>a.kind==="image"
@@ -49236,7 +49236,7 @@ RULES:
   );
 
   return (
-    <div style={{display:"flex",flexDirection:"column",height:"100%",background:"var(--bg)",minHeight:0,minWidth:0,width:"100%",maxWidth:"100vw",overflowX:"hidden"}}>
+    <div style={{display:"flex",flexDirection:"column",height:"100%",background:"var(--bg)",minHeight:0,...(isMobile?{minWidth:0,width:"100%",maxWidth:"100vw",overflowX:"hidden"}:{})}}>
 
       {/* ── Top bar: client selector + mode toggle (pinned, never scrolls with the chat) ── */}
       <div style={{padding:isMobile?"6px 14px":"10px 18px",borderBottom:isMobile?"none":"1px solid var(--border)",display:"flex",alignItems:"center",gap:isMobile?8:8,flexShrink:0,background:isMobile?"transparent":"var(--surface)",position:"sticky",top:0,zIndex:5}}>
@@ -49344,7 +49344,7 @@ RULES:
       )}
 
       {/* ── Messages area ── */}
-      <div style={{flex:1,overflowY:"auto",overflowX:"hidden",minWidth:0,padding:isMobile?"16px":"24px max(24px, calc((100% - 980px)/2))",display:"flex",flexDirection:"column",justifyContent:isEmpty?"center":"flex-start",overflowWrap:"anywhere"}}>
+      <div style={{flex:1,overflowY:"auto",padding:isMobile?"16px":"24px max(24px, calc((100% - 980px)/2))",display:"flex",flexDirection:"column",justifyContent:isEmpty?"center":"flex-start",...(isMobile?{overflowX:"hidden",minWidth:0,overflowWrap:"anywhere"}:{})}}>
         {isEmpty ? (
           <div style={{textAlign:"center",maxWidth:640,width:"100%",margin:"0 auto"}}>
             <h2 style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontFamily:"'Montserrat',sans-serif",fontWeight:600,fontSize:isMobile?22:32,color:"var(--text)",marginBottom:28}}>
@@ -49388,7 +49388,7 @@ RULES:
 
       {/* ── Input area (pinned bottom, once the conversation has started) ── */}
       {!isEmpty && (
-        <div style={{padding:isMobile?"12px 16px calc(84px + env(safe-area-inset-bottom))":"16px max(24px, calc((100% - 980px)/2))",borderTop:"1px solid var(--border)",background:"var(--surface)",flexShrink:0}}>
+        <div style={isMobile?{padding:"8px 12px calc(92px + env(safe-area-inset-bottom))",background:"linear-gradient(transparent, var(--bg) 22px)",flexShrink:0}:{padding:"16px max(24px, calc((100% - 980px)/2))",borderTop:"1px solid var(--border)",background:"var(--surface)",flexShrink:0}}>
           {Composer}
           <p style={{fontSize:11,color:"var(--text3)",marginTop:8,textAlign:"center"}}>Pro can make mistakes. Double-check important info.</p>
         </div>
@@ -50100,8 +50100,7 @@ function App() {
       const standalone = window.navigator.standalone === true; // iOS home-screen app only (Android's screen.height includes system bars)
       const ae = document.activeElement; const typing = ae && (ae.tagName==="INPUT"||ae.tagName==="TEXTAREA"||ae.isContentEditable);
       let h = vv ? vv.height : window.innerHeight;
-      if (standalone && !typing && window.screen) { const portrait = window.innerHeight >= window.innerWidth; const sh = portrait ? Math.max(screen.height, screen.width) : Math.min(screen.height, screen.width); if (sh > h) h = sh; }
-      document.documentElement.classList.toggle("sf-standalone", standalone && !typing);
+
       document.documentElement.style.setProperty("--app-height", h + "px");
     };
     setAppHeight();
