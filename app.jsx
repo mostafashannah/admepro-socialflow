@@ -40416,7 +40416,7 @@ function pointsEligible(m, cfg) {
   if (!m || (m.status||"active")!=="active" || POINTS_ROLES_EXCLUDED.includes(m.role)) return false;
   return !cfg.members || cfg.members.includes(m.email);
 }
-const POINTS_MOTTOS = ["Every on-time delivery counts — keep the streak alive! 🔥","Small wins every day add up to big rewards. 💪","You're building something great — one task at a time. 🚀","Consistency beats intensity. Show up, deliver, win. 🏆","Today's effort is tomorrow's prize. Let's go! ⚡"];
+const POINTS_MOTTOS = ["Every on-time delivery counts — keep the streak alive!","Small wins every day add up to big rewards.","You're building something great — one task at a time.","Consistency beats intensity. Show up, deliver, win.","Today's effort is tomorrow's prize. Let's go!"];
 // Dashboard hero card for team members in the programme (only while points are ON).
 function PointsDashboardHero() {
   const cfg = pointsConfig(pointsBridge.appSettings);
@@ -40443,12 +40443,12 @@ function PointsDashboardHero() {
           <span style={{fontSize:26,fontWeight:900,lineHeight:1}}>{r.total}</span><span style={{fontSize:10,fontWeight:700,opacity:0.9}}>pts this month</span>
         </div>
         <div style={{flex:1,minWidth:200}}>
-          <p style={{fontSize:18,fontWeight:900}}>{rank===1?"🥇 You're #1 — defend the crown!":rank>0&&rank<=3?`🔥 You're #${rank} — the top spot is close!`:`💪 You're #${rank||"–"} of ${peers.length} — climb up!`}</p>
+          <p style={{fontSize:18,fontWeight:900,display:"flex",alignItems:"center",gap:8}}><Ico d={Icons.trophy} size={20} stroke="#fff"/>{rank===1?"You're #1 — defend the crown!":rank>0&&rank<=3?`You're #${rank} — the top spot is close!`:`You're #${rank||"–"} of ${peers.length} — climb up!`}</p>
           <p style={{fontSize:13,opacity:0.95,marginTop:4}}>{motto}</p>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>
             <span style={{fontSize:12,fontWeight:800,background:"rgba(255,255,255,0.2)",padding:"5px 10px",borderRadius:99}}>Today {todayPts>=0?"+":""}{todayPts}</span>
             <span style={{fontSize:12,fontWeight:800,background:"rgba(255,255,255,0.2)",padding:"5px 10px",borderRadius:99}}>Balance {bal.balance} pts</span>
-            {ready>0&&<span style={{fontSize:12,fontWeight:800,background:"#fff",color:"#d90b2c",padding:"5px 10px",borderRadius:99}}>🎁 {ready} prize{ready>1?"s":""} ready to redeem!</span>}
+            {ready>0&&<span style={{fontSize:12,fontWeight:800,background:"#fff",color:"#d90b2c",padding:"5px 10px",borderRadius:99,display:"inline-flex",alignItems:"center",gap:5}}><Ico d={Icons.award} size={12} stroke="#d90b2c"/>{ready} prize{ready>1?"s":""} ready to redeem!</span>}
           </div>
         </div>
       </div>
@@ -40477,7 +40477,7 @@ function PrizesStore({member, cfg, data}) {
   return (
     <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:10}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-        <p style={{fontSize:14,fontWeight:800}}>🎁 Prizes</p>
+        <p style={{fontSize:14,fontWeight:800,display:"flex",alignItems:"center",gap:6}}><Ico d={Icons.award} size={16} stroke="var(--accent)"/>Prizes</p>
         <span style={{fontSize:12,fontWeight:800,color:"var(--accent)",background:"var(--surface2)",padding:"5px 12px",borderRadius:99}}>Balance: {bal.balance} pts</span>
       </div>
       <p style={{fontSize:11,color:"var(--text3)"}}>Your balance is everything you've earned since points started ({bal.earned}) minus prizes you've redeemed ({bal.spent}). The monthly score resets; your balance doesn't.</p>
@@ -40485,7 +40485,7 @@ function PrizesStore({member, cfg, data}) {
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:8}}>
           {cfg.prizes.map(pz=>{ const ok = bal.balance >= pz.cost; return (
             <div key={pz.id} style={{border:"1px solid var(--border2)",borderRadius:10,padding:12,display:"flex",flexDirection:"column",gap:6,background:"var(--surface2)"}}>
-              <p style={{fontSize:13,fontWeight:800}}>{pz.type==="money"?"💵":"🌴"} {pz.name}</p>
+              <p style={{fontSize:13,fontWeight:800,display:"flex",alignItems:"center",gap:6}}><Ico d={pz.type==="money"?Icons.money:Icons.clock} size={15} stroke="var(--accent)"/>{pz.name}</p>
               <p style={{fontSize:12,color:"var(--text2)"}}>{prizeValueText(pz)}</p>
               <button disabled={!ok||busy===pz.id} onClick={()=>redeem(pz)} style={{marginTop:"auto",padding:"7px 10px",borderRadius:8,fontSize:12,fontWeight:800,border:"none",background:ok?"var(--accent)":"var(--border2)",color:ok?"#fff":"var(--text3)",cursor:ok?"pointer":"not-allowed"}}>{busy===pz.id?"…":ok?`Redeem · ${pz.cost} pts`:`Needs ${pz.cost} pts`}</button>
             </div>
@@ -40513,7 +40513,7 @@ function RedemptionRequests({cfg}) {
   if (!pend.length && !done.length) return null;
   return (
     <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:8}}>
-      <p style={{fontSize:14,fontWeight:800}}>🎁 Prize requests {pend.length>0&&<span style={{fontSize:11,background:"#f59e0b",color:"#fff",borderRadius:99,padding:"2px 8px",marginLeft:6}}>{pend.length} pending</span>}</p>
+      <p style={{fontSize:14,fontWeight:800,display:"flex",alignItems:"center",gap:6}}><Ico d={Icons.award} size={16} stroke="var(--accent)"/>Prize requests {pend.length>0&&<span style={{fontSize:11,background:"#f59e0b",color:"#fff",borderRadius:99,padding:"2px 8px",marginLeft:6}}>{pend.length} pending</span>}</p>
       {pend.map(r=>(
         <div key={r.id} style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",padding:"8px 10px",borderRadius:8,background:"var(--surface2)"}}>
           <span style={{flex:1,minWidth:180,fontSize:13}}><b>{r.name}</b> — {r.prize} ({prizeValueText(r)}) · {r.cost} pts · {r.date}</span>
@@ -40538,9 +40538,9 @@ function MyPointsCard({member, cfg, data, month}) {
       <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
         <div style={{width:60,height:60,borderRadius:"50%",background:"linear-gradient(135deg,#f59e0b,#ef4444)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:18,flexShrink:0}}>{r.total}</div>
         <div style={{flex:1,minWidth:160}}>
-          <p style={{fontSize:14,fontWeight:800}}>🏆 My Points — {new Date(month+"-01T12:00:00").toLocaleDateString(undefined,{month:"long",year:"numeric"})}</p>
+          <p style={{fontSize:14,fontWeight:800,display:"flex",alignItems:"center",gap:6}}><Ico d={Icons.trophy} size={16} stroke="var(--accent)"/>My Points — {new Date(month+"-01T12:00:00").toLocaleDateString(undefined,{month:"long",year:"numeric"})}</p>
           <p style={{fontSize:12,color:"var(--text3)"}}><span style={{color:"#10b981",fontWeight:700}}>+{gain}</span> earned · <span style={{color:"#ef4444",fontWeight:700}}>{loss}</span> lost · resets every month</p>
-          {cfg.reward_note&&<p style={{fontSize:11,color:"var(--text2)",marginTop:3}}>🎁 {cfg.reward_note}</p>}
+          {cfg.reward_note&&<p style={{fontSize:11,color:"var(--text2)",marginTop:3,display:"flex",alignItems:"center",gap:5}}><Ico d={Icons.award} size={12} stroke="currentColor"/>{cfg.reward_note}</p>}
         </div>
         <button onClick={()=>setOpen(o=>!o)} style={{padding:"6px 12px",borderRadius:8,fontSize:12,fontWeight:700,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer"}}>{open?"Hide":"Details"}</button>
       </div>
@@ -40597,7 +40597,7 @@ function PointsLeaderboard({team, cfg, data, month, setMonth, canAdjust, onSaveS
         {rows.map(({m,r},i)=>(
           <div key={m.id} style={{borderBottom:"1px solid var(--border)"}}>
             <div onClick={()=>setOpenId(openId===m.id?null:m.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",cursor:"pointer"}}>
-              <span style={{width:26,fontWeight:900,fontSize:15,color:i===0?"#f59e0b":i===1?"#94a3b8":i===2?"#b45309":"var(--text3)"}}>{i<3?["🥇","🥈","🥉"][i]:i+1}</span>
+              <span style={{width:26,height:26,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:12,flexShrink:0,background:i===0?"#f59e0b22":i===1?"#94a3b822":i===2?"#b4530922":"var(--surface2)",color:i===0?"#f59e0b":i===1?"#94a3b8":i===2?"#b45309":"var(--text3)"}}>{i<3?<Ico d={Icons.trophy} size={13} stroke="currentColor"/>:i+1}</span>
               <div style={{flex:1,minWidth:0}}>
                 <p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name}</p>
                 <p style={{fontSize:11,color:"var(--text3)"}}>{roleLabel(m.role)} · {r.lines.length} entr{r.lines.length===1?"y":"ies"}</p>
@@ -40677,7 +40677,7 @@ function PointsSettings({appSettings, onSaveSettings}) {
         ))}
       </div>
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:8}}>
-        <p style={{fontSize:13,fontWeight:800}}>🎁 Prizes (redeemable for money or time off)</p>
+        <p style={{fontSize:13,fontWeight:800,display:"flex",alignItems:"center",gap:6}}><Ico d={Icons.award} size={15} stroke="var(--accent)"/>Prizes (redeemable for money or time off)</p>
         <p style={{fontSize:11,color:"var(--text3)"}}>The team redeems points from their balance (all points since the start month below, minus what they've redeemed). You approve each request in Team Performance → Reward Points.</p>
         <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13}}>Points count from <input type="month" value={form.start_month} onChange={e=>setForm({...form,start_month:e.target.value})} style={inp}/></label>
         {form.prizes.map((pz,i)=>(
@@ -40728,7 +40728,7 @@ function PointsLeaderboardSection({title=true}) {
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
       {title&&<button onClick={()=>setOpen(o=>!o)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,fontSize:15,fontWeight:800,color:"var(--text)",cursor:"pointer"}}>
-        <span>🏆 Reward Points {cfg.enabled?"":"(OFF — preview)"}</span><span style={{fontSize:12,color:"var(--text3)"}}>{open?"Hide ▲":"Show ▼"}</span>
+        <span style={{display:"flex",alignItems:"center",gap:8}}><Ico d={Icons.trophy} size={17} stroke="var(--accent)"/>Reward Points {cfg.enabled?"":"(OFF — preview)"}</span><span style={{fontSize:12,color:"var(--text3)"}}>{open?"Hide ▲":"Show ▼"}</span>
       </button>}
       {isAdmin&&<RedemptionRequests cfg={cfg}/>}
       {(open||!title)&&<PointsLeaderboard team={pointsBridge.team} cfg={cfg} data={pointsData()} month={month} setMonth={setMonth} canAdjust={isAdmin} onSaveSettings={pointsBridge.onSaveSettings} appSettings={pointsBridge.appSettings} currentUser={cu}/>}
@@ -53964,7 +53964,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onDayClick={(jump)=>{ setTimelineJump(jump); setPage("my_timeline"); }}
           />
         )}
-        {page==="rewards"&&<div style={{display:"flex",flexDirection:"column",gap:16}}><div><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>🏆 Rewards & Points</h2><p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Earn points for great work and redeem them for prizes</p></div><PointsDashboardHero/><MyPointsSection/>{currentUser?.role==="admin"&&<PointsLeaderboardSection/>}</div>}
+        {page==="rewards"&&<div style={{display:"flex",flexDirection:"column",gap:16}}><div><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800,display:"flex",alignItems:"center",gap:10}}><Ico d={Icons.trophy} size={22} stroke="var(--accent)"/>Rewards & Points</h2><p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Earn points for great work and redeem them for prizes</p></div><PointsDashboardHero/><MyPointsSection/>{currentUser?.role==="admin"&&<PointsLeaderboardSection/>}</div>}
         {page==="mai_reports"&&currentUser?.role==="account_director"&&<div style={{display:"flex",flexDirection:"column",gap:16}}><div><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Mai Reports</h2><p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Mai's check-ins with each account manager and executive</p></div><MaiReportsHub team={data.team} onUpdateTeamMember={updateTeamMember}/><PointsLeaderboardSection/></div>}
         {page==="my_timeline"&&<MyTimelinePage posts={data.posts} team={data.team} currentUser={currentUser} timeEntries={data.timeEntries||[]} onPostClick={setSelectedPost} onStartTimer={startTimer} onPauseTimer={pauseTimer} onResumeTimer={resumeTimer} schedules={data.schedules||[]} scheduleOverrides={data.scheduleOverrides||[]} onOverrideSchedule={overrideSchedule} onShiftOverdue={shiftOverdueDueDate} initialJump={timelineJump} onJumpConsumed={()=>setTimelineJump(null)} onBackToCalendar={()=>setPage("my_calendar")} activityLogs={data.activityLogs||[]} appSettings={appSettings} onQuickAdd={(type,slot)=>{
           if(type==="post"){ setAddPostPresetSlot(slot); setShowAddPost(true); }
