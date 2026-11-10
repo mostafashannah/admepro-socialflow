@@ -39997,7 +39997,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             // human rows on this page already use, so Sara's row doesn't
             // disagree with them near local midnight.
             const saraRuns = (activityLogs||[]).filter(l=>(l.details||"").includes(`[agent:${sara?.id}]`))
-              .map(l=>({log:l, timing:parseAgentRunTiming(l.details)}))
+              .map(l=>{ let timing=parseAgentRunTiming(l.details); if(!timing){ const t=parseSqlUtc(l.performed_at||l.created_at); if(t&&!isNaN(t)) timing={start:t,end:new Date(t.getTime()+60000)}; } return {log:l, timing}; }) // server-side runs (Mai cron, reply bot, Pro, auto-publish) log no |start:|end: — use the log time
               .filter(r=>r.timing && r.timing.start.toISOString().split("T")[0]===dateStr);
             if(!sara) return null;
             const agentKey = `agent_${sara.id}`;
