@@ -36813,6 +36813,7 @@ function TerminationDeductionPanel({run, member, rules, onApply}) {
 }
 
 function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,clients=[],financeClientNotes=[],team=[],currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh,onRenameClient,onSaveClientNote,onUpdateClient,activityLogs=[],payrollRuns=[],onDecidePayrollRun,onApplyTerminationDeduction,onDecideOverageDeduction,attendanceRules}) {
+  const [bigClosed, setBigClosed] = useState("");
   const {isMobile} = useResponsive();
   const [showAdd,setShowAdd] = useState(false);
   const [range,setRange] = useState("all");
@@ -37529,12 +37530,21 @@ No markdown, no explanation.`;
         </div>
       )}
 
-      {biggestExpense&&(
-        <div style={{padding:"10px 16px",background:"#ef444411",border:"1px solid #ef444433",borderRadius:"var(--rs)",fontSize:12,color:"var(--text2)",display:"flex",alignItems:"center",gap:8}}>
-          <Ico d={Icons.alert||Icons.wallet} size={14} stroke="#ef4444"/>
-          Biggest expense: <strong>{biggestExpense.sub||biggestExpense.label}</strong> — EGP {Math.round(biggestExpense.amount).toLocaleString()} on {fmtDate(biggestExpense.date)}
-        </div>
-      )}
+      {(()=>{
+        // This month's biggest expense only (it used to be the all-time biggest, so the same line showed forever).
+        // Closable — stays hidden until a different expense becomes this month's biggest.
+        const big = ledger.filter(l=>l.type==="out"&&inThisMonth(l.date)).sort((a,b)=>b.countableAmount-a.countableAmount)[0];
+        if(!big) return null;
+        let dismissed=""; try{ dismissed=localStorage.getItem("sf_fin_big_dismissed")||""; }catch(e){}
+        if(dismissed===big.id || bigClosed===big.id) return null;
+        return (
+          <div style={{padding:"10px 16px",background:"#ef444411",border:"1px solid #ef444433",borderRadius:"var(--rs)",fontSize:12,color:"var(--text2)",display:"flex",alignItems:"center",gap:8}}>
+            <Ico d={Icons.alert||Icons.wallet} size={14} stroke="#ef4444"/>
+            <span style={{flex:1}}>Biggest expense this month: <strong>{big.sub||big.label}</strong> — EGP {Math.round(big.amount).toLocaleString()} on {fmtDate(big.date)}</span>
+            <button onClick={()=>{ try{ localStorage.setItem("sf_fin_big_dismissed", big.id); }catch(e){} setBigClosed(big.id); }} title="Dismiss" style={{background:"none",border:"none",cursor:"pointer",color:"var(--text3)",padding:2,display:"flex"}}><Ico d={Icons.x} size={14}/></button>
+          </div>
+        );
+      })()}
 
       <div style={{display:"grid",gridTemplateColumns:isMobile?"minmax(0,1fr)":"minmax(0,1fr) minmax(0,1fr)",gap:14,width:"100%"}}>
         {/* Expenses by category */}
