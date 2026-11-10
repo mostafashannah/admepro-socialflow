@@ -40153,7 +40153,14 @@ function MemberHoverCard({member, slots:allSlots=[], dateStr, members=[], style,
   return <div style={style} onMouseEnter={show} onMouseLeave={()=>setPos(null)}>{children}{card}</div>;
 }
 
-function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule, onShiftOverdue, initialJump, onJumpConsumed, onBackToCalendar, activityLogs=[], appSettings, onQuickAdd, onMoveTask}) {
+function MyTimelinePage({posts:postsRaw, team, currentUser, timeEntries, onPostClick:onPostClickRaw, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule, onShiftOverdue, initialJump, onJumpConsumed, onBackToCalendar, activityLogs=[], appSettings, onQuickAdd, onMoveTask:onMoveTaskRaw}) {
+  // Repeating tasks (routine + regular) only get created on their own day by the cron, so future days
+  // looked empty. Project them onto future dates as "planned" blocks (same rules as recurring-tasks-cron.php).
+  const [recurring, setRecurring] = useState([]);
+  useEffect(()=>{ qe("RecurringTask",{},"-created_at",300).then(r=>setRecurring((r.entities||[]).filter(x=>Number(x.active)!==0))).catch(()=>{}); },[]);
+  let posts = postsRaw;
+  const onPostClick = p => { if(p?.projected) return; onPostClickRaw && onPostClickRaw(p); };
+  const onMoveTask = onMoveTaskRaw ? ((...a) => { const id = a[0]?.id || a[0]; if(String(id||"").startsWith("proj_")) return; return onMoveTaskRaw(...a); }) : onMoveTaskRaw;
   // Which free-slot "+" button currently has its Task/Post/Calendar Plan
   // picker open — holds the slot payload (assignee/date/time) it was
   // opened with, so picking an option knows what to prefill.
@@ -40201,6 +40208,26 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   }, []);
 
   const dateStr = viewDate.toISOString().split('T')[0];
+  if (dateStr > new Date().toISOString().slice(0,10) && recurring.length) {
+    const dow = new Date(dateStr+"T12:00:00").getDay();
+    const proj = [];
+    recurring.forEach(r=>{
+      const start = String(r.start_date||"").slice(0,10); if(!start || dateStr < start) return;
+      if(r.end_date && dateStr > String(r.end_date).slice(0,10)) return;
+      let days = r.rule_days; try { days = typeof days==="string" ? JSON.parse(days||"[]") : (days||[]); } catch(e){ days=[]; }
+      if(!Array.isArray(days)) days = days!=null&&days!=="" ? [days] : [];
+      const diff = Math.round((new Date(dateStr+"T12:00:00") - new Date(start+"T12:00:00"))/864e5);
+      const iv = Math.max(1, Number(r.rule_interval)||1);
+      const due = r.rule_type==="once" ? dateStr===start : r.rule_type==="weekly" ? days.map(Number).includes(dow) : r.rule_type==="interval" ? diff % iv === 0 : r.rule_type==="monthly" ? Number(start.slice(8,10))===Number(dateStr.slice(8,10)) : true;
+      if(!due) return;
+      let items = []; try { items = JSON.parse(r.checklist||"[]"); } catch(e){}
+      const isRoutine = Array.isArray(items) && items.length>0;
+      proj.push({id:`proj_${r.id}_${dateStr}`, projected:true, title:r.title, description:r.description, assigned_to:r.assigned_to, due_date:dateStr, due_time:r.due_time, estimated_minutes:Number(r.estimated_minutes)||60, priority:r.priority||"medium",
+        is_routine:isRoutine?1:0, routine_status:isRoutine?"open":undefined, checklist:isRoutine?JSON.stringify(items.map(t=>({text:String(t),done:false}))):undefined,
+        stage:isRoutine?"planning":(r.stage||"design"), client_name:r.client_name, client_id:r.client_id, project_id:r.project_id, post_type:"recurring", platform:""});
+    });
+    if(proj.length) posts = [...postsRaw, ...proj];
+  }
   // Shows everything still on their plate (capacity planning needs that),
   // but generateDailySchedule already sorts genuinely-finished-today work
   // (moved out of Design/Content) to the top — filtering pending work out
@@ -40634,12 +40661,12 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                           setCopiedTask({postId:post.id, durationMins: slot.end_mins-slot.start_mins});
                           setToast(` "${post.title}" copied — right-click a free slot (any day) to move it there`);
                         }:undefined}
-                        style={{position:"absolute",zIndex:2,left:`${leftPct}%`,width:`${_pastDayStretch?_stretchedPct:widthPct}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,background:slot.overdue?"#ef4444":slot.completed_today?"#22c55e":(stage?.color||"var(--accent)"),borderRadius:8,backgroundImage:"linear-gradient(180deg, rgba(255,255,255,0.16), rgba(0,0,0,0.08))",boxShadow:slot.overdue?"0 0 0 1.5px #b91c1c inset, 0 2px 6px rgba(0,0,0,0.2)":"0 2px 6px rgba(0,0,0,0.18)",cursor:post?(canMove?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 8px"}}>
+                        style={{...(post?.projected?{opacity:0.55,outline:"2px dashed rgba(255,255,255,0.7)",outlineOffset:-3}:{}),position:"absolute",zIndex:2,left:`${leftPct}%`,width:`${_pastDayStretch?_stretchedPct:widthPct}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,background:slot.overdue?"#ef4444":slot.completed_today?"#22c55e":(stage?.color||"var(--accent)"),borderRadius:8,backgroundImage:"linear-gradient(180deg, rgba(255,255,255,0.16), rgba(0,0,0,0.08))",boxShadow:slot.overdue?"0 0 0 1.5px #b91c1c inset, 0 2px 6px rgba(0,0,0,0.2)":"0 2px 6px rgba(0,0,0,0.18)",cursor:post?(canMove?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 8px"}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
                           {post&&<TaskThumb post={post} team={team} size={34}/>}
                           <div style={{display:"flex",flexDirection:"column",minWidth:0,flex:1,lineHeight:1.2,gap:2}}>
                             <span style={{fontSize:12,lineHeight:1.2,color:"#fff",fontWeight:800,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
-                            {widthPct>8&&<span style={{fontSize:11,lineHeight:1.2,color:"#fff",opacity:0.9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slot.start_time}–{slot.end_time}{slot.ghost?` · moved to ${fmtDate(slot.ghost_to)}`:""}{slot.delivered_here?` · due ${fmtDate(slot.due_was)}`:""}{slot.carried?" · carried over":""}{post?.is_routine?` · 🔁 ${routineCounts(post).done}/${routineCounts(post).total}`:""}{slot.overdue?" · OVERDUE":slot.completed_today?" · Done":""}</span>}
+                            {widthPct>8&&<span style={{fontSize:11,lineHeight:1.2,color:"#fff",opacity:0.9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slot.start_time}–{slot.end_time}{slot.ghost?` · moved to ${fmtDate(slot.ghost_to)}`:""}{slot.delivered_here?` · due ${fmtDate(slot.due_was)}`:""}{slot.carried?" · carried over":""}{post?.projected?" · planned (repeats)":""}{post?.is_routine?` · 🔁 ${routineCounts(post).done}/${routineCounts(post).total}`:""}{slot.overdue?" · OVERDUE":slot.completed_today?" · Done":""}</span>}
                             {widthPct>12&&(slot.ghost ? <span style={{fontSize:11,lineHeight:1.2,fontWeight:800,color:"#fff",fontFamily:"monospace",whiteSpace:"nowrap"}}>⏸ Delayed {(()=>{const t=Math.max(0,slot.ghost_delay_secs||0);return `${String(Math.floor(t/3600)).padStart(2,"0")}:${String(Math.floor(t%3600/60)).padStart(2,"0")}:${String(t%60).padStart(2,"0")}`;})()}</span> : post&&postDelayInfo(post, dateStr) ? <DelayBadge post={post} light asOf={dateStr}/> : post&&postTimerInfo(post) ? <LiveTimerBadge post={post} light/> : <span style={{fontSize:10.5,lineHeight:1.2,color:"#fff",opacity:0.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{[post?.client_name, stage?.label].filter(Boolean).join(" · ")}</span>)}
                           </div>
                         </div>
