@@ -11096,6 +11096,255 @@ Return ONLY a JSON array of 5 objects: [{"title":"short","insight":"2 sentences 
   );
 }
 
+// ════════════════════════════════════════════════════════════════
+// ADMIN CONTROL CENTRE — the admin's Dashboard → Overview. "Today"
+// first: what needs a decision, today's delivery, live team, content
+// going out, finance (this month, trend, money owed), pipeline and
+// client health.
+// ════════════════════════════════════════════════════════════════
+function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost}) {
+  const {isMobile} = useResponsive();
+  const posts = data.posts||[], team = data.team||[], clients = (data.clients||[]).filter(c=>c.status!=="hidden"&&c.status!=="archived");
+  const invoices = data.invoices||[], payments = data.payments||[], subs = data.subscriptions||[], subPays = data.subscriptionPayments||[], expenses = data.expenses||[];
+  const timeEntries = data.timeEntries||[], integrations = data.integrations||[];
+  const num = v => Number(v)||0;
+  const today = new Date(); const todayStr = today.toISOString().slice(0,10);
+  const tmrStr = new Date(Date.now()+864e5).toISOString().slice(0,10);
+  const ym = d => String(d||"").slice(0,7); const thisM = todayStr.slice(0,7);
+  const fmt = n => (Math.round(n)).toLocaleString();
+  const tms = v => { const d = v ? parseSqlUtc(v) : null; return d && !isNaN(d) ? d.getTime() : NaN; };
+  // ── Needs action
+  const leaves = (data.leaveRequests||[]).filter(r=>r.status==="pending");
+  const pcfg = pointsConfig(data.appSettings||pointsBridge.appSettings);
+  const prizeReq = (pcfg.redemptions||[]).filter(r=>r.status==="pending");
+  const approvals = posts.filter(p=>["internal_review","design_review"].includes(p.stage));
+  const overdueInv = invoices.filter(i=>num(i.balance_due ?? (num(i.total)-num(i.amount_paid)))>0.5 && i.status!=="cancelled" && i.status!=="draft" && i.due_date && i.due_date<todayStr);
+  const overdueSubs = subs.filter(s=>s.status!=="cancelled" && s.status!=="paused" && (s.status==="overdue" || (s.next_payment_date && s.next_payment_date<todayStr)));
+  const missedMai = (data.maiReportSessions||[]).filter(s=>s.status==="missed" && String(s.report_date||"").slice(0,10)>=new Date(Date.now()-2*864e5).toISOString().slice(0,10));
+  const actions = [
+    leaves.length && {n:leaves.length, l:"leave / WFH request"+(leaves.length>1?"s":""), c:"#3b82f6", ico:Icons.calendar, go:()=>setPage("users")},
+    prizeReq.length && {n:prizeReq.length, l:"prize request"+(prizeReq.length>1?"s":""), c:"#8b5cf6", ico:Icons.award, go:()=>setPage("performance")},
+    approvals.length && {n:approvals.length, l:"post"+(approvals.length>1?"s":"")+" waiting internal review", c:"#f59e0b", ico:Icons.eye, go:()=>setPage("tasks")},
+    overdueInv.length && {n:overdueInv.length, l:"overdue invoice"+(overdueInv.length>1?"s":""), c:"#ef4444", ico:Icons.invoice, go:()=>setPage("invoices")},
+    overdueSubs.length && {n:overdueSubs.length, l:"overdue subscription"+(overdueSubs.length>1?"s":""), c:"#ef4444", ico:Icons.repeat, go:()=>setPage("subscriptions")},
+    missedMai.length && {n:missedMai.length, l:"missed Mai check-in"+(missedMai.length>1?"s":""), c:"#f97316", ico:Icons.chat, go:()=>setPage("users")},
+  ].filter(Boolean);
+  // ── Today
+  const work = posts.filter(p=>!p.is_plan_parent);
+  const dueToday = work.filter(p=>String(p.due_date||"").slice(0,10)===todayStr);
+  const doneToday = (data.perfLogs||[]).filter(l=>!(l.stage_from||"").startsWith("returned_") && new Date(tms(l.completed_at||l.created_at)).toISOString?.().slice(0,10)===todayStr).length;
+  let delayed = 0; team.forEach(m=>{ delayed += liveScorePenalty(m.email).openDelayed; });
+  const liveToday = work.filter(p=>String(p.scheduled_date||"").slice(0,10)===todayStr);
+  const liveReady = liveToday.filter(p=>["scheduled","published"].includes(p.stage)).length;
+  const hrsToday = timeEntries.filter(t=>String(t.date||"").slice(0,10)===todayStr).reduce((a,t)=>{ let s=num(t.total_seconds); if(t.status==="active"&&t.started_at) s+=Math.max(0,(Date.now()-tms(t.started_at))/1000); return a+s; },0)/3600;
+  // ── Finance (simple cash view: money actually received / spent, by month)
+  const inRows = [...payments.map(p=>({d:p.payment_date,a:num(p.amount),k:"Invoices"})), ...subPays.filter(p=>p.status!=="failed").map(p=>({d:p.payment_date,a:num(p.amount),k:"Subscriptions"})), ...expenses.filter(e=>(e.type||"out")==="in"&&!e.outstanding_kind).map(e=>({d:e.date,a:num(e.amount),k:e.category||"Other income"}))];
+  const outRows = expenses.filter(e=>(e.type||"out")==="out"&&!e.outstanding_kind).map(e=>({d:e.date,a:num(e.amount),k:e.category||"other"}));
+  const sumM = (rows, m) => rows.filter(r=>ym(r.d)===m).reduce((a,r)=>a+r.a,0);
+  const prevM = (()=>{ const d=new Date(today.getFullYear(), today.getMonth()-1, 15); return d.toISOString().slice(0,7); })();
+  const mIn = sumM(inRows,thisM), mOut = sumM(outRows,thisM), mNet = mIn-mOut;
+  const pIn = sumM(inRows,prevM), pOut = sumM(outRows,prevM);
+  const dayOfMonth = today.getDate(), daysInMonth = new Date(today.getFullYear(), today.getMonth()+1, 0).getDate();
+  const pace = mIn/dayOfMonth*daysInMonth;
+  const trend = Array.from({length:6},(_,i)=>{ const d=new Date(today.getFullYear(), today.getMonth()-5+i, 15); const m=d.toISOString().slice(0,7); return {m, l:d.toLocaleDateString(undefined,{month:"short"}), i:sumM(inRows,m), o:sumM(outRows,m)}; });
+  const maxT = Math.max(1,...trend.map(t=>Math.max(t.i,t.o)));
+  const owedInv = invoices.filter(i=>i.status!=="cancelled"&&i.status!=="draft").reduce((a,i)=>a+Math.max(0,num(i.balance_due ?? (num(i.total)-num(i.amount_paid)))),0);
+  const owedSubs = overdueSubs.reduce((a,s)=>a+num(s.amount),0);
+  const in7 = new Date(Date.now()+7*864e5).toISOString().slice(0,10);
+  const upcoming = subs.filter(s=>s.status==="active" && s.next_payment_date && s.next_payment_date>=todayStr && s.next_payment_date<=in7);
+  const upcomingAmt = upcoming.reduce((a,s)=>a+num(s.amount),0);
+  const catMap = typeof EXPENSE_CAT_MAP!=="undefined" ? EXPENSE_CAT_MAP : {};
+  const cats = Object.entries(outRows.filter(r=>ym(r.d)===thisM).reduce((a,r)=>{a[r.k]=(a[r.k]||0)+r.a;return a;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const maxCat = Math.max(1,...cats.map(c=>c[1]));
+  const pct = (a,b) => b ? Math.round((a-b)/b*100) : null;
+  // ── Team now
+  const staff = team.filter(m=>m.status==="active" && !["admin","accountant","office_boy","client"].includes(m.role));
+  const scored = calcAllPerf(team, data.perfLogs||[], false, data.maiReportSessions||[], posts);
+  const teamNow = staff.map(m=>{ const t = timeEntries.find(x=>x.user_email===m.email && x.status==="active"); const p = t && posts.find(x=>x.id===t.post_id); return {m, working:p?.title||null, score: scored.find(x=>x.email===m.email)?.perf?.score??0, delayed: liveScorePenalty(m.email).openDelayed}; }).sort((a,b)=>(b.working?1:0)-(a.working?1:0)||b.delayed-a.delayed);
+  // ── Going live (next 48h)
+  const going = work.filter(p=>{ const d=String(p.scheduled_date||"").slice(0,10); return d===todayStr||d===tmrStr; }).sort((a,b)=>String(a.scheduled_date+a.scheduled_time).localeCompare(String(b.scheduled_date+b.scheduled_time)));
+  // ── Pipeline
+  const STG = ["client_request","planning","content_creation","internal_review","design","design_review","client_approval"];
+  const pipe = STG.map(k=>{ const st=STAGES.find(s=>s.key===k)||{label:k,color:"#888"}; const w=work.filter(p=>p.stage===k&&!p.is_routine); return {k,label:st.label,color:st.color,n:w.length,od:w.filter(p=>p.due_date&&String(p.due_date).slice(0,10)<todayStr).length}; });
+  const maxP = Math.max(1,...pipe.map(p=>p.n));
+  // ── Client health
+  const SOC = ["instagram","facebook","linkedin","tiktok","youtube","twitter","x"];
+  const health = clients.filter(c=>c.status==="active"||!c.status).map(c=>{
+    const cp = work.filter(p=>p.client_id===c.id||p.client_name===c.name);
+    const pubM = cp.filter(p=>p.stage==="published" && ym(p.published_at||p.scheduled_date)===thisM).length;
+    const next7 = cp.filter(p=>["scheduled","approved"].includes(p.stage) && String(p.scheduled_date||"")>=todayStr && String(p.scheduled_date||"")<=in7).length;
+    const last = cp.filter(p=>p.stage==="published").map(p=>String(p.published_at||p.scheduled_date||"").slice(0,10)).sort().pop()||null;
+    const ints = integrations.filter(i=>i.client_id===c.id && SOC.includes(i.app_key));
+    const ok = ints.filter(i=>i.status==="active"&&i.last_run_status!=="error").length, bad = ints.length-ok;
+    const daysSince = last ? Math.floor((Date.now()-new Date(last+"T12:00:00"))/864e5) : null;
+    const flag = next7===0 ? "Nothing scheduled next 7 days" : daysSince!=null && daysSince>7 ? `No post for ${daysSince} days` : bad ? "Platform connection failing" : null;
+    return {c, pubM, next7, last, ok, bad, flag};
+  }).sort((a,b)=>(b.flag?1:0)-(a.flag?1:0)||b.pubM-a.pubM);
+  // ── UI helpers
+  const card = {background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:18,minWidth:0};
+  const head = (t, sub, icon, grad, right) => (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
+        <div style={{width:34,height:34,borderRadius:10,background:grad,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ico d={icon} size={17} stroke="#fff"/></div>
+        <div style={{minWidth:0}}><p style={{fontSize:15,fontWeight:800}}>{t}</p>{sub&&<p style={{fontSize:11,color:"var(--text3)"}}>{sub}</p>}</div>
+      </div>{right}
+    </div>);
+  const link = (l, pg) => <button onClick={()=>setPage(pg)} style={{fontSize:12,fontWeight:700,color:"var(--accent)",background:"none",border:"none",cursor:"pointer"}}>{l} →</button>;
+  const tile = (label, value, sub, color, icon, onClick) => (
+    <div onClick={onClick} style={{position:"relative",overflow:"hidden",borderRadius:14,padding:"14px 16px",background:`linear-gradient(135deg, ${color}, ${color}c4)`,color:"#fff",boxShadow:`0 6px 16px ${color}33`,cursor:onClick?"pointer":"default"}}>
+      <div style={{position:"absolute",right:-16,top:-16,width:64,height:64,borderRadius:"50%",background:"rgba(255,255,255,0.15)"}}/>
+      <div style={{display:"flex",alignItems:"center",gap:6,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.06em",opacity:0.92}}><Ico d={icon} size={12} stroke="#fff"/>{label}</div>
+      <p style={{fontSize:26,fontWeight:900,fontFamily:"'Montserrat',sans-serif",lineHeight:1.15,marginTop:4}}>{value}</p>
+      <p style={{fontSize:11,opacity:0.92}}>{sub}</p>
+    </div>);
+  const delta = (a,b,good) => { const p = pct(a,b); if(p==null) return null; const up = p>=0; const col = (up===good)?"#10b981":"#ef4444"; return <span style={{fontSize:11,fontWeight:800,color:col}}>{up?"▲":"▼"} {Math.abs(p)}% vs last month</span>; };
+  const G = isMobile ? "1fr" : "repeat(auto-fit,minmax(360px,1fr))";
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
+      {/* Needs your action */}
+      {actions.length>0 ? (
+        <div style={{...card,background:"linear-gradient(135deg, rgba(239,68,68,0.07), rgba(245,158,11,0.06)), var(--surface)",border:"1px solid rgba(239,68,68,0.25)"}}>
+          {head("Needs your action", `${actions.reduce((a,x)=>a+x.n,0)} things waiting for you`, Icons.alert, "linear-gradient(135deg,#ef4444,#f59e0b)")}
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {actions.map((a,i)=>(
+              <button key={i} onClick={a.go} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 14px",borderRadius:12,border:`1px solid ${a.c}55`,background:a.c+"14",color:"var(--text)",cursor:"pointer",fontSize:13,fontWeight:700}}>
+                <span style={{width:26,height:26,borderRadius:8,background:a.c,display:"flex",alignItems:"center",justifyContent:"center"}}><Ico d={a.ico} size={14} stroke="#fff"/></span>
+                <b style={{color:a.c,fontSize:16}}>{a.n}</b>{a.l}
+              </button>))}
+          </div>
+          {leaves.length>0&&<div style={{display:"flex",flexDirection:"column",gap:6,marginTop:12}}>
+            {leaves.slice(0,4).map(r=>(
+              <div key={r.id} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",padding:"8px 12px",borderRadius:10,background:"var(--surface2)"}}>
+                <span style={{flex:1,minWidth:180,fontSize:13}}><b>{r.member_name||r.user_name||r.requester_name||r.email}</b> — {String(r.type||"leave").replace(/_/g," ")} · {r.start_date||r.date}{r.days?` · ${r.days} day(s)`:""}</span>
+                <button onClick={()=>onDecideLeaveRequest&&onDecideLeaveRequest(r,"approve")} style={{background:"#10b981",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Approve</button>
+                <button onClick={()=>onDecideLeaveRequest&&onDecideLeaveRequest(r,"reject")} style={{background:"#ef444418",color:"#ef4444",border:"none",borderRadius:8,padding:"6px 12px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Reject</button>
+              </div>))}
+          </div>}
+        </div>
+      ) : (
+        <div style={{...card,display:"flex",alignItems:"center",gap:10,background:"linear-gradient(135deg, rgba(16,185,129,0.1), transparent), var(--surface)",border:"1px solid rgba(16,185,129,0.3)"}}>
+          <Ico d={Icons.check} size={18} stroke="#10b981"/><p style={{fontSize:14,fontWeight:700}}>All clear — nothing waiting for your decision.</p>
+        </div>
+      )}
+
+      {/* Today */}
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(auto-fit,minmax(160px,1fr))",gap:12}}>
+        {tile("Due today", dueToday.length, `${dueToday.filter(p=>["approved","scheduled","published","client_approval"].includes(p.stage)).length} already delivered`, "#6366f1", Icons.calendar, ()=>setPage("my_timeline"))}
+        {tile("Finished today", doneToday, "task stages completed", "#10b981", Icons.check)}
+        {tile("Delayed now", delayed, delayed?"open tasks past due":"everyone on time", delayed?"#ef4444":"#10b981", Icons.alert, ()=>setPage("my_timeline"))}
+        {tile("Going live today", liveToday.length, `${liveReady} scheduled / published`, liveToday.length&&liveReady<liveToday.length?"#f59e0b":"#0ea5e9", Icons.send)}
+        {tile("Tracked today", hrsToday.toFixed(1)+"h", "team timer hours", "#8b5cf6", Icons.clock)}
+      </div>
+
+      {/* Finance */}
+      <div style={{...card,background:"linear-gradient(160deg, rgba(16,185,129,0.07), rgba(14,165,233,0.05) 45%, transparent 75%), var(--surface)",border:"1px solid rgba(16,185,129,0.25)"}}>
+        {head("Finance", `${today.toLocaleDateString(undefined,{month:"long",year:"numeric"})} · cash actually received and spent`, Icons.wallet, "linear-gradient(135deg,#10b981,#0ea5e9)", link("Open Finance","finance"))}
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(auto-fit,minmax(170px,1fr))",gap:12}}>
+          {[
+            ["Money in", fmt(mIn), delta(mIn,pIn,true), "#10b981", Icons.coinUp],
+            ["Money out", fmt(mOut), delta(mOut,pOut,false), "#ef4444", Icons.cardPay],
+            ["Net", (mNet>=0?"+":"")+fmt(mNet), <span style={{fontSize:11,color:"var(--text3)"}}>in − out this month</span>, mNet>=0?"#0ea5e9":"#ef4444", Icons.stat],
+            ["Owed to us", fmt(owedInv+owedSubs), <span style={{fontSize:11,color:"var(--text3)"}}>{overdueInv.length} overdue inv · {overdueSubs.length} overdue subs</span>, "#f59e0b", Icons.invoice],
+            ["Due in 7 days", fmt(upcomingAmt), <span style={{fontSize:11,color:"var(--text3)"}}>{upcoming.length} subscription payment{upcoming.length!==1?"s":""}</span>, "#8b5cf6", Icons.repeat],
+          ].map(([l,v,s,c,ic])=>(
+            <div key={l} style={{borderRadius:12,padding:"12px 14px",background:"var(--surface2)",borderLeft:`4px solid ${c}`}}>
+              <p style={{fontSize:10,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",display:"flex",alignItems:"center",gap:5}}><Ico d={ic} size={12} stroke={c}/>{l}</p>
+              <p style={{fontSize:22,fontWeight:900,fontFamily:"'Montserrat',sans-serif",color:c,lineHeight:1.2}}>{v} <span style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>EGP</span></p>
+              {s}
+            </div>))}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:G,gap:16,marginTop:16}}>
+          <div>
+            <p style={{fontSize:12,fontWeight:800,color:"var(--text2)",marginBottom:8}}>Last 6 months <span style={{fontWeight:600,color:"var(--text3)"}}>· <span style={{color:"#10b981"}}>■</span> in <span style={{color:"#ef4444"}}>■</span> out</span></p>
+            <div style={{display:"flex",alignItems:"flex-end",gap:10,height:130}}>
+              {trend.map(t=>(
+                <div key={t.m} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,height:"100%",justifyContent:"flex-end"}} title={`${t.l}: in ${fmt(t.i)} · out ${fmt(t.o)} · net ${fmt(t.i-t.o)}`}>
+                  <div style={{display:"flex",alignItems:"flex-end",gap:3,width:"100%",height:105}}>
+                    <div style={{flex:1,height:Math.max(2,t.i/maxT*105),borderRadius:"5px 5px 0 0",background:"linear-gradient(180deg,#34d399,#10b981)"}}/>
+                    <div style={{flex:1,height:Math.max(2,t.o/maxT*105),borderRadius:"5px 5px 0 0",background:"linear-gradient(180deg,#fb7185,#ef4444)"}}/>
+                  </div>
+                  <span style={{fontSize:10,fontWeight:t.m===thisM?800:600,color:t.m===thisM?"var(--text)":"var(--text3)"}}>{t.l}</span>
+                </div>))}
+            </div>
+            <p style={{fontSize:11,color:"var(--text3)",marginTop:6}}>At this pace, money in will reach ~<b style={{color:"var(--text)"}}>{fmt(pace)} EGP</b> by month end{pIn?` (last month ${fmt(pIn)})`:""}.</p>
+          </div>
+          <div>
+            <p style={{fontSize:12,fontWeight:800,color:"var(--text2)",marginBottom:8}}>Where the money went this month</p>
+            {cats.length===0?<p style={{fontSize:12,color:"var(--text3)"}}>No expenses recorded this month.</p>:cats.map(([k,v])=>{ const cm=catMap[k]||{l:k,color:"#6b7280"}; return (
+              <div key={k} style={{marginBottom:8}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}><span style={{fontWeight:700}}>{cm.l}</span><span style={{fontWeight:800}}>{fmt(v)} <span style={{color:"var(--text3)",fontWeight:600}}>· {mOut?Math.round(v/mOut*100):0}%</span></span></div>
+                <div style={{height:7,borderRadius:99,background:"var(--border)"}}><div style={{width:(v/maxCat*100)+"%",height:"100%",borderRadius:99,background:cm.color||"#6b7280"}}/></div>
+              </div>); })}
+            {(overdueInv.length+overdueSubs.length)>0&&<div style={{marginTop:10,display:"flex",flexDirection:"column",gap:4}}>
+              <p style={{fontSize:12,fontWeight:800,color:"#ef4444"}}>Overdue — chase these</p>
+              {[...overdueInv.map(i=>({k:"i"+i.id,n:i.client_name,a:num(i.balance_due ?? (num(i.total)-num(i.amount_paid))),d:i.due_date,t:i.invoice_number})), ...overdueSubs.map(s=>({k:"s"+s.id,n:s.client_name,a:num(s.amount),d:s.next_payment_date,t:s.service_name}))].sort((a,b)=>b.a-a.a).slice(0,5).map(x=>(
+                <div key={x.k} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,padding:"6px 10px",borderRadius:8,background:"#ef444410"}}><span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><b>{x.n}</b> · {x.t} · due {x.d}</span><b style={{color:"#ef4444",flexShrink:0}}>{fmt(x.a)}</b></div>))}
+            </div>}
+          </div>
+        </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:G,gap:16}}>
+        {/* Team right now */}
+        <div style={card}>
+          {head("Team right now", `${teamNow.filter(t=>t.working).length} working on a task · ${teamNow.filter(t=>t.delayed).length} with delays`, Icons.users, "linear-gradient(135deg,#6366f1,#8b5cf6)", link("Timeline","my_timeline"))}
+          <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:340,overflowY:"auto"}}>
+            {teamNow.map(t=>(
+              <div key={t.m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:10,background:"var(--surface2)"}}>
+                <div style={{position:"relative"}}><Avatar name={t.m.name} size={30}/><span style={{position:"absolute",right:-1,bottom:-1,width:10,height:10,borderRadius:"50%",border:"2px solid var(--surface2)",background:t.working?"#10b981":"#9ca3af"}}/></div>
+                <div style={{flex:1,minWidth:0}}><p style={{fontSize:13,fontWeight:700}}>{t.m.name}</p><p style={{fontSize:11,color:t.working?"#10b981":"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.working?`Working on: ${t.working}`:"No timer running"}</p></div>
+                {t.delayed>0&&<span style={{fontSize:11,fontWeight:800,color:"#ef4444",background:"#ef444418",padding:"2px 8px",borderRadius:99}}>{t.delayed} late</span>}
+                <b style={{fontSize:14,color:perfColor(t.score),width:30,textAlign:"right"}}>{t.score}</b>
+              </div>))}
+          </div>
+        </div>
+        {/* Going live */}
+        <div style={card}>
+          {head("Going live — next 48h", `${going.length} post${going.length!==1?"s":""} · ${going.filter(p=>!["scheduled","published"].includes(p.stage)).length} not ready yet`, Icons.send, "linear-gradient(135deg,#0ea5e9,#10b981)", link("Calendar","calendar"))}
+          <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:340,overflowY:"auto"}}>
+            {going.length===0&&<p style={{fontSize:13,color:"var(--text3)"}}>Nothing scheduled for today or tomorrow.</p>}
+            {going.map(p=>{ const ready=["scheduled","published"].includes(p.stage); const st=STAGES.find(s=>s.key===p.stage); return (
+              <div key={p.id} onClick={()=>onOpenPost&&onOpenPost(p)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:10,background:ready?"#10b98110":"#f59e0b12",borderLeft:`4px solid ${ready?"#10b981":"#f59e0b"}`,cursor:"pointer"}}>
+                <div style={{flex:1,minWidth:0}}><p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</p><p style={{fontSize:11,color:"var(--text3)"}}>{p.client_name} · {String(p.scheduled_date).slice(0,10)===todayStr?"Today":"Tomorrow"}{p.scheduled_time?` ${String(p.scheduled_time).slice(0,5)}`:""}</p></div>
+                <span style={{fontSize:10,fontWeight:800,color:ready?"#10b981":"#f59e0b",textTransform:"uppercase"}}>{ready?(p.stage==="published"?"Live":"Scheduled"):(st?.label||p.stage)}</span>
+              </div>); })}
+          </div>
+        </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:G,gap:16}}>
+        {/* Pipeline */}
+        <div style={card}>
+          {head("Pipeline", `${pipe.reduce((a,p)=>a+p.n,0)} in progress · ${pipe.reduce((a,p)=>a+p.od,0)} overdue`, Icons.flow, "linear-gradient(135deg,#f97316,#ef4444)", link("All tasks","tasks"))}
+          {pipe.map(s=>(
+            <div key={s.k} style={{marginBottom:9}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}><span style={{fontWeight:700,display:"flex",alignItems:"center",gap:6}}><span style={{width:8,height:8,borderRadius:"50%",background:s.color}}/>{s.label}</span><span><b>{s.n}</b>{s.od?<b style={{color:"#ef4444"}}> · {s.od} overdue</b>:""}</span></div>
+              <div style={{height:8,borderRadius:99,background:"var(--border)",display:"flex",overflow:"hidden"}}><div style={{width:((s.n-s.od)/maxP*100)+"%",background:s.color}}/><div style={{width:(s.od/maxP*100)+"%",background:"#ef4444"}}/></div>
+            </div>))}
+        </div>
+        {/* Client health */}
+        <div style={card}>
+          {head("Client health", `${health.filter(h=>h.flag).length} client${health.filter(h=>h.flag).length!==1?"s":""} need attention`, Icons.clients, "linear-gradient(135deg,#ec4899,#8b5cf6)", link("Clients","clients"))}
+          <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:340,overflowY:"auto"}}>
+            {health.map(h=>(
+              <div key={h.c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:10,background:h.flag?"#ef44440d":"var(--surface2)",borderLeft:`4px solid ${h.flag?"#ef4444":"#10b981"}`}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.c.name}</p>
+                  <p style={{fontSize:11,color:h.flag?"#ef4444":"var(--text3)",fontWeight:h.flag?700:500}}>{h.flag||`Last post ${h.last||"—"}`}</p>
+                </div>
+                <div style={{textAlign:"right",fontSize:11,color:"var(--text3)",flexShrink:0}}><b style={{color:"var(--text)",fontSize:13}}>{h.pubM}</b> pub this month<br/><b style={{color:"var(--text)"}}>{h.next7}</b> next 7d</div>
+                <div style={{display:"flex",gap:3,flexShrink:0}} title={`${h.ok} working · ${h.bad} failing`}>
+                  {Array.from({length:h.ok}).map((_,i)=><span key={"o"+i} style={{width:7,height:7,borderRadius:"50%",background:"#10b981"}}/>)}
+                  {Array.from({length:h.bad}).map((_,i)=><span key={"b"+i} style={{width:7,height:7,borderRadius:"50%",background:"#f59e0b"}}/>)}
+                </div>
+              </div>))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAddTask,onCreateInvoice,onAddProject,onOpenPost,onMarkNotifRead,onSaveInsights,onDecideLeaveRequest,appSettings}) {
   if(currentUser?.role==="hr") return <HRDashboard team={data.team} perfLogs={data.perfLogs||[]} currentUser={currentUser} setPage={setPage}/>;
   const {posts,projects,clients,team,timelogs,notifications} = data;
@@ -11365,7 +11614,8 @@ No markdown, no explanation.`;
       )}
 
       {/* ════ OVERVIEW TAB ════ */}
-      {(tab==="overview"||!isAdmin)&&(
+      {tab==="overview"&&isAdmin&&<AdminControlCenter data={{...data, appSettings}} setPage={setPage} onDecideLeaveRequest={onDecideLeaveRequest} onOpenPost={onOpenPost}/>}
+      {!isAdmin&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           {/* A vacation/WFH/personal-leave request used to only ever surface
               via the manager's WhatsApp/email/notification-bell ping and
