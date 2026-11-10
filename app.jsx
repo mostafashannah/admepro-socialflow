@@ -3884,7 +3884,7 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c", photoIsDark=true}) => 
          background of its own. */
       .bottom-nav-float{
         display:flex;flex-shrink:0;justify-content:center;
-        position:absolute;left:50%;bottom:0;
+        position:fixed;left:50%;bottom:0;
         transform:translateX(-50%);
         width:max-content;
         padding-bottom:env(safe-area-inset-bottom);
@@ -44915,7 +44915,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     return (
       <>
         <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:299,backdropFilter:"blur(3px)"}}/>
-        <div className="slide-in-left" style={{position:"fixed",top:0,left:0,bottom:0,width:284,background:"var(--surface)",borderRight:"1px solid var(--border)",zIndex:300,display:"flex",flexDirection:"column",overflowY:"auto"}}>
+        <div className="slide-in-left" style={{position:"fixed",top:0,left:0,bottom:0,width:284,paddingTop:"env(safe-area-inset-top)",background:"var(--surface)",borderRight:"1px solid var(--border)",zIndex:300,display:"flex",flexDirection:"column",overflowY:"auto"}}>
           <LogoBlock showClose={true}/>
           <SidebarContent compact={false}/>
           <div style={{padding:"8px 8px max(8px,env(safe-area-inset-bottom))",borderTop:"1px solid var(--border)",flexShrink:0}}>
@@ -50094,8 +50094,7 @@ function App() {
       // iOS reports a too-small visualViewport height at launch (until the first scroll), which left a white
       // gap under the app. Use the largest reported height unless the keyboard is open (then follow vv so
       // inputs stay visible).
-      const ae = document.activeElement; const typing = ae && (ae.tagName==="INPUT"||ae.tagName==="TEXTAREA"||ae.isContentEditable);
-      const h = (vv && typing) ? vv.height : Math.max(vv?vv.height:0, window.innerHeight||0, document.documentElement.clientHeight||0);
+      const h = vv ? vv.height : window.innerHeight;
       document.documentElement.style.setProperty("--app-height", h + "px");
     };
     setAppHeight();
@@ -54795,6 +54794,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
           box instead of the true viewport — portaling escapes that ancestor
           chain entirely. Hidden while the sidebar drawer is open. */}
       {isMobile&&!sidebarOpen&&!keyboardOpen&&ReactDOM.createPortal(
+        <div aria-hidden="true" style={{position:"fixed",top:0,left:0,right:0,height:"env(safe-area-inset-top)",background:"var(--bg)",zIndex:100001,pointerEvents:"none"}}/>
         <nav className="bottom-nav-float">
           <div className="bottom-nav-pill">
             {mobileNavItems.map(({key,label,ico})=>{
