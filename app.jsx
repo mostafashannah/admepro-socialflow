@@ -10884,6 +10884,218 @@ function HRDashboard({team,perfLogs,currentUser,setPage}) {
   );
 }
 
+// ════════════════════════════════════════════════════════════════
+// TEAM & INSIGHTS — one dashboard tab replacing the old Team
+// Performance / Analytics / AI Insights tabs. Every number is computed
+// from data the system really records (performance_logs.completed_at,
+// time_entries, live task state) and the score is the SAME one the Team
+// Performance page shows (calcAllPerf), so the two never disagree.
+// ════════════════════════════════════════════════════════════════
+function TeamInsightsPanel({data, dateRange, filterUser, filterClient, onSaveInsights}) {
+  const {isMobile} = useResponsive();
+  const team = data.team||[], posts = data.posts||[], projects = data.projects||[];
+  const allLogs = data.perfLogs||[], timeEntries = data.timeEntries||[], mai = data.maiReportSessions||[];
+  const [gen, setGen] = useState(false);
+  const [live, setLive] = useState(null);
+  const [sortBy, setSortBy] = useState("score");
+  const since = dateRange==="week" ? Date.now()-7*864e5 : dateRange==="month" ? Date.now()-30*864e5 : 0;
+  const rangeLabel = dateRange==="week" ? "last 7 days" : dateRange==="month" ? "last 30 days" : "all time";
+  const tms = v => { const d = v ? parseSqlUtc(v) : null; return d && !isNaN(d) ? d.getTime() : NaN; };
+  const clientOk = (postId, clientName) => {
+    if (filterClient==="all") return true;
+    if (clientName && clientName===filterClient) return true;
+    const p = posts.find(x=>x.id===postId); if (!p) return false;
+    const pr = projects.find(x=>x.id===p.project_id);
+    return p.client_name===filterClient || p.client_id===filterClient || pr?.client_name===filterClient || pr?.client_id===filterClient;
+  };
+  const logs = allLogs.filter(l => !(l.stage_from||"").startsWith("returned_") && (!since || tms(l.completed_at||l.created_at) >= since) && (filterUser==="all" || l.user_email===filterUser) && clientOk(l.post_id, l.client_name));
+  const returns = allLogs.filter(l => (l.stage_from||"").startsWith("returned_") && (!since || tms(l.completed_at||l.created_at) >= since) && clientOk(l.post_id, l.client_name));
+  const yes = v => v===true||v===1||v==="1";
+  const members = team.filter(m => m.status==="active" && !["admin","hr","accountant","office_boy","client"].includes(m.role) && (filterUser==="all" || m.email===filterUser));
+  const scored = calcAllPerf(team, allLogs, false, mai, posts);
+  const scoreOf = e => scored.find(x=>x.email===e)?.perf || {};
+  const rows = members.map(m => {
+    const L = logs.filter(l=>l.user_email===m.email);
+    const onT = L.filter(l=>yes(l.on_time)).length;
+    const revs = L.reduce((a,l)=>a+(Number(l.revision_count)||0),0);
+    const hrs = timeEntries.filter(t=>t.user_email===m.email && (!since || tms(t.date||t.created_at) >= since)).reduce((a,t)=>{ let s=Number(t.total_seconds)||0; if(t.status==="active"&&t.started_at){ s+=Math.max(0,(Date.now()-tms(t.started_at))/1000); } return a+s; },0)/3600;
+    const lp = liveScorePenalty(m.email);
+    const open = posts.filter(p=>!p.is_routine && !p.is_plan_parent && ["design","content_creation"].includes(p.stage) && ((p.stage==="design"?(p.design_assigned_to||p.assigned_to):(p.content_assigned_to||p.assigned_to))===m.email)).length;
+    const sp = scoreOf(m.email);
+    return {m, score: sp.score??0, done: L.length, onTimePct: L.length?Math.round(onT/L.length*100):null, avgRev: L.length?revs/L.length:null, returned: returns.filter(l=>l.user_email===m.email).length, hrs, open, delayed: lp.openDelayed, delayHrs: lp.delayHours, mai: sp.maiScore};
+  });
+  const sorters = {score:(a,b)=>b.score-a.score, done:(a,b)=>b.done-a.done, delayed:(a,b)=>b.delayed-a.delayed, hrs:(a,b)=>b.hrs-a.hrs};
+  rows.sort(sorters[sortBy]||sorters.score);
+  // Team-level KPIs
+  const done = logs.length, onTime = logs.filter(l=>yes(l.on_time)).length;
+  const onTimePct = done ? Math.round(onTime/done*100) : 0;
+  const clean = logs.filter(l=>!(Number(l.revision_count)>0) && !yes(l.rejected)).length;
+  const firstTimePct = done ? Math.round(clean/done*100) : 0;
+  const delayedNow = rows.reduce((a,r)=>a+r.delayed,0);
+  const trackedHrs = rows.reduce((a,r)=>a+r.hrs,0);
+  const avgScore = rows.length ? Math.round(rows.reduce((a,r)=>a+r.score,0)/rows.length) : 0;
+  // When work gets finished (local time)
+  const hours = Array(24).fill(0), days = Array(7).fill(0);
+  logs.forEach(l=>{ const t = tms(l.completed_at||l.created_at); if(isNaN(t)) return; const d = new Date(t); hours[d.getHours()]++; days[(d.getDay()+6)%7]++; });
+  const H0 = 9, H1 = 22; const hourSlice = hours.slice(H0, H1+1); const maxH = Math.max(1,...hourSlice); const peakH = hourSlice.indexOf(Math.max(...hourSlice)) + H0;
+  const dayNames = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]; const maxD = Math.max(1,...days); const bestDay = dayNames[days.indexOf(Math.max(...days))];
+  // Time spent per stage: gap between consecutive completions of the same post (first one from the post's creation)
+  const stageDur = {};
+  const byPost = {}; allLogs.forEach(l=>{ if(!l.post_id) return; (byPost[l.post_id]=byPost[l.post_id]||[]).push(l); });
+  Object.entries(byPost).forEach(([pid, arr])=>{
+    arr.sort((a,b)=>tms(a.completed_at||a.created_at)-tms(b.completed_at||b.created_at));
+    const p = posts.find(x=>x.id===pid); let prev = tms(p?.created_date||p?.created_at);
+    arr.forEach(l=>{ const t = tms(l.completed_at||l.created_at); const st = (l.stage_from||"").replace(/^returned_/,"");
+      if(!isNaN(t) && !isNaN(prev) && t>prev && (!since || t>=since) && st && !(l.stage_from||"").startsWith("returned_")) { (stageDur[st]=stageDur[st]||[]).push((t-prev)/36e5); }
+      if(!isNaN(t)) prev = t; });
+  });
+  const median = a => { const s=[...a].sort((x,y)=>x-y); return s.length ? s[Math.floor(s.length/2)] : 0; };
+  const WAIT = ["client_request","planning","content_creation","internal_review","design","design_review","client_approval"];
+  const stageRows = WAIT.map(k=>{ const st = (typeof STAGES!=="undefined"?STAGES:[]).find(s=>s.key===k)||{label:k,color:"#6b7280"};
+    const waiting = posts.filter(p=>p.stage===k && !p.is_routine && !p.is_plan_parent && (filterClient==="all"||clientOk(p.id,p.client_name)));
+    const overdue = waiting.filter(p=>p.due_date && String(p.due_date).slice(0,10) < new Date().toISOString().slice(0,10)).length;
+    return {k, label: st.label, color: st.color, waiting: waiting.length, overdue, med: median(stageDur[k]||[]), n:(stageDur[k]||[]).length}; });
+  const bottleneck = [...stageRows].sort((a,b)=>(b.overdue*3+b.waiting)-(a.overdue*3+a.waiting))[0];
+  const maxWait = Math.max(1,...stageRows.map(s=>s.waiting));
+  // AI insights from these exact numbers
+  const saved = (data.aiInsights||[]).slice().sort((a,b)=>String(b.generated_at||b.created_at||"").localeCompare(String(a.generated_at||a.created_at||""))).slice(0,6);
+  const insights = live || saved;
+  const runAI = async () => {
+    setGen(true);
+    try {
+      const prompt = `You are an operations analyst for a social-media agency. Using ONLY the data below (${rangeLabel}), write 5 specific, actionable insights. Name people and numbers. Don't invent data; if something has no data, don't comment on it.
+
+TEAM KPIs: ${done} tasks finished, ${onTimePct}% on time, ${firstTimePct}% approved first time (no revisions), ${delayedNow} tasks delayed right now, ${trackedHrs.toFixed(1)}h tracked, average score ${avgScore}/100.
+PEOPLE (score / finished / on-time % / avg revisions / sent back / open now / delayed now / tracked h):
+${rows.map(r=>`- ${r.m.name} (${ROLES?.[r.m.role]?.label||r.m.role}): ${r.score} / ${r.done} / ${r.onTimePct??"n/a"}% / ${r.avgRev!=null?r.avgRev.toFixed(1):"n/a"} / ${r.returned} / ${r.open} / ${r.delayed} / ${r.hrs.toFixed(1)}`).join("\n")}
+PIPELINE NOW (waiting / overdue / median hours spent in stage):
+${stageRows.map(s=>`- ${s.label}: ${s.waiting} / ${s.overdue} / ${s.n?s.med.toFixed(1)+"h":"n/a"}`).join("\n")}
+Work mostly finished at ${peakH}:00; busiest day ${bestDay}.
+
+Return ONLY a JSON array of 5 objects: [{"title":"short","insight":"2 sentences with names and numbers","action":"1 concrete next step","category":"bottleneck|performance|workload|timing|quality","priority":"high|medium|low"}]`;
+      const txt = await agentAI("account_executive", "Team insights", prompt, 1500);
+      const mm = String(txt||"").replace(/```json|```/g,"").match(/\[[\s\S]*\]/);
+      const parsed = JSON.parse(mm ? mm[0] : "[]");
+      if(!Array.isArray(parsed)||!parsed.length) throw new Error("empty");
+      setLive(parsed);
+      const now = new Date().toISOString();
+      onSaveInsights?.(parsed.map(ins=>({...ins, is_read:false, generated_at:now})));
+    } catch(e) { setLive([{title:"Couldn't generate insights",insight:"The AI request failed — check the AI connection in Settings → AI Agents and try again.",action:"",category:"general",priority:"low"}]); }
+    setGen(false);
+  };
+  // ── UI ──
+  const card = {background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:18};
+  const h = (t, sub, icon, grad) => (
+    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+      <div style={{width:34,height:34,borderRadius:10,background:grad,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ico d={icon} size={17} stroke="#fff"/></div>
+      <div><p style={{fontSize:15,fontWeight:800}}>{t}</p>{sub&&<p style={{fontSize:11,color:"var(--text3)"}}>{sub}</p>}</div>
+    </div>
+  );
+  const kpi = (label, value, sub, color, icon) => (
+    <div style={{position:"relative",overflow:"hidden",borderRadius:14,padding:"14px 16px",background:`linear-gradient(135deg, ${color}, ${color}c0)`,color:"#fff",boxShadow:`0 6px 16px ${color}35`}}>
+      <div style={{position:"absolute",right:-16,top:-16,width:64,height:64,borderRadius:"50%",background:"rgba(255,255,255,0.15)"}}/>
+      <div style={{display:"flex",alignItems:"center",gap:6,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.06em",opacity:0.92}}><Ico d={icon} size={12} stroke="#fff"/>{label}</div>
+      <p style={{fontSize:26,fontWeight:900,fontFamily:"'Montserrat',sans-serif",lineHeight:1.15,marginTop:4}}>{value}</p>
+      <p style={{fontSize:11,opacity:0.9}}>{sub}</p>
+    </div>
+  );
+  const pc = v => v==null ? "var(--text3)" : v>=80 ? "#10b981" : v>=60 ? "#f59e0b" : "#ef4444";
+  const CAT = {bottleneck:"#ef4444",performance:"#10b981",workload:"#f59e0b",timing:"#3b82f6",quality:"#8b5cf6",general:"#6b7280"};
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(auto-fit,minmax(170px,1fr))",gap:12}}>
+        {kpi("Avg score", avgScore, `${rows.length} people · same as Team Performance`, "#6366f1", Icons.gauge)}
+        {kpi("Finished", done, rangeLabel, "#0ea5e9", Icons.check)}
+        {kpi("On time", onTimePct+"%", `${onTime} of ${done} finished`, onTimePct>=80?"#10b981":onTimePct>=60?"#f59e0b":"#ef4444", Icons.clock)}
+        {kpi("First-time right", firstTimePct+"%", "no revisions needed", "#8b5cf6", Icons.award)}
+        {kpi("Delayed now", delayedNow, "open tasks past due", delayedNow?"#ef4444":"#10b981", Icons.alert)}
+        {kpi("Tracked", trackedHrs.toFixed(0)+"h", "timer hours "+rangeLabel, "#f59e0b", Icons.activity)}
+      </div>
+
+      <div style={card}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,flexWrap:"wrap"}}>
+          {h("Team performance", `Finished work ${rangeLabel} · live status right now`, Icons.users, "linear-gradient(135deg,#6366f1,#8b5cf6)")}
+          <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{padding:"6px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:12}}>
+            <option value="score">Sort: score</option><option value="done">Sort: finished</option><option value="delayed">Sort: delayed now</option><option value="hrs">Sort: hours tracked</option>
+          </select>
+        </div>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:720,display:"table"}}>
+            <thead><tr style={{textAlign:"left",color:"var(--text3)",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em"}}>
+              {["Person","Score","Finished","On time","Avg revisions","Sent back","Open now","Delayed now","Tracked"].map(x=><th key={x} style={{padding:"8px 10px",fontWeight:800,borderBottom:"1px solid var(--border)"}}>{x}</th>)}
+            </tr></thead>
+            <tbody>{rows.map(r=>(
+              <tr key={r.m.id} style={{borderBottom:"1px solid var(--border)"}}>
+                <td style={{padding:"10px"}}><div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}><Avatar name={r.m.name} size={28}/><div style={{minWidth:0}}><p style={{fontWeight:700,whiteSpace:"nowrap"}}>{r.m.name}</p><p style={{fontSize:11,color:"var(--text3)"}}>{ROLES?.[r.m.role]?.label||r.m.role}</p></div></div></td>
+                <td style={{padding:"10px"}}><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:60,height:6,borderRadius:99,background:"var(--border)"}}><div style={{width:Math.min(100,r.score)+"%",height:"100%",borderRadius:99,background:perfColor(r.score)}}/></div><b style={{color:perfColor(r.score)}}>{r.score}</b></div></td>
+                <td style={{padding:"10px",fontWeight:700}}>{r.done}</td>
+                <td style={{padding:"10px",fontWeight:700,color:pc(r.onTimePct)}}>{r.onTimePct==null?"—":r.onTimePct+"%"}</td>
+                <td style={{padding:"10px",color:r.avgRev==null?"var(--text3)":r.avgRev>1?"#ef4444":r.avgRev>0.4?"#f59e0b":"#10b981",fontWeight:700}}>{r.avgRev==null?"—":r.avgRev.toFixed(1)}</td>
+                <td style={{padding:"10px",color:r.returned?"#f59e0b":"var(--text3)",fontWeight:700}}>{r.returned||"—"}</td>
+                <td style={{padding:"10px"}}>{r.open||"—"}</td>
+                <td style={{padding:"10px"}}>{r.delayed?<span style={{fontWeight:800,color:"#ef4444",background:"#ef444418",padding:"2px 8px",borderRadius:99}}>{r.delayed} · {r.delayHrs.toFixed(0)}h</span>:<span style={{color:"#10b981",fontWeight:700}}>✓</span>}</td>
+                <td style={{padding:"10px"}}>{r.hrs?r.hrs.toFixed(1)+"h":"—"}</td>
+              </tr>))}
+              {rows.length===0&&<tr><td colSpan={9} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>No team members match the filters.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fit,minmax(340px,1fr))",gap:16}}>
+        <div style={card}>
+          {h("Pipeline & bottleneck", bottleneck&&(bottleneck.waiting||bottleneck.overdue)?`Biggest pile-up: ${bottleneck.label} (${bottleneck.waiting} waiting, ${bottleneck.overdue} overdue)`:"No pile-ups right now", Icons.flow, "linear-gradient(135deg,#ef4444,#f97316)")}
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {stageRows.map(s=>(
+              <div key={s.k}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
+                  <span style={{fontWeight:700,display:"flex",alignItems:"center",gap:6}}><span style={{width:8,height:8,borderRadius:"50%",background:s.color}}/>{s.label}</span>
+                  <span style={{color:"var(--text3)"}}><b style={{color:"var(--text)"}}>{s.waiting}</b> waiting{s.overdue?<b style={{color:"#ef4444"}}> · {s.overdue} overdue</b>:""} · {s.n?`~${s.med<24?s.med.toFixed(1)+"h":(s.med/24).toFixed(1)+"d"} in stage`:"no history"}</span>
+                </div>
+                <div style={{height:8,borderRadius:99,background:"var(--border)",overflow:"hidden",display:"flex"}}>
+                  <div style={{width:((s.waiting-s.overdue)/maxWait*100)+"%",background:s.color}}/><div style={{width:(s.overdue/maxWait*100)+"%",background:"#ef4444"}}/>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={card}>
+          {h("When work gets finished", done?`Peak hour ${peakH>12?peakH-12+"pm":peakH+"am"} · busiest day ${bestDay}`:"No finished work in this range", Icons.clock, "linear-gradient(135deg,#0ea5e9,#6366f1)")}
+          <div style={{display:"flex",alignItems:"flex-end",gap:3,height:110}}>
+            {hourSlice.map((c,i)=>(<div key={i} title={`${i+H0}:00 — ${c} finished`} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,height:"100%",justifyContent:"flex-end"}}>
+              <div style={{width:"100%",height:Math.max(3,c/maxH*90),borderRadius:4,background:i+H0===peakH&&c?"linear-gradient(180deg,#f59e0b,#ef4444)":"linear-gradient(180deg,#6366f1,#0ea5e9)",opacity:c?1:0.25}}/>
+              <span style={{fontSize:9,color:"var(--text3)"}}>{(i+H0)%12||12}</span></div>))}
+          </div>
+          <div style={{display:"flex",gap:6,marginTop:16}}>
+            {dayNames.map((d,i)=>(<div key={d} style={{flex:1,textAlign:"center"}}>
+              <div style={{height:34,borderRadius:8,background:days[i]?`rgba(99,102,241,${0.15+0.85*days[i]/maxD})`:"var(--surface2)",color:days[i]/maxD>0.5?"#fff":"var(--text)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:12}}>{days[i]}</div>
+              <span style={{fontSize:10,color:"var(--text3)"}}>{d}</span></div>))}
+          </div>
+        </div>
+      </div>
+
+      <div style={card}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,flexWrap:"wrap"}}>
+          {h("AI insights", live?"Fresh analysis of the numbers above":saved.length?"Latest saved analysis":"Analyse the numbers above with AI", Icons.sparkle, "linear-gradient(135deg,#8b5cf6,#ec4899)")}
+          <Btn onClick={runAI} disabled={gen}>{gen?<><Spinner size={14}/> Analysing…</>:<><Ico d={Icons.sparkle} size={15}/> Generate insights</>}</Btn>
+        </div>
+        {insights.length===0 ? <p style={{fontSize:13,color:"var(--text3)",padding:"20px 0",textAlign:"center"}}>No insights yet — press Generate insights.</p> :
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(280px,100%),1fr))",gap:12}}>
+          {insights.map((ins,i)=>{ const c = CAT[ins.category]||"#6b7280"; const pr={high:"#ef4444",medium:"#f59e0b",low:"#10b981"}[ins.priority]||"#6b7280"; return (
+            <div key={i} style={{borderRadius:14,padding:14,background:`linear-gradient(160deg, ${c}14, transparent 65%), var(--surface2)`,border:`1px solid ${c}40`,display:"flex",flexDirection:"column",gap:8}}>
+              <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start"}}>
+                <p style={{fontSize:13,fontWeight:800,color:c}}>{ins.title}</p>
+                <span style={{fontSize:10,fontWeight:800,textTransform:"uppercase",color:"#fff",background:pr,padding:"2px 8px",borderRadius:99,flexShrink:0}}>{ins.priority||"medium"}</span>
+              </div>
+              <p style={{fontSize:13,lineHeight:1.55}}>{ins.insight}</p>
+              {ins.action&&<div style={{display:"flex",gap:6,padding:"8px 10px",borderRadius:8,background:c+"14",fontSize:12,fontWeight:700,color:c}}><Ico d={Icons.arrow} size={13} stroke={c}/>{ins.action}</div>}
+            </div>); })}
+        </div>}
+      </div>
+    </div>
+  );
+}
+
 function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAddTask,onCreateInvoice,onAddProject,onOpenPost,onMarkNotifRead,onSaveInsights,onDecideLeaveRequest,appSettings}) {
   if(currentUser?.role==="hr") return <HRDashboard team={data.team} perfLogs={data.perfLogs||[]} currentUser={currentUser} setPage={setPage}/>;
   const {posts,projects,clients,team,timelogs,notifications} = data;
@@ -10896,7 +11108,8 @@ function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAdd
   const isAdmin = currentUser?.role==="admin";
   const {isMobile} = useResponsive();
 
-  const [tab,setTab] = usePersistentState("sf_tab_dashboard","overview");
+  const [tab0,setTab] = usePersistentState("sf_tab_dashboard","overview");
+  const tab = ["team","analytics"].includes(tab0) ? "insights" : tab0; // old tabs merged into Team & Insights
   const [dateRange,setDateRange] = useState("all");
   const [filterUser,setFilterUser] = useState("all");
   const [filterClient,setFilterClient] = useState("all");
@@ -11056,13 +11269,12 @@ Return ONLY a JSON array of 4 objects:
 [{"title":"...","insight":"2 sentences","action":"1 sentence recommendation","category":"bottleneck|performance|workload|timing|quality","priority":"high|medium|low"}]
 No markdown, no explanation.`;
 
-      const r = await fetch(AI_ENDPOINT,{
-        method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:DEFAULT_AI_MODEL,max_tokens:800,messages:[{role:"user",content:prompt}]})
-      });
-      const d = await r.json();
-      const raw=(d.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
-      const parsed=JSON.parse(raw);
+      // Go through agentAI (correct proxy headers + model fallback) — the raw
+      // fetch here was missing the AI headers, so it always failed with "Error".
+      const txt = await agentAI("content_creator", "Dashboard AI insights", prompt, 1200);
+      const m = String(txt||"").replace(/```json|```/g,"").match(/\[[\s\S]*\]/);
+      const parsed = JSON.parse(m ? m[0] : "[]");
+      if(!Array.isArray(parsed) || !parsed.length) throw new Error("empty");
       setLiveInsights(parsed);
       // Previously these only ever lived in this component's own state —
       // gone the moment you navigated away, and never seen by Team
@@ -11080,9 +11292,7 @@ No markdown, no explanation.`;
 
   const dashTabs=[
     {k:"overview",l:"Overview",ml:"Overview"},
-    {k:"team",l:"Team Performance",ml:"Team"},
-    {k:"analytics",l:"Analytics",ml:"Analytics"},
-    {k:"insights",l:"AI Insights",ml:"AI"},
+    {k:"insights",l:"Team & Insights",ml:"Team"},
   ];
 
   return (
@@ -11521,7 +11731,8 @@ No markdown, no explanation.`;
       )}
 
       {/* ════ TEAM PERFORMANCE TAB ════ */}
-      {tab==="team"&&isAdmin&&(
+      {["team","analytics","insights"].includes(tab)&&isAdmin&&<TeamInsightsPanel data={data} dateRange={dateRange} filterUser={filterUser} filterClient={filterClient} onSaveInsights={onSaveInsights}/>}
+      {tab==="team"&&isAdmin&&false&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
           {/* Top performer banner */}
           {topPerformer&&(
@@ -11631,7 +11842,7 @@ No markdown, no explanation.`;
       )}
 
       {/* ════ ANALYTICS TAB ════ */}
-      {tab==="analytics"&&isAdmin&&(
+      {tab==="analytics"&&isAdmin&&false&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(260px,100%),1fr))",gap:14}}>
 
@@ -11750,7 +11961,7 @@ No markdown, no explanation.`;
       )}
 
       {/* ════ AI INSIGHTS TAB ════ */}
-      {tab==="insights"&&isAdmin&&(
+      {tab==="insights"&&isAdmin&&false&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <div>
@@ -36662,13 +36873,9 @@ ${partnerTotals.map(p=>`- ${p.name}: EGP ${Math.round(p.total).toLocaleString()}
 Return ONLY a JSON array of 4-6 objects:
 [{"title":"...","insight":"2 sentences describing the finding","action":"1 sentence recommendation","category":"cash_flow|spending|client_risk|partner|growth|general","priority":"high|medium|low"}]
 No markdown, no explanation.`;
-                const r = await fetch(AI_ENDPOINT,{
-                  method:"POST",headers:{"Content-Type":"application/json"},
-                  body:JSON.stringify({model:DEFAULT_AI_MODEL,max_tokens:1000,messages:[{role:"user",content:prompt}]})
-                });
-                const d = await r.json();
-                const raw=(d.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
-                setFinanceInsights(JSON.parse(raw));
+                const txt = await agentAI("account_executive", "Finance AI insights", prompt, 1400);
+                const m = String(txt||"").replace(/```json|```/g,"").match(/\[[\s\S]*\]/);
+                setFinanceInsights(JSON.parse(m ? m[0] : "[]"));
               } catch(e) { setFinanceInsights([{title:"Error",insight:"Could not generate insights. Check API connection.",action:"",category:"general",priority:"low"}]); }
               setGenFinanceInsights(false);
             }} disabled={genFinanceInsights}>
