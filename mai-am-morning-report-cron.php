@@ -5,7 +5,8 @@
  * Skips Friday/Saturday (the agency's weekend). Idempotent — safe to
  * re-run; maiStartReportSession() no-ops if today's session already exists.
  *
- *   0 12 * * * /usr/bin/php /var/www/socialflow/mai-am-morning-report-cron.php >> /var/www/socialflow/mai-am-report-cron.log 2>&1
+ *   0,15,30,45 * * * * (per-AM time from Mai Reports tab; default 12:00)
+ *   was: 0 12 * * * /usr/bin/php /var/www/socialflow/mai-am-morning-report-cron.php >> /var/www/socialflow/mai-am-report-cron.log 2>&1
  */
 
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
@@ -23,10 +24,11 @@ $pdo = new PDO(
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
 );
 
-$ams = $pdo->query("SELECT id, name, email, whatsapp_number FROM team_members WHERE role IN ('account_manager','account_executive') AND status = 'active' AND mai_checkins_enabled = 1 AND whatsapp_number IS NOT NULL AND whatsapp_number != ''")->fetchAll(PDO::FETCH_ASSOC);
+$ams = $pdo->query("SELECT id, name, email, whatsapp_number, mai_checkin_config FROM team_members WHERE role IN ('account_manager','account_executive') AND status = 'active' AND mai_checkins_enabled = 1 AND whatsapp_number IS NOT NULL AND whatsapp_number != ''")->fetchAll(PDO::FETCH_ASSOC);
 $started = 0;
 foreach ($ams as $am) {
     try {
+        if (!maiCheckinDueNow($am, 'morning', '12:00')) continue;
         if (maiStartReportSession($pdo, $am, 'morning')) $started++;
     } catch (Throwable $e) {
         error_log('[mai-am-morning-report-cron] ' . $am['name'] . ': ' . $e->getMessage());

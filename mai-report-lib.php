@@ -60,6 +60,33 @@ const MAI_DIRECTOR_CHECKLIST = [
     'admin_attention' => 'Anything that needs the admin\'s attention or a decision',
 ];
 
+// Per-account-manager control (team_members.mai_checkin_config JSON, set
+// from the AM's "Mai Reports" tab): which checklist points Mai asks about
+// and what time each check-in starts. Missing/empty = all points, default time.
+function maiAmConfig(array $am) {
+    $c = json_decode($am['mai_checkin_config'] ?? '', true);
+    return is_array($c) ? $c : [];
+}
+function maiChecklistForAm(array $am, $reportType) {
+    $all = maiChecklistFor($reportType);
+    if ($reportType === 'director') return $all;
+    $keys = maiAmConfig($am)[$reportType . '_items'] ?? null;
+    if (!is_array($keys)) return $all;
+    $f = array_intersect_key($all, array_flip($keys));
+    return $f ?: $all; // never start an empty check-in
+}
+// True when this AM's check-in should start now: at/after their configured
+// time (HH:MM) and within 3h of it. Cron runs every 15 min; the session's
+// unique key keeps it to once a day.
+function maiCheckinDueNow(array $am, $reportType, $defaultTime) {
+    $t = maiAmConfig($am)[$reportType . '_time'] ?? $defaultTime;
+    if (!preg_match('/^(\d{1,2}):(\d{2})$/', (string)$t, $m)) $t = $defaultTime;
+    [$h, $i] = array_map('intval', explode(':', $t));
+    $now = (int)date('G') * 60 + (int)date('i');
+    $at = $h * 60 + $i;
+    return $now >= $at && $now < $at + 180;
+}
+
 function maiChecklistFor($reportType) {
     if ($reportType === 'director') return MAI_DIRECTOR_CHECKLIST;
     return $reportType === 'eod' ? MAI_EOD_CHECKLIST : MAI_MORNING_CHECKLIST;
@@ -207,7 +234,7 @@ function maiStartReportSession(PDO $pdo, array $am, $reportType) {
 
     if (!waPrefAllows($pdo, $am['email'], 'wa_am_reports')) return null;
 
-    $checklist = maiChecklistFor($reportType);
+    $checklist = maiChecklistForAm($am, $reportType);
     $checklistState = [];
     foreach ($checklist as $key => $label) { $checklistState[$key] = ['label' => $label, 'done' => false, 'note' => null]; }
 

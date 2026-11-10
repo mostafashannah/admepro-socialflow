@@ -21320,6 +21320,56 @@ function MemberScoringTab({member, perfLogs, maiReportSessions, posts=[]}) {
 // — score per session, which checklist items were/weren't confirmed, and
 // the full transcript on demand. Fetches its own data (mai_report_sessions
 // isn't part of the app's normal preloaded data set).
+// Per-AM control of Mai's check-ins: which checklist points she asks
+// about and what time each check-in starts. Saved to
+// team_members.mai_checkin_config, read by mai-report-lib.php.
+const MAI_AM_CHECKLISTS = {
+  morning: [["checked_platforms","Checked social platforms for all assigned clients"],["checked_ad_accounts","Checked ad accounts for all assigned clients"],["answered_comms","Answered all client calls/messages"],["confirmed_posting","Confirmed today's posts are published or scheduled"],["confirmed_meetings","Confirmed today's meetings"],["confirmed_submissions","Confirmed today's submissions/deliverables"],["confirmed_lead_followups","Confirmed lead calls/follow-ups for today"]],
+  eod: [["meetings_logged","Today's meetings each have a contact report logged"],["submissions_done","Today's submissions/deliverables were delivered"],["morning_items_done","Open items from the morning check-in are resolved or explained"]],
+};
+function MaiCheckinConfigPanel({member, onUpdateTeamMember}) {
+  const parse = v => { try { const o = typeof v==="string" ? JSON.parse(v||"{}") : (v||{}); return o&&typeof o==="object"?o:{}; } catch(e){ return {}; } };
+  const [cfg, setCfg] = useState(()=>parse(member.mai_checkin_config));
+  const [saved, setSaved] = useState(false);
+  useEffect(()=>{ setCfg(parse(member.mai_checkin_config)); },[member.id]);
+  const save = next => { setCfg(next); onUpdateTeamMember && onUpdateTeamMember(member.id, {mai_checkin_config: JSON.stringify(next)}); setSaved(true); setTimeout(()=>setSaved(false),1500); };
+  const section = (type, title, defTime) => {
+    const all = MAI_AM_CHECKLISTS[type].map(x=>x[0]);
+    const sel = Array.isArray(cfg[type+"_items"]) ? cfg[type+"_items"] : all;
+    const toggle = k => { const n = sel.includes(k) ? sel.filter(x=>x!==k) : [...sel,k]; if(!n.length) return; save({...cfg, [type+"_items"]: all.filter(x=>n.includes(x))}); };
+    return (
+      <div style={{flex:"1 1 260px",minWidth:0,display:"flex",flexDirection:"column",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
+          <p style={{fontSize:13,fontWeight:800}}>{title}</p>
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--text2)",fontWeight:600}}>Time
+            <input type="time" value={cfg[type+"_time"]||defTime} onChange={e=>e.target.value&&save({...cfg,[type+"_time"]:e.target.value})} style={{padding:"5px 8px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:12}}/>
+          </label>
+        </div>
+        {MAI_AM_CHECKLISTS[type].map(([k,label])=>(
+          <label key={k} style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:12,cursor:"pointer",opacity:sel.includes(k)?1:0.55}}>
+            <input type="checkbox" checked={sel.includes(k)} onChange={()=>toggle(k)} style={{marginTop:2}}/>{label}
+          </label>
+        ))}
+      </div>
+    );
+  };
+  return (
+    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+        <div>
+          <p style={{fontSize:13,fontWeight:800}}>Check-in points & times</p>
+          <p style={{fontSize:11,color:"var(--text3)"}}>Choose which points Mai checks with {(member.name||"").split(" ")[0]} and when each check-in starts (weekdays). Only ticked points are scored.</p>
+        </div>
+        {saved&&<span style={{fontSize:11,fontWeight:700,color:"#10b981"}}>✓ Saved</span>}
+      </div>
+      <div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
+        {section("morning","Morning check-in","12:00")}
+        {section("eod","End-of-day check-in","19:00")}
+      </div>
+    </div>
+  );
+}
+
 function AccountManagerMaiReportsTab({member, onUpdateTeamMember}) {
   const [sessions, setSessions] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
@@ -21355,13 +21405,13 @@ function AccountManagerMaiReportsTab({member, onUpdateTeamMember}) {
   };
 
   const missedOnFile = (sessions||[]).filter(s=>s.status==="missed").length;
-  const headerBar = (
+  const headerBarInner = (
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",padding:"12px 16px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12}}>
       <div style={{display:"flex",alignItems:"center",gap:10}}>
         <PermSwitch checked={enabled} onChange={toggleEnabled}/>
         <div>
           <p style={{fontSize:13,fontWeight:700}}>{enabled?"Check-ins on":"Check-ins paused"}</p>
-          <p style={{fontSize:11,color:"var(--text3)"}}>{enabled?(isDirector?"Mai texts them once every weekday at 7:30pm.":"Mai texts them every weekday at 12pm and 7pm."):"Mai won't message them until this is switched back on — useful while they're still training."}</p>
+          <p style={{fontSize:11,color:"var(--text3)"}}>{enabled?(isDirector?"Mai texts them once every weekday at 7:30pm.":"Mai texts them every weekday at the times set below."):"Mai won't message them until this is switched back on — useful while they're still training."}</p>
         </div>
       </div>
       {missedOnFile>0 && (
@@ -21372,6 +21422,7 @@ function AccountManagerMaiReportsTab({member, onUpdateTeamMember}) {
     </div>
   );
 
+  const headerBar = (<>{headerBarInner}{!isDirector&&<MaiCheckinConfigPanel member={member} onUpdateTeamMember={onUpdateTeamMember}/>}</>);
   if(sessions===null) return <div style={{padding:30,display:"flex",justifyContent:"center"}}><Spinner size={18}/></div>;
   if(sessions.length===0) return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
