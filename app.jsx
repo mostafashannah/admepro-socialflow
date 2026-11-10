@@ -734,7 +734,7 @@ function minsToAmPm(mins) {
   return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
 }
 
-function generateDailySchedule(posts, userEmail, date, userRole) {
+function generateDailySchedule(posts, userEmail, date, userRole, includeGhosts=false) {
   // Show tasks whose due_date matches the selected day; fall back to
   // tasks with no due_date only for "today" so the schedule makes sense
   // when navigating forward/backward.
@@ -970,6 +970,32 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
   // otherwise a real "what did they actually get done today" glance meant
   // scanning the whole list for the DESIGN badge vs not.
   slots.sort((a,b) => (b.completed_today - a.completed_today) || (a.start_mins - b.start_mins));
+  // Ghost slots (timeline rows only): a task that was LATE on this day and then moved to a later day stays on this day as a red, frozen-delay block,
+  // while its new slot appears on the new day. History comes from posts.due_history (filled by a database trigger on every due-date change).
+  if(includeGhosts) {
+    posts.forEach(p=>{
+      if(p.is_routine || p.is_plan_parent || !p.due_history || !wasOwnerOf(p, userEmail, userRole)) return;
+      let hist = []; try { hist = Array.isArray(p.due_history) ? p.due_history : JSON.parse(p.due_history); } catch(e) { hist = []; }
+      hist.forEach(h=>{
+        if(!h || String(h.date).slice(0,10) !== date) return;
+        if(h.to && String(h.to).slice(0,10) <= date) return;           // only moves to a LATER day
+        if(p.due_date && String(p.due_date).slice(0,10) === date) return; // it is due again on this very day — the live slot covers it
+        const hhmm = (h.time && /^\d{1,2}:\d{2}/.test(h.time)) ? h.time.slice(0,5) : "23:59";
+        const [hh,mm] = hhmm.split(":").map(Number);
+        const dueTs = new Date(`${date}T00:00:00`); dueTs.setHours(hh, mm, 0, 0);
+        const atMs = h.at ? parseSqlUtc(h.at).getTime() : 0;
+        if(!atMs || atMs <= dueTs.getTime()) return;                      // moved before it ever became late — no delay happened
+        const est = Number(h.minutes) > 0 ? Number(h.minutes) : 60;
+        const cursor = Math.max(WORKING_START*60, Math.min(hh*60+mm-est, WORKING_END*60-est));
+        const endOfDay = new Date(dueTs); endOfDay.setHours(23,59,59,999);
+        slots.push({
+          post_id: p.id, start_mins: cursor, end_mins: cursor+est, start_time: minsToAmPm(cursor), end_time: minsToAmPm(cursor+est), duration_mins: est,
+          completed_today: false, overdue: true, ghost: true, ghost_to: String(h.to||"").slice(0,10),
+          ghost_delay_secs: workingDelaySecs(dueTs.getTime(), Math.min(atMs, endOfDay.getTime())),
+        });
+      });
+    });
+  }
   return slots;
 }
 
@@ -39352,7 +39378,8 @@ function MemberRatingBadge({member}) {
   const stars = Math.round(perf.score/100*5*10)/10;
   return <span title={`Overall rating ${stars.toFixed(1)} / 5`} style={{position:"absolute",left:"50%",bottom:-7,transform:"translateX(-50%)",background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:99,padding:"0 6px",fontSize:10,fontWeight:800,lineHeight:"15px",whiteSpace:"nowrap",boxShadow:"0 1px 3px rgba(0,0,0,0.25)",color:"var(--text)"}}>{stars.toFixed(1)} <span style={{color:"#f59e0b"}}>★</span></span>;
 }
-function MemberHoverCard({member, slots=[], dateStr, members=[], style, children}) {
+function MemberHoverCard({member, slots:allSlots=[], dateStr, members=[], style, children}) {
+  const slots = allSlots.filter(x=>!x.ghost);
   const [pos,setPos] = useState(null);
   const show = e => { const r = e.currentTarget.getBoundingClientRect(); setPos({x:Math.min(r.right+8, window.innerWidth-320), y:Math.max(8, Math.min(r.top-10, window.innerHeight-380))}); };
   let card = null;
@@ -39676,7 +39703,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             </div>
           </div>
           {[...timelineMembers.filter(m=>!(collapsedRows||{})[m.email]), ...timelineMembers.filter(m=>!!(collapsedRows||{})[m.email])].map(member=>{ // stacked (collapsed) people sink to the bottom, above the AI agents
-            const memberSlots = generateDailySchedule(posts, member.email, dateStr, member.role).map(slot=>{
+            const memberSlots = generateDailySchedule(posts, member.email, dateStr, member.role, true).map(slot=>{
               const ov = (scheduleOverrides||[]).find(o=>o.post_id===slot.post_id && o.user_email===member.email && o.date===dateStr);
               if(!ov) return slot;
               const dur = slot.end_mins - slot.start_mins;
@@ -39821,7 +39848,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     // It's finished/historical work anyway, so it's locked
                     // from dragging entirely rather than letting a move on
                     // one day's view surprise-relocate it on another.
-                    const canMove = !!(isAM&&onMoveTask&&post&&!slot.completed_today);
+                    const canMove = !!(isAM&&onMoveTask&&post&&!slot.completed_today&&!slot.ghost);
                     return (
                       <div key={slot.post_id} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})${slot.overdue?" — OVERDUE":""}${slot.completed_today?" — Done, moved to review":""}${canMove?" — drag, or right-click to move (works across days too)":""}`}
                         onClick={(e)=>{e.stopPropagation();onPostClick&&post&&onPostClick(post);}}
@@ -39838,8 +39865,8 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                           {post&&<TaskThumb post={post} team={team} size={34}/>}
                           <div style={{display:"flex",flexDirection:"column",minWidth:0,flex:1,lineHeight:1.25}}>
                             <span style={{fontSize:11.5,color:"#fff",fontWeight:800,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
-                            {widthPct>8&&<span style={{fontSize:9.5,color:"#fff",opacity:0.9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slot.start_time}–{slot.end_time}{post?.is_routine?` · 🔁 ${routineCounts(post).done}/${routineCounts(post).total}`:""}{slot.overdue?" · OVERDUE":slot.completed_today?" · Done":""}</span>}
-                            {widthPct>12&&(post&&postDelayInfo(post) ? <DelayBadge post={post} light/> : post&&postTimerInfo(post) ? <LiveTimerBadge post={post} light/> : <span style={{fontSize:9,color:"#fff",opacity:0.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{[post?.client_name, stage?.label].filter(Boolean).join(" · ")}</span>)}
+                            {widthPct>8&&<span style={{fontSize:9.5,color:"#fff",opacity:0.9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slot.start_time}–{slot.end_time}{slot.ghost?` · moved to ${fmtDate(slot.ghost_to)}`:""}{post?.is_routine?` · 🔁 ${routineCounts(post).done}/${routineCounts(post).total}`:""}{slot.overdue?" · OVERDUE":slot.completed_today?" · Done":""}</span>}
+                            {widthPct>12&&(slot.ghost ? <span style={{fontSize:10,fontWeight:800,color:"#fff",fontFamily:"monospace",whiteSpace:"nowrap"}}>⏸ Delayed {(()=>{const t=Math.max(0,slot.ghost_delay_secs||0);return `${String(Math.floor(t/3600)).padStart(2,"0")}:${String(Math.floor(t%3600/60)).padStart(2,"0")}:${String(t%60).padStart(2,"0")}`;})()}</span> : post&&postDelayInfo(post) ? <DelayBadge post={post} light/> : post&&postTimerInfo(post) ? <LiveTimerBadge post={post} light/> : <span style={{fontSize:9,color:"#fff",opacity:0.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{[post?.client_name, stage?.label].filter(Boolean).join(" · ")}</span>)}
                           </div>
                         </div>
                       </div>
