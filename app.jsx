@@ -40263,6 +40263,11 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   // that day count (an empty timeline means they weren't working, so they don't drag the average down).
   const workingMembers = combinedView ? timelineMembers.filter(m=>generateDailySchedule(posts, m.email, dateStr, m.role).length>0) : [];
   const avgTrackedSecs = combinedView && workingMembers.length ? Math.round(combinedTrackedSecs / workingMembers.length) : 0;
+  // Same, without the account team (AM / AE / AD) — production time only.
+  const ACCT = ["account_manager","account_executive","account_director"];
+  const prodWorking = workingMembers.filter(m=>!ACCT.includes(m.role));
+  const prodTrackedSecs = combinedView ? prodWorking.reduce((sum,m)=>sum + (timeEntries||[]).filter(t=>t.user_email===m.email && t.date===dateStr).reduce((acc,t)=>acc + (Number(t.total_seconds)||0) + (t.status==='active' ? Math.floor((Date.now()-parseSqlUtc(t.started_at).getTime())/1000) : 0),0), 0) : 0;
+  const prodAvgSecs = prodWorking.length ? Math.round(prodTrackedSecs / prodWorking.length) : 0;
   const combinedActiveTimers = combinedView ? timelineMembers.flatMap(m=>(timeEntries||[]).filter(t=>t.user_email===m.email && t.status==='active')) : null;
   const combinedCompletionPct = combinedView && combinedSlots.length > 0 ? Math.round(combinedSlots.filter(s => s.completed_today).length / combinedSlots.length * 100) : 0;
 
@@ -40340,13 +40345,14 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
         {[
           {label:"Total Tasks",value:summaryTotalTasks,color:"var(--accent)"},
           {label:"Active Now",value:summaryActiveNow,color:"#10b981",split:activeBreakdown},
-          {label:"Time Tracked",value:fmtSecs(summaryTrackedSecs),color:"#3b82f6",note:combinedView?`Avg ${fmtSecs(avgTrackedSecs)} per person · ${workingMembers.length} working`:null},
+          {label:"Time Tracked",value:fmtSecs(summaryTrackedSecs),color:"#3b82f6",note:combinedView?`Avg ${fmtSecs(avgTrackedSecs)} per person · ${workingMembers.length} working`:null,note2:combinedView?`Without account team: ${fmtSecs(prodTrackedSecs)} · avg ${fmtSecs(prodAvgSecs)} (${prodWorking.length})`:null},
           {label:"Completion",value:`${summaryCompletionPct}%`,color:"#f59e0b"},
         ].map(stat=>(
           <div key={stat.label} style={{padding:14,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",display:"flex",flexDirection:"column",gap:4}}>
             <p style={{fontSize:11,color:"var(--text3)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{stat.label}</p>
             <p style={{fontSize:20,fontWeight:800,color:stat.color,fontFamily:"monospace"}}>{stat.value}</p>
             {stat.note&&<p style={{fontSize:11,fontWeight:700,color:"var(--text3)"}}>{stat.note}</p>}
+            {stat.note2&&<p style={{fontSize:11,fontWeight:700,color:"var(--text3)"}}>{stat.note2}</p>}
             {stat.split&&<div style={{display:"flex",gap:10,fontSize:11,fontWeight:700}}><span style={{color:"#16a34a"}}>● {stat.split.onTime} on time</span><span style={{color:"#ef4444"}}>● {stat.split.delayed} delayed</span></div>}
           </div>
         ))}
