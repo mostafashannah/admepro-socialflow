@@ -10987,16 +10987,15 @@ Return ONLY a JSON array of 5 objects: [{"title":"short","insight":"2 sentences 
   const card = {background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:18};
   const h = (t, sub, icon, grad) => (
     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-      <div style={{width:34,height:34,borderRadius:10,background:grad,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ico d={icon} size={17} stroke="#fff"/></div>
+      <div style={{width:32,height:32,borderRadius:9,background:"var(--surface2)",border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ico d={icon} size={16} stroke="var(--text2)"/></div>
       <div><p style={{fontSize:15,fontWeight:800}}>{t}</p>{sub&&<p style={{fontSize:11,color:"var(--text3)"}}>{sub}</p>}</div>
     </div>
   );
   const kpi = (label, value, sub, color, icon) => (
-    <div style={{position:"relative",overflow:"hidden",borderRadius:14,padding:"14px 16px",background:`linear-gradient(135deg, ${color}, ${color}c0)`,color:"#fff",boxShadow:`0 6px 16px ${color}35`}}>
-      <div style={{position:"absolute",right:-16,top:-16,width:64,height:64,borderRadius:"50%",background:"rgba(255,255,255,0.15)"}}/>
-      <div style={{display:"flex",alignItems:"center",gap:6,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.06em",opacity:0.92}}><Ico d={icon} size={12} stroke="#fff"/>{label}</div>
-      <p style={{fontSize:26,fontWeight:900,fontFamily:"'Montserrat',sans-serif",lineHeight:1.15,marginTop:4}}>{value}</p>
-      <p style={{fontSize:11,opacity:0.9}}>{sub}</p>
+    <div style={{borderRadius:14,padding:"14px 16px",background:"var(--surface)",border:"1px solid var(--border)",borderTop:`3px solid ${color}`}}>
+      <div style={{display:"flex",alignItems:"center",gap:6,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.06em",color:"var(--text3)"}}><Ico d={icon} size={12} stroke={color}/>{label}</div>
+      <p style={{fontSize:26,fontWeight:800,fontFamily:"'Montserrat',sans-serif",lineHeight:1.15,marginTop:4}}>{value}</p>
+      <p style={{fontSize:11,color:"var(--text3)"}}>{sub}</p>
     </div>
   );
   const pc = v => v==null ? "var(--text3)" : v>=80 ? "#10b981" : v>=60 ? "#f59e0b" : "#ef4444";
@@ -11102,7 +11101,8 @@ Return ONLY a JSON array of 5 objects: [{"title":"short","insight":"2 sentences 
 // going out, finance (this month, trend, money owed), pipeline and
 // client health.
 // ════════════════════════════════════════════════════════════════
-function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, onlineEmails, onlineClients=[]}) {
+function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, onlineEmails, onlineClients=[], viewer=null}) {
+  const isDirector = viewer?.role==="account_director"; // same centre, no finance, only her own approvals
   const {isMobile} = useResponsive();
   const posts = data.posts||[], team = data.team||[], clients = (data.clients||[]).filter(c=>c.status!=="hidden"&&c.status!=="archived");
   const invoices = data.invoices||[], payments = data.payments||[], subs = data.subscriptions||[], subPays = data.subscriptionPayments||[], expenses = data.expenses||[];
@@ -11114,7 +11114,8 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
   const fmt = n => (Math.round(n)).toLocaleString();
   const tms = v => { const d = v ? parseSqlUtc(v) : null; return d && !isNaN(d) ? d.getTime() : NaN; };
   // ── Needs action
-  const leaves = (data.leaveRequests||[]).filter(r=>r.status==="pending");
+  const meRec = isDirector ? team.find(m=>m.email===viewer.email) : null;
+  const leaves = (data.leaveRequests||[]).filter(r=>r.status==="pending" && (!isDirector || (meRec && team.find(m=>m.id===r.team_member_id)?.manager_id===meRec.id)));
   const pcfg = pointsConfig(data.appSettings||pointsBridge.appSettings);
   const prizeReq = (pcfg.redemptions||[]).filter(r=>r.status==="pending");
   const approvals = posts.filter(p=>["internal_review","design_review"].includes(p.stage));
@@ -11123,10 +11124,10 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
   const missedMai = (data.maiReportSessions||[]).filter(s=>s.status==="missed" && String(s.report_date||"").slice(0,10)>=new Date(Date.now()-2*864e5).toISOString().slice(0,10));
   const actions = [
     leaves.length && {n:leaves.length, l:"leave / WFH request"+(leaves.length>1?"s":""), c:"#3b82f6", ico:Icons.calendar, go:()=>setPage("users")},
-    prizeReq.length && {n:prizeReq.length, l:"prize request"+(prizeReq.length>1?"s":""), c:"#8b5cf6", ico:Icons.award, go:()=>setPage("performance")},
+    !isDirector && prizeReq.length && {n:prizeReq.length, l:"prize request"+(prizeReq.length>1?"s":""), c:"#8b5cf6", ico:Icons.award, go:()=>setPage("performance")},
     approvals.length && {n:approvals.length, l:"post"+(approvals.length>1?"s":"")+" waiting internal review", c:"#f59e0b", ico:Icons.eye, go:()=>setPage("tasks")},
-    overdueInv.length && {n:overdueInv.length, l:"overdue invoice"+(overdueInv.length>1?"s":""), c:"#ef4444", ico:Icons.invoice, go:()=>setPage("invoices")},
-    overdueSubs.length && {n:overdueSubs.length, l:"overdue subscription"+(overdueSubs.length>1?"s":""), c:"#ef4444", ico:Icons.repeat, go:()=>setPage("subscriptions")},
+    !isDirector && overdueInv.length && {n:overdueInv.length, l:"overdue invoice"+(overdueInv.length>1?"s":""), c:"#ef4444", ico:Icons.invoice, go:()=>setPage("invoices")},
+    !isDirector && overdueSubs.length && {n:overdueSubs.length, l:"overdue subscription"+(overdueSubs.length>1?"s":""), c:"#ef4444", ico:Icons.repeat, go:()=>setPage("subscriptions")},
     missedMai.length && {n:missedMai.length, l:"missed Mai check-in"+(missedMai.length>1?"s":""), c:"#f97316", ico:Icons.chat, go:()=>setPage("users")},
   ].filter(Boolean);
   // ── Today
@@ -11245,7 +11246,7 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
       </div>
 
       {/* Finance */}
-      <div style={card}>
+      {!isDirector&&<div style={card}>
         {head("Finance", `${today.toLocaleDateString(undefined,{month:"long",year:"numeric"})} · cash actually received and spent`, Icons.wallet, "linear-gradient(135deg,#10b981,#0ea5e9)", link("Open Finance","finance"))}
         <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(auto-fit,minmax(170px,1fr))",gap:12}}>
           {[
@@ -11290,7 +11291,7 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
             </div>}
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* Online now — real presence (last_seen heartbeat), team + client portal */}
       {(()=>{ const onTeam = team.filter(m=>m.status==="active" && onlineEmails && onlineEmails.has(m.email)); return (
@@ -11617,7 +11618,7 @@ No markdown, no explanation.`;
           <FAB currentUser={currentUser} onAddClient={onAddClient} onAddCalendar={onAddCalendar} onAddTask={onAddTask} onCreateInvoice={onCreateInvoice} onAddProject={onAddProject}/>
         </div>
         <PointsDashboardHero/>
-        {isAdmin&&(
+        {(isAdmin||currentUser?.role==="account_director")&&(
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             <select value={dateRange} onChange={e=>setDateRange(e.target.value)} style={{...inputSt,width:"auto",height:38,minHeight:38,flex:1,minWidth:100,padding:"0 14px",fontSize:12,borderRadius:99}}>
               <option value="all">All Time</option>
@@ -11637,7 +11638,7 @@ No markdown, no explanation.`;
       </div>
 
       {/* ── TAB NAV ── */}
-      {isAdmin&&(
+      {(isAdmin||currentUser?.role==="account_director")&&(
         <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexShrink:0,minHeight:38,width:"100%"}}>
           {dashTabs.map(t=>(
             <button key={t.k} onClick={()=>setTab(t.k)} style={{padding:isMobile?"9px 10px":"9px 18px",fontSize:isMobile?12:13,fontWeight:600,flex:isMobile?"1 1 0":"none",flexShrink:0,whiteSpace:"nowrap",textAlign:"center",borderBottom:`2px solid ${tab===t.k?"var(--accent)":"transparent"}`,color:tab===t.k?"var(--accent)":"var(--text2)",transition:"all 0.15s"}}>{isMobile?t.ml:t.l}</button>
@@ -11646,8 +11647,8 @@ No markdown, no explanation.`;
       )}
 
       {/* ════ OVERVIEW TAB ════ */}
-      {tab==="overview"&&isAdmin&&<AdminControlCenter data={{...data, appSettings}} setPage={setPage} onDecideLeaveRequest={onDecideLeaveRequest} onOpenPost={onOpenPost} onlineEmails={liveMemberEmails} onlineClients={liveClients}/>}
-      {!isAdmin&&(
+      {tab==="overview"&&(isAdmin||currentUser?.role==="account_director")&&<AdminControlCenter viewer={currentUser} data={{...data, appSettings}} setPage={setPage} onDecideLeaveRequest={onDecideLeaveRequest} onOpenPost={onOpenPost} onlineEmails={liveMemberEmails} onlineClients={liveClients}/>}
+      {!isAdmin&&currentUser?.role!=="account_director"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           {/* A vacation/WFH/personal-leave request used to only ever surface
               via the manager's WhatsApp/email/notification-bell ping and
@@ -12013,7 +12014,7 @@ No markdown, no explanation.`;
       )}
 
       {/* ════ TEAM PERFORMANCE TAB ════ */}
-      {["team","analytics","insights"].includes(tab)&&isAdmin&&<TeamInsightsPanel data={data} dateRange={dateRange} filterUser={filterUser} filterClient={filterClient} onSaveInsights={onSaveInsights}/>}
+      {["team","analytics","insights"].includes(tab)&&(isAdmin||currentUser?.role==="account_director")&&<TeamInsightsPanel data={data} dateRange={dateRange} filterUser={filterUser} filterClient={filterClient} onSaveInsights={onSaveInsights}/>}
       {tab==="team"&&isAdmin&&false&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
           {/* Top performer banner */}
