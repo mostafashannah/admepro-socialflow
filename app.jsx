@@ -54793,8 +54793,8 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
           such an ancestor get visually clipped/confined to that ancestor's
           box instead of the true viewport — portaling escapes that ancestor
           chain entirely. Hidden while the sidebar drawer is open. */}
+      {isMobile&&ReactDOM.createPortal(<div aria-hidden="true" style={{position:"fixed",top:0,left:0,right:0,height:"env(safe-area-inset-top)",background:"var(--bg)",zIndex:100001,pointerEvents:"none"}}/>, document.body)}
       {isMobile&&!sidebarOpen&&!keyboardOpen&&ReactDOM.createPortal(
-        <div aria-hidden="true" style={{position:"fixed",top:0,left:0,right:0,height:"env(safe-area-inset-top)",background:"var(--bg)",zIndex:100001,pointerEvents:"none"}}/>
         <nav className="bottom-nav-float">
           <div className="bottom-nav-pill">
             {mobileNavItems.map(({key,label,ico})=>{
