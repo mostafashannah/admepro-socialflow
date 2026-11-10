@@ -39081,7 +39081,7 @@ function RepeatTaskModal({open, onClose, slot, team=[], currentUser, onCreateFir
   const toggleDay = d => set("days", f.days.includes(d)?f.days.filter(x=>x!==d):[...f.days,d].sort());
   const points = f.points.map(x=>x.trim()).filter(Boolean);
   const canSave = f.title.trim() && points.length>0 && slot?.assigned_to && f.start_time && f.start_date && (f.rule!=="weekly" || f.days.length) && (f.rule!=="interval" || Number(f.interval)>=1);
-  const describe = (r) => r.rule_type==="daily" ? "Every day" : r.rule_type==="monthly" ? "Monthly" : r.rule_type==="once" ? "Once" : r.rule_type==="interval" ? `Every ${r.rule_interval} days` : (()=>{ let d=[]; try{d=JSON.parse(r.rule_days||"[]");}catch(e){} return d.length===5&&[0,1,2,3,4].every(x=>d.includes(x))?"Work days (Sun–Thu)":"Weekly: "+d.map(x=>WD[x]?.[1]).join(", "); })();
+  const describe = (r) => r.rule_type==="daily" ? "Every day" : r.rule_type==="monthly" ? "Monthly" : r.rule_type==="once" ? "Once" : r.rule_type==="interval" ? `Every ${r.rule_interval} days` : (()=>{ let d=[]; try{ const x = Array.isArray(r.rule_days) ? r.rule_days : JSON.parse(r.rule_days||"[]"); d = Array.isArray(x) ? x : (Number.isFinite(Number(x)) && x!=="" && x!==null ? [Number(x)] : []); }catch(e){} d = d.map(Number); return d.length===5&&[0,1,2,3,4].every(x=>d.includes(x))?"Work days (Sun–Thu)":"Weekly: "+(d.map(x=>WD[x]?.[1]).filter(Boolean).join(", ")||"—"); })();
   const save = async () => {
     if(!canSave) return;
     setSaving(true); setMsg("");
