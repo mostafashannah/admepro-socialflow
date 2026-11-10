@@ -10785,6 +10785,8 @@ function HRDashboard({team,perfLogs,currentUser,setPage}) {
         <p style={{color:"var(--text2)",marginTop:4,fontSize:14}}>Welcome back, {currentUser.name.split(" ")[0]}</p>
       </div>
 
+      <PointsDashboardHero/>
+
       <div className="grid-4" style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(auto-fill,minmax(200px,1fr))",gap:isMobile?6:12}}>
         {kpis.map(s=>(
           <div key={s.label} style={{padding:isMobile?"10px 6px":"18px 20px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:isMobile?"var(--rs)":"var(--r)",textAlign:isMobile?"center":"left"}}>
@@ -11119,6 +11121,7 @@ No markdown, no explanation.`;
           </div>
           <FAB currentUser={currentUser} onAddClient={onAddClient} onAddCalendar={onAddCalendar} onAddTask={onAddTask} onCreateInvoice={onCreateInvoice} onAddProject={onAddProject}/>
         </div>
+        <PointsDashboardHero/>
         {isAdmin&&(
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             <select value={dateRange} onChange={e=>setDateRange(e.target.value)} style={{...inputSt,width:"auto",height:38,minHeight:38,flex:1,minWidth:100,padding:"0 14px",fontSize:12,borderRadius:99}}>
@@ -40357,11 +40360,11 @@ function pointsConfig(appSettings) {
   if (typeof c === "string") { try { c = JSON.parse(c); } catch(e) { c = null; } }
   c = c && typeof c === "object" ? c : {};
   const rules = {}; POINTS_RULES_DEFAULT.forEach(([k,,v]) => { rules[k] = (c.rules && c.rules[k] != null && !isNaN(Number(c.rules[k]))) ? Number(c.rules[k]) : v; });
-  return { enabled: !!c.enabled, visibility: c.visibility || "private", reward_note: c.reward_note || "", rules, adjustments: Array.isArray(c.adjustments) ? c.adjustments : [] };
+  return { enabled: !!c.enabled, visibility: c.visibility || "private", reward_note: c.reward_note || "", rules, adjustments: Array.isArray(c.adjustments) ? c.adjustments : [], prizes: Array.isArray(c.prizes) ? c.prizes : [], redemptions: Array.isArray(c.redemptions) ? c.redemptions : [], start_month: c.start_month || "", members: Array.isArray(c.members) ? c.members : null };
 }
 // month = "YYYY-MM". Returns {total, lines:[{date,label,pts}]}
 function calcMemberPoints(member, month, {perfLogs, posts, maiSessions, leads, cfg}) {
-  const lines = []; const R = cfg.rules; const inM = d => !!d && String(d).slice(0,7) === month;
+  const lines = []; const R = cfg.rules; const inM = d => !!d && (month ? String(d).slice(0,7) === month : (!cfg.start_month || String(d).slice(0,7) >= cfg.start_month));
   const add = (date, key, label) => { if (R[key]) lines.push({date: String(date||"").slice(0,10), label, pts: R[key]}); };
   const email = member.email;
   (perfLogs||[]).forEach(l => {
@@ -40394,6 +40397,136 @@ function calcMemberPoints(member, month, {perfLogs, posts, maiSessions, leads, c
   (cfg.adjustments||[]).forEach(a => { if (a.email === email && inM(a.date)) lines.push({date: a.date, label: `Manual: ${a.reason || "adjustment"}`, pts: Number(a.pts)||0, manual: true, id: a.id}); });
   lines.sort((a,b) => b.date.localeCompare(a.date));
   return { total: lines.reduce((s,l) => s + l.pts, 0), lines };
+}
+// Redeemable balance = everything earned since points started − prizes redeemed (pending or approved).
+function pointsBalance(member, cfg, data) {
+  const earned = calcMemberPoints(member, "", {...data, cfg}).total;
+  const spent = (cfg.redemptions||[]).filter(r=>r.email===member.email && r.status!=="rejected").reduce((s,r)=>s+(Number(r.cost)||0),0);
+  return {earned, spent, balance: earned - spent};
+}
+async function savePointsPatch(mutate) {
+  let raw = pointsBridge.appSettings?.points_system; if (typeof raw==="string") { try { raw = JSON.parse(raw); } catch(e) { raw = {}; } }
+  raw = raw || {};
+  const next = mutate({...raw});
+  if (pointsBridge.onSaveSettings) await pointsBridge.onSaveSettings({points_system: next});
+}
+const prizeValueText = p => p.type==="money" ? `${Number(p.value)||0} EGP` : `${Number(p.value)||0} ${p.unit==="hours"?"hour":"day"}${Number(p.value)===1?"":"s"} off`;
+// Who's in the points programme: not excluded roles, and (if the admin picked a list) on that list.
+function pointsEligible(m, cfg) {
+  if (!m || (m.status||"active")!=="active" || POINTS_ROLES_EXCLUDED.includes(m.role)) return false;
+  return !cfg.members || cfg.members.includes(m.email);
+}
+const POINTS_MOTTOS = ["Every on-time delivery counts — keep the streak alive! 🔥","Small wins every day add up to big rewards. 💪","You're building something great — one task at a time. 🚀","Consistency beats intensity. Show up, deliver, win. 🏆","Today's effort is tomorrow's prize. Let's go! ⚡"];
+// Dashboard hero card for team members in the programme (only while points are ON).
+function PointsDashboardHero() {
+  const cfg = pointsConfig(pointsBridge.appSettings);
+  const me = (pointsBridge.team||[]).find(t=>t.email===pointsBridge.currentUser?.email);
+  if (!cfg.enabled || !pointsEligible(me, cfg)) return null;
+  const month = new Date().toISOString().slice(0,7);
+  const data = pointsData();
+  const r = calcMemberPoints(me, month, {...data, cfg});
+  const bal = pointsBalance(me, cfg, data);
+  const peers = (pointsBridge.team||[]).filter(m=>pointsEligible(m,cfg)).map(m=>({e:m.email,t:calcMemberPoints(m, month, {...data, cfg}).total})).sort((a,b)=>b.t-a.t);
+  const rank = peers.findIndex(x=>x.e===me.email)+1;
+  const next = (cfg.prizes||[]).filter(p=>Number(p.cost)>bal.balance).sort((a,b)=>a.cost-b.cost)[0];
+  const ready = (cfg.prizes||[]).filter(p=>Number(p.cost)<=bal.balance).length;
+  const pct = next ? Math.max(4, Math.min(100, Math.round(bal.balance/next.cost*100))) : 100;
+  const today = new Date().toISOString().slice(0,10);
+  const todayPts = r.lines.filter(l=>l.date===today).reduce((s,l)=>s+l.pts,0);
+  const motto = POINTS_MOTTOS[new Date().getDate() % POINTS_MOTTOS.length];
+  return (
+    <div style={{position:"relative",overflow:"hidden",borderRadius:18,padding:"20px 22px",background:"linear-gradient(135deg,#f59e0b 0%,#ef4444 55%,#d90b2c 100%)",color:"#fff",boxShadow:"0 10px 30px rgba(239,68,68,0.25)"}}>
+      <div style={{position:"absolute",right:-30,top:-30,width:160,height:160,borderRadius:"50%",background:"rgba(255,255,255,0.12)"}}/>
+      <div style={{position:"absolute",right:40,bottom:-50,width:120,height:120,borderRadius:"50%",background:"rgba(255,255,255,0.08)"}}/>
+      <div style={{position:"relative",display:"flex",gap:18,alignItems:"center",flexWrap:"wrap"}}>
+        <div style={{width:84,height:84,borderRadius:"50%",background:"rgba(255,255,255,0.18)",border:"3px solid rgba(255,255,255,0.6)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <span style={{fontSize:26,fontWeight:900,lineHeight:1}}>{r.total}</span><span style={{fontSize:10,fontWeight:700,opacity:0.9}}>pts this month</span>
+        </div>
+        <div style={{flex:1,minWidth:200}}>
+          <p style={{fontSize:18,fontWeight:900}}>{rank===1?"🥇 You're #1 — defend the crown!":rank>0&&rank<=3?`🔥 You're #${rank} — the top spot is close!`:`💪 You're #${rank||"–"} of ${peers.length} — climb up!`}</p>
+          <p style={{fontSize:13,opacity:0.95,marginTop:4}}>{motto}</p>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>
+            <span style={{fontSize:12,fontWeight:800,background:"rgba(255,255,255,0.2)",padding:"5px 10px",borderRadius:99}}>Today {todayPts>=0?"+":""}{todayPts}</span>
+            <span style={{fontSize:12,fontWeight:800,background:"rgba(255,255,255,0.2)",padding:"5px 10px",borderRadius:99}}>Balance {bal.balance} pts</span>
+            {ready>0&&<span style={{fontSize:12,fontWeight:800,background:"#fff",color:"#d90b2c",padding:"5px 10px",borderRadius:99}}>🎁 {ready} prize{ready>1?"s":""} ready to redeem!</span>}
+          </div>
+        </div>
+      </div>
+      {next&&(
+        <div style={{position:"relative",marginTop:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:700,marginBottom:5}}><span>Next prize: {next.name} ({prizeValueText(next)})</span><span>{Math.max(0,next.cost-bal.balance)} pts to go</span></div>
+          <div style={{height:10,borderRadius:99,background:"rgba(255,255,255,0.25)",overflow:"hidden"}}><div style={{width:pct+"%",height:"100%",background:"#fff",borderRadius:99}}/></div>
+        </div>
+      )}
+      <p style={{position:"relative",fontSize:11,opacity:0.85,marginTop:10}}>See details & redeem in My Performance.{cfg.reward_note?` · ${cfg.reward_note}`:""}</p>
+    </div>
+  );
+}
+function PrizesStore({member, cfg, data}) {
+  const [busy, setBusy] = useState(null);
+  const bal = pointsBalance(member, cfg, data);
+  const mine = (cfg.redemptions||[]).filter(r=>r.email===member.email).slice().reverse();
+  const redeem = async (pz) => {
+    if (bal.balance < pz.cost) return;
+    if (!window.confirm(`Redeem ${pz.cost} points for "${pz.name}" (${prizeValueText(pz)})? An admin will approve it.`)) return;
+    setBusy(pz.id);
+    await savePointsPatch(raw => ({...raw, redemptions:[...(raw.redemptions||[]), {id:Date.now().toString(36), email:member.email, name:member.name, prize_id:pz.id, prize:pz.name, type:pz.type, value:pz.value, unit:pz.unit||"days", cost:Number(pz.cost)||0, date:new Date().toISOString().slice(0,10), status:"pending"}]}));
+    setBusy(null);
+  };
+  const stCol = {pending:"#f59e0b", approved:"#10b981", rejected:"#ef4444"};
+  return (
+    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:10}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+        <p style={{fontSize:14,fontWeight:800}}>🎁 Prizes</p>
+        <span style={{fontSize:12,fontWeight:800,color:"var(--accent)",background:"var(--surface2)",padding:"5px 12px",borderRadius:99}}>Balance: {bal.balance} pts</span>
+      </div>
+      <p style={{fontSize:11,color:"var(--text3)"}}>Your balance is everything you've earned since points started ({bal.earned}) minus prizes you've redeemed ({bal.spent}). The monthly score resets; your balance doesn't.</p>
+      {(cfg.prizes||[]).length===0 ? <p style={{fontSize:12,color:"var(--text3)"}}>No prizes set yet.</p> :
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:8}}>
+          {cfg.prizes.map(pz=>{ const ok = bal.balance >= pz.cost; return (
+            <div key={pz.id} style={{border:"1px solid var(--border2)",borderRadius:10,padding:12,display:"flex",flexDirection:"column",gap:6,background:"var(--surface2)"}}>
+              <p style={{fontSize:13,fontWeight:800}}>{pz.type==="money"?"💵":"🌴"} {pz.name}</p>
+              <p style={{fontSize:12,color:"var(--text2)"}}>{prizeValueText(pz)}</p>
+              <button disabled={!ok||busy===pz.id} onClick={()=>redeem(pz)} style={{marginTop:"auto",padding:"7px 10px",borderRadius:8,fontSize:12,fontWeight:800,border:"none",background:ok?"var(--accent)":"var(--border2)",color:ok?"#fff":"var(--text3)",cursor:ok?"pointer":"not-allowed"}}>{busy===pz.id?"…":ok?`Redeem · ${pz.cost} pts`:`Needs ${pz.cost} pts`}</button>
+            </div>
+          ); })}
+        </div>}
+      {mine.length>0&&(
+        <div style={{display:"flex",flexDirection:"column",gap:4}}>
+          <p style={{fontSize:12,fontWeight:800,marginTop:4}}>My requests</p>
+          {mine.map(r=>(
+            <div key={r.id} style={{display:"flex",gap:8,fontSize:12,padding:"5px 8px",borderRadius:6,background:"var(--surface2)",alignItems:"center"}}>
+              <span style={{color:"var(--text3)",width:44,flexShrink:0}}>{r.date.slice(5)}</span>
+              <span style={{flex:1,minWidth:0}}>{r.prize} · {r.cost} pts</span>
+              <span style={{fontWeight:800,color:stCol[r.status]||"var(--text3)",textTransform:"capitalize"}}>{r.status}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+function RedemptionRequests({cfg}) {
+  const pend = (cfg.redemptions||[]).filter(r=>r.status==="pending");
+  const done = (cfg.redemptions||[]).filter(r=>r.status!=="pending").slice(-8).reverse();
+  const decide = (id, status) => savePointsPatch(raw => ({...raw, redemptions:(raw.redemptions||[]).map(r=>r.id===id?{...r,status,decided_by:pointsBridge.currentUser?.email,decided_at:new Date().toISOString().slice(0,10)}:r)}));
+  if (!pend.length && !done.length) return null;
+  return (
+    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:8}}>
+      <p style={{fontSize:14,fontWeight:800}}>🎁 Prize requests {pend.length>0&&<span style={{fontSize:11,background:"#f59e0b",color:"#fff",borderRadius:99,padding:"2px 8px",marginLeft:6}}>{pend.length} pending</span>}</p>
+      {pend.map(r=>(
+        <div key={r.id} style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",padding:"8px 10px",borderRadius:8,background:"var(--surface2)"}}>
+          <span style={{flex:1,minWidth:180,fontSize:13}}><b>{r.name}</b> — {r.prize} ({prizeValueText(r)}) · {r.cost} pts · {r.date}</span>
+          <button onClick={()=>decide(r.id,"approved")} style={{padding:"6px 12px",borderRadius:8,fontSize:12,fontWeight:800,border:"none",background:"#10b981",color:"#fff",cursor:"pointer"}}>Approve</button>
+          <button onClick={()=>decide(r.id,"rejected")} style={{padding:"6px 12px",borderRadius:8,fontSize:12,fontWeight:800,border:"1px solid #ef444455",background:"#ef444411",color:"#ef4444",cursor:"pointer"}}>Reject</button>
+        </div>
+      ))}
+      {pend.length>0&&<p style={{fontSize:11,color:"var(--text3)"}}>Approving records the redemption and deducts the points. Add the money to payroll / the time off to their leave yourself (it isn't applied automatically).</p>}
+      {done.map(r=>(
+        <div key={r.id} style={{fontSize:12,color:"var(--text3)"}}>{r.date} · {r.name} — {r.prize} · <span style={{color:r.status==="approved"?"#10b981":"#ef4444",fontWeight:700}}>{r.status}</span></div>
+      ))}
+    </div>
+  );
 }
 const POINTS_ROLES_EXCLUDED = ["admin","accountant","office_boy","client"];
 function MyPointsCard({member, cfg, data, month}) {
@@ -40428,7 +40561,7 @@ function MyPointsCard({member, cfg, data, month}) {
 function PointsLeaderboard({team, cfg, data, month, setMonth, canAdjust, onSaveSettings, appSettings, currentUser}) {
   const [adj, setAdj] = useState(null);
   const [openId, setOpenId] = useState(null);
-  const members = (team||[]).filter(m => (m.status||"active")==="active" && !POINTS_ROLES_EXCLUDED.includes(m.role));
+  const members = (team||[]).filter(m => pointsEligible(m, cfg));
   const rows = members.map(m => ({m, r: calcMemberPoints(m, month, {...data, cfg})})).sort((a,b)=>b.r.total-a.r.total);
   const roleLabel = r => ROLES?.[r]?.label || r;
   const saveAdj = async () => {
@@ -40490,12 +40623,15 @@ function PointsLeaderboard({team, cfg, data, month, setMonth, canAdjust, onSaveS
 }
 function PointsSettings({appSettings, onSaveSettings}) {
   const cfg = pointsConfig(appSettings);
-  const [form, setForm] = useState(()=>({enabled:cfg.enabled, visibility:cfg.visibility, reward_note:cfg.reward_note, rules:{...cfg.rules}}));
+  const [form, setForm] = useState(()=>({enabled:cfg.enabled, visibility:cfg.visibility, reward_note:cfg.reward_note, rules:{...cfg.rules}, prizes:cfg.prizes.map(p=>({...p})), start_month:cfg.start_month||new Date().toISOString().slice(0,7)}));
+  const [members, setMembers] = useState(()=>cfg.members);
+  const eligibleTeam = (pointsBridge.team||[]).filter(m=>(m.status||"active")==="active" && !POINTS_ROLES_EXCLUDED.includes(m.role)).sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+  const setPrize = (i, patch) => setForm(f=>({...f, prizes:f.prizes.map((p,j)=>j===i?{...p,...patch}:p)}));
   const [saving, setSaving] = useState(false);
   const save = async () => {
     setSaving(true);
     let raw = appSettings?.points_system; if (typeof raw==="string") { try { raw = JSON.parse(raw); } catch(e) { raw = {}; } }
-    await onSaveSettings({points_system:{...(raw||{}), ...form}});
+    await onSaveSettings({points_system:{...(raw||{}), ...form, members}});
     setSaving(false);
   };
   const inp = {padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13};
@@ -40507,6 +40643,20 @@ function PointsSettings({appSettings, onSaveSettings}) {
           <p style={{fontSize:14,fontWeight:800}}>Reward points {form.enabled?"ON":"OFF"}</p>
           <p style={{fontSize:12,color:"var(--text3)"}}>{form.enabled?"The team sees their points in My Performance; the leaderboard is in Team Performance.":"Hidden from the team. Admins can still preview the leaderboard in Team Performance."}</p>
         </div>
+      </div>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:8}}>
+        <p style={{fontSize:13,fontWeight:800}}>Who's in the programme</p>
+        <label style={{display:"flex",gap:8,fontSize:13,cursor:"pointer"}}><input type="radio" checked={!members} onChange={()=>setMembers(null)}/>Everyone eligible (all staff except admins, accountant, office boy)</label>
+        <label style={{display:"flex",gap:8,fontSize:13,cursor:"pointer"}}><input type="radio" checked={!!members} onChange={()=>setMembers(eligibleTeam.map(m=>m.email))}/>Only the people I pick</label>
+        {members&&(
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:6,paddingLeft:24}}>
+            {eligibleTeam.map(m=>(
+              <label key={m.id} style={{display:"flex",gap:8,fontSize:13,cursor:"pointer",alignItems:"center"}}>
+                <input type="checkbox" checked={members.includes(m.email)} onChange={()=>setMembers(ms=>ms.includes(m.email)?ms.filter(x=>x!==m.email):[...ms,m.email])}/>{m.name}
+              </label>
+            ))}
+          </div>
+        )}
       </div>
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:10}}>
         <p style={{fontSize:13,fontWeight:800}}>Who sees the leaderboard</p>
@@ -40526,6 +40676,27 @@ function PointsSettings({appSettings, onSaveSettings}) {
           </div>
         ))}
       </div>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:8}}>
+        <p style={{fontSize:13,fontWeight:800}}>🎁 Prizes (redeemable for money or time off)</p>
+        <p style={{fontSize:11,color:"var(--text3)"}}>The team redeems points from their balance (all points since the start month below, minus what they've redeemed). You approve each request in Team Performance → Reward Points.</p>
+        <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13}}>Points count from <input type="month" value={form.start_month} onChange={e=>setForm({...form,start_month:e.target.value})} style={inp}/></label>
+        {form.prizes.map((pz,i)=>(
+          <div key={pz.id} style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",padding:8,borderRadius:8,background:"var(--surface2)"}}>
+            <input value={pz.name} placeholder="Prize name" onChange={e=>setPrize(i,{name:e.target.value})} style={{...inp,flex:"1 1 150px"}}/>
+            <select value={pz.type} onChange={e=>setPrize(i,{type:e.target.value})} style={inp}><option value="money">Money</option><option value="timeoff">Time off</option></select>
+            <input type="number" value={pz.value} onChange={e=>setPrize(i,{value:Number(e.target.value)||0})} style={{...inp,width:80}}/>
+            {pz.type==="money"?<span style={{fontSize:12}}>EGP</span>:<select value={pz.unit||"days"} onChange={e=>setPrize(i,{unit:e.target.value})} style={inp}><option value="days">days</option><option value="hours">hours</option></select>}
+            <span style={{fontSize:12,color:"var(--text3)"}}>costs</span>
+            <input type="number" value={pz.cost} onChange={e=>setPrize(i,{cost:Number(e.target.value)||0})} style={{...inp,width:80}}/>
+            <span style={{fontSize:12,color:"var(--text3)"}}>pts</span>
+            <button onClick={()=>setForm(f=>({...f,prizes:f.prizes.filter((_,j)=>j!==i)}))} style={{border:"none",background:"none",color:"#ef4444",fontWeight:800,cursor:"pointer"}}>✕</button>
+          </div>
+        ))}
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <button onClick={()=>setForm(f=>({...f,prizes:[...f.prizes,{id:Date.now().toString(36),name:"Cash bonus",type:"money",value:500,cost:300}]}))} style={{padding:"7px 12px",borderRadius:8,fontSize:12,fontWeight:700,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",cursor:"pointer"}}>+ Money prize</button>
+          <button onClick={()=>setForm(f=>({...f,prizes:[...f.prizes,{id:Date.now().toString(36),name:"Half-day off",type:"timeoff",value:4,unit:"hours",cost:250}]}))} style={{padding:"7px 12px",borderRadius:8,fontSize:12,fontWeight:700,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",cursor:"pointer"}}>+ Time-off prize</button>
+        </div>
+      </div>
       <button onClick={save} disabled={saving} style={{alignSelf:"flex-start",padding:"10px 22px",borderRadius:10,fontSize:13,fontWeight:800,border:"none",background:"var(--accent)",color:"#fff",cursor:saving?"wait":"pointer"}}>{saving?"Saving…":"Save points settings"}</button>
     </div>
   );
@@ -40538,10 +40709,11 @@ function MyPointsSection() {
   const cfg = pointsConfig(pointsBridge.appSettings);
   const [month, setMonth] = useState(()=>new Date().toISOString().slice(0,7));
   const me = (pointsBridge.team||[]).find(t=>t.email===pointsBridge.currentUser?.email);
-  if (!cfg.enabled || !me || POINTS_ROLES_EXCLUDED.includes(me.role)) return null;
+  if (!cfg.enabled || !pointsEligible(me, cfg)) return null;
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <MyPointsCard member={me} cfg={cfg} data={pointsData()} month={month}/>
+      <PrizesStore member={me} cfg={cfg} data={pointsData()}/>
       {cfg.visibility==="public"&&<PointsLeaderboard team={pointsBridge.team} cfg={cfg} data={pointsData()} month={month} setMonth={setMonth} canAdjust={false}/>}
     </div>
   );
@@ -40558,6 +40730,7 @@ function PointsLeaderboardSection({title=true}) {
       {title&&<button onClick={()=>setOpen(o=>!o)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,fontSize:15,fontWeight:800,color:"var(--text)",cursor:"pointer"}}>
         <span>🏆 Reward Points {cfg.enabled?"":"(OFF — preview)"}</span><span style={{fontSize:12,color:"var(--text3)"}}>{open?"Hide ▲":"Show ▼"}</span>
       </button>}
+      {isAdmin&&<RedemptionRequests cfg={cfg}/>}
       {(open||!title)&&<PointsLeaderboard team={pointsBridge.team} cfg={cfg} data={pointsData()} month={month} setMonth={setMonth} canAdjust={isAdmin} onSaveSettings={pointsBridge.onSaveSettings} appSettings={pointsBridge.appSettings} currentUser={cu}/>}
     </div>
   );
