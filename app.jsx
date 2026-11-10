@@ -40475,30 +40475,42 @@ function PrizesStore({member, cfg, data}) {
   };
   const stCol = {pending:"#f59e0b", approved:"#10b981", rejected:"#ef4444"};
   return (
-    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:10}}>
+    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:18,display:"flex",flexDirection:"column",gap:14}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-        <p style={{fontSize:14,fontWeight:800,display:"flex",alignItems:"center",gap:6}}><Ico d={Icons.award} size={16} stroke="var(--accent)"/>Prizes</p>
-        <span style={{fontSize:12,fontWeight:800,color:"var(--accent)",background:"var(--surface2)",padding:"5px 12px",borderRadius:99}}>Balance: {bal.balance} pts</span>
+        <p style={{fontSize:15,fontWeight:800,display:"flex",alignItems:"center",gap:8}}><Ico d={Icons.award} size={17} stroke="var(--accent)"/>Prizes</p>
+        <span style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13,fontWeight:800,color:bal.balance>=0?"#f59e0b":"#ef4444",background:(bal.balance>=0?"#f59e0b":"#ef4444")+"1a",padding:"6px 14px",borderRadius:99}}><Ico d={Icons.wallet} size={14} stroke="currentColor"/>{bal.balance} pts available</span>
       </div>
-      <p style={{fontSize:11,color:"var(--text3)"}}>Your balance is everything you've earned since points started ({bal.earned}) minus prizes you've redeemed ({bal.spent}). The monthly score resets; your balance doesn't.</p>
-      {(cfg.prizes||[]).length===0 ? <p style={{fontSize:12,color:"var(--text3)"}}>No prizes set yet.</p> :
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:8}}>
-          {cfg.prizes.map(pz=>{ const ok = bal.balance >= pz.cost; return (
-            <div key={pz.id} style={{border:"1px solid var(--border2)",borderRadius:10,padding:12,display:"flex",flexDirection:"column",gap:6,background:"var(--surface2)"}}>
-              <p style={{fontSize:13,fontWeight:800,display:"flex",alignItems:"center",gap:6}}><Ico d={pz.type==="money"?Icons.money:Icons.clock} size={15} stroke="var(--accent)"/>{pz.name}</p>
-              <p style={{fontSize:12,color:"var(--text2)"}}>{prizeValueText(pz)}</p>
-              <button disabled={!ok||busy===pz.id} onClick={()=>redeem(pz)} style={{marginTop:"auto",padding:"7px 10px",borderRadius:8,fontSize:12,fontWeight:800,border:"none",background:ok?"var(--accent)":"var(--border2)",color:ok?"#fff":"var(--text3)",cursor:ok?"pointer":"not-allowed"}}>{busy===pz.id?"…":ok?`Redeem · ${pz.cost} pts`:`Needs ${pz.cost} pts`}</button>
+      <p style={{fontSize:12,color:"var(--text3)",marginTop:-6}}>Earned since points started: {bal.earned} · redeemed: {bal.spent}. Your balance carries over every month.</p>
+      {(cfg.prizes||[]).length===0 ? <p style={{fontSize:13,color:"var(--text3)"}}>No prizes set yet.</p> :
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(230px,1fr))",gap:12}}>
+          {cfg.prizes.map(pz=>{ const ok = bal.balance >= pz.cost; const isMoney = pz.type==="money"; const col = isMoney?"#10b981":"#6366f1";
+            const pct = pz.cost>0 ? Math.max(0, Math.min(100, Math.round(Math.max(0,bal.balance)/pz.cost*100))) : 100;
+            return (
+            <div key={pz.id} style={{position:"relative",overflow:"hidden",border:`1px solid ${ok?col+"66":"var(--border)"}`,borderRadius:14,padding:16,display:"flex",flexDirection:"column",gap:10,background:`linear-gradient(160deg, ${col}14, transparent 60%), var(--surface2)`}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{width:42,height:42,borderRadius:12,background:col+"22",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ico d={isMoney?Icons.money:Icons.clock} size={20} stroke={col}/></div>
+                <div style={{minWidth:0}}>
+                  <p style={{fontSize:14,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pz.name}</p>
+                  <p style={{fontSize:11,fontWeight:700,color:col,textTransform:"uppercase",letterSpacing:"0.05em"}}>{isMoney?"Cash reward":"Time off"}</p>
+                </div>
+              </div>
+              <p style={{fontSize:24,fontWeight:900,fontFamily:"'Montserrat',sans-serif",lineHeight:1.1}}>{prizeValueText(pz)}</p>
+              <div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:5}}><span>{Math.max(0,bal.balance)} / {pz.cost} pts</span><span>{ok?"Ready!":`${pz.cost-Math.max(0,bal.balance)} to go`}</span></div>
+                <div style={{height:7,borderRadius:99,background:"var(--border)",overflow:"hidden"}}><div style={{width:pct+"%",height:"100%",borderRadius:99,background:ok?col:"linear-gradient(90deg,#f59e0b,#ef4444)"}}/></div>
+              </div>
+              <button disabled={!ok||busy===pz.id} onClick={()=>redeem(pz)} style={{marginTop:2,padding:"10px 12px",borderRadius:10,fontSize:13,fontWeight:800,border:"none",background:ok?col:"var(--border)",color:ok?"#fff":"var(--text3)",cursor:ok?"pointer":"not-allowed"}}>{busy===pz.id?"…":ok?`Redeem for ${pz.cost} pts`:"Keep going"}</button>
             </div>
           ); })}
         </div>}
       {mine.length>0&&(
-        <div style={{display:"flex",flexDirection:"column",gap:4}}>
-          <p style={{fontSize:12,fontWeight:800,marginTop:4}}>My requests</p>
-          {mine.map(r=>(
-            <div key={r.id} style={{display:"flex",gap:8,fontSize:12,padding:"5px 8px",borderRadius:6,background:"var(--surface2)",alignItems:"center"}}>
-              <span style={{color:"var(--text3)",width:44,flexShrink:0}}>{r.date.slice(5)}</span>
-              <span style={{flex:1,minWidth:0}}>{r.prize} · {r.cost} pts</span>
-              <span style={{fontWeight:800,color:stCol[r.status]||"var(--text3)",textTransform:"capitalize"}}>{r.status}</span>
+        <div>
+          <p style={{fontSize:12,fontWeight:800,color:"var(--text2)",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>My requests</p>
+          {mine.map((r,i)=>(
+            <div key={r.id} style={{display:"flex",gap:10,fontSize:13,padding:"9px 4px",borderTop:i?"1px solid var(--border)":"none",alignItems:"center"}}>
+              <Ico d={r.type==="money"?Icons.money:Icons.clock} size={15} stroke="var(--text3)"/>
+              <span style={{flex:1,minWidth:0}}>{r.prize} <span style={{color:"var(--text3)"}}>· {r.cost} pts · {r.date}</span></span>
+              <span style={{fontSize:11,fontWeight:800,padding:"3px 10px",borderRadius:99,background:(stCol[r.status]||"#888")+"1f",color:stCol[r.status]||"var(--text3)",textTransform:"capitalize"}}>{r.status}</span>
             </div>
           ))}
         </div>
@@ -40530,31 +40542,51 @@ function RedemptionRequests({cfg}) {
 }
 const POINTS_ROLES_EXCLUDED = ["admin","accountant","office_boy","client"];
 function MyPointsCard({member, cfg, data, month}) {
-  const [open, setOpen] = useState(false);
+  const [all, setAll] = useState(false);
   const r = calcMemberPoints(member, month, {...data, cfg});
   const gain = r.lines.filter(l=>l.pts>0).reduce((s,l)=>s+l.pts,0), loss = r.lines.filter(l=>l.pts<0).reduce((s,l)=>s+l.pts,0);
-  return (
-    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:10}}>
-      <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
-        <div style={{width:60,height:60,borderRadius:"50%",background:"linear-gradient(135deg,#f59e0b,#ef4444)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:18,flexShrink:0}}>{r.total}</div>
-        <div style={{flex:1,minWidth:160}}>
-          <p style={{fontSize:14,fontWeight:800,display:"flex",alignItems:"center",gap:6}}><Ico d={Icons.trophy} size={16} stroke="var(--accent)"/>My Points — {new Date(month+"-01T12:00:00").toLocaleDateString(undefined,{month:"long",year:"numeric"})}</p>
-          <p style={{fontSize:12,color:"var(--text3)"}}><span style={{color:"#10b981",fontWeight:700}}>+{gain}</span> earned · <span style={{color:"#ef4444",fontWeight:700}}>{loss}</span> lost · resets every month</p>
-          {cfg.reward_note&&<p style={{fontSize:11,color:"var(--text2)",marginTop:3,display:"flex",alignItems:"center",gap:5}}><Ico d={Icons.award} size={12} stroke="currentColor"/>{cfg.reward_note}</p>}
-        </div>
-        <button onClick={()=>setOpen(o=>!o)} style={{padding:"6px 12px",borderRadius:8,fontSize:12,fontWeight:700,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer"}}>{open?"Hide":"Details"}</button>
+  const bal = pointsBalance(member, cfg, data);
+  const monthName = new Date(month+"-01T12:00:00").toLocaleDateString(undefined,{month:"long",year:"numeric"});
+  const tile = (label, value, color, icon) => (
+    <div style={{flex:"1 1 140px",minWidth:0,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:12,padding:"14px 16px",display:"flex",alignItems:"center",gap:12}}>
+      <div style={{width:38,height:38,borderRadius:10,background:color+"1f",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ico d={icon} size={18} stroke={color}/></div>
+      <div style={{minWidth:0}}>
+        <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>{label}</p>
+        <p style={{fontSize:22,fontWeight:900,color,lineHeight:1.15,fontFamily:"'Montserrat',sans-serif"}}>{value}</p>
       </div>
-      {open&&(r.lines.length===0
-        ? <p style={{fontSize:12,color:"var(--text3)"}}>No points yet this month.</p>
-        : <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:320,overflowY:"auto"}}>
-            {r.lines.map((l,i)=>(
-              <div key={i} style={{display:"flex",gap:8,alignItems:"center",fontSize:12,padding:"5px 8px",borderRadius:6,background:"var(--surface2)"}}>
-                <span style={{color:"var(--text3)",flexShrink:0,width:44}}>{l.date.slice(5)}</span>
-                <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.label}</span>
-                <span style={{fontWeight:800,color:l.pts>=0?"#10b981":"#ef4444",flexShrink:0}}>{l.pts>0?"+":""}{l.pts}</span>
+    </div>
+  );
+  const shown = all ? r.lines : r.lines.slice(0,6);
+  return (
+    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:18,display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
+        <p style={{fontSize:15,fontWeight:800,display:"flex",alignItems:"center",gap:8}}><Ico d={Icons.trophy} size={17} stroke="var(--accent)"/>My Points · {monthName}</p>
+        <span style={{fontSize:11,color:"var(--text3)",fontWeight:600}}>Monthly score resets on the 1st</span>
+      </div>
+      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+        {tile("This month", r.total, r.total>=0?"#d90b2c":"#ef4444", Icons.trophy)}
+        {tile("Earned", "+"+gain, "#10b981", Icons.coinUp)}
+        {tile("Lost", loss, "#ef4444", Icons.alert)}
+        {tile("Balance", bal.balance, "#f59e0b", Icons.wallet)}
+      </div>
+      {cfg.reward_note&&<div style={{fontSize:12,color:"var(--text2)",display:"flex",alignItems:"center",gap:8,padding:"10px 12px",borderRadius:10,background:"var(--accent)10",border:"1px dashed var(--accent)55"}}><Ico d={Icons.award} size={14} stroke="var(--accent)"/>{cfg.reward_note}</div>}
+      <div>
+        <p style={{fontSize:12,fontWeight:800,color:"var(--text2)",marginBottom:8,textTransform:"uppercase",letterSpacing:"0.05em"}}>Activity</p>
+        {r.lines.length===0 ? <p style={{fontSize:13,color:"var(--text3)",padding:"14px 0"}}>No points yet this month — deliver on time to start earning.</p> :
+        <div style={{display:"flex",flexDirection:"column"}}>
+          {shown.map((l,i)=>(
+            <div key={i} style={{display:"flex",gap:12,alignItems:"center",padding:"10px 4px",borderTop:i?"1px solid var(--border)":"none"}}>
+              <div style={{width:30,height:30,borderRadius:"50%",background:(l.pts>=0?"#10b981":"#ef4444")+"1f",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ico d={l.pts>=0?Icons.check:Icons.x} size={14} stroke={l.pts>=0?"#10b981":"#ef4444"}/></div>
+              <div style={{flex:1,minWidth:0}}>
+                <p style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.label}</p>
+                <p style={{fontSize:11,color:"var(--text3)"}}>{new Date(l.date+"T12:00:00").toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"})}</p>
               </div>
-            ))}
-          </div>)}
+              <span style={{fontWeight:900,fontSize:14,padding:"4px 10px",borderRadius:99,background:(l.pts>=0?"#10b981":"#ef4444")+"1a",color:l.pts>=0?"#10b981":"#ef4444",flexShrink:0}}>{l.pts>0?"+":""}{l.pts}</span>
+            </div>
+          ))}
+          {r.lines.length>6&&<button onClick={()=>setAll(a=>!a)} style={{marginTop:6,alignSelf:"center",padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer"}}>{all?"Show less":`Show all ${r.lines.length}`}</button>}
+        </div>}
+      </div>
     </div>
   );
 }
