@@ -48963,6 +48963,15 @@ function App() {
       document.documentElement.style.setProperty("--app-height", h + "px");
     };
     setAppHeight();
+    // iOS (esp. home-screen app) reports a wrong viewport for the first
+    // moments after launch — fixed elements (bottom nav) sit too high with a
+    // white gap under them until the first scroll. Re-measure a few times as
+    // it settles, and nudge scroll so iOS re-lays out fixed elements.
+    const settle = () => { setAppHeight(); try { window.scrollTo(0, 0); } catch(e){} };
+    const timers = [50, 250, 600, 1200, 2500].map(ms => setTimeout(settle, ms));
+    window.addEventListener("pageshow", settle);
+    window.addEventListener("orientationchange", settle);
+    document.addEventListener("visibilitychange", settle);
     if (vv) {
       vv.addEventListener("resize", setAppHeight);
       vv.addEventListener("scroll", setAppHeight);
@@ -48970,6 +48979,10 @@ function App() {
       window.addEventListener("resize", setAppHeight);
     }
     return () => {
+      timers.forEach(clearTimeout);
+      window.removeEventListener("pageshow", settle);
+      window.removeEventListener("orientationchange", settle);
+      document.removeEventListener("visibilitychange", settle);
       if (vv) { vv.removeEventListener("resize", setAppHeight); vv.removeEventListener("scroll", setAppHeight); }
       else { window.removeEventListener("resize", setAppHeight); }
     };
