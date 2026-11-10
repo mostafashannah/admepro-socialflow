@@ -4595,7 +4595,7 @@ function PostCard({post,project,team,onClick}) {
         <Badge label={post.post_type||"post"} color="#6b7280" xs/>
         <Badge label={post.priority||"medium"} color={PRI_COLOR[post.priority]||"#3b82f6"} xs/>
       </div>
-      {(post.caption||post.description||post.brief)&&<p style={{fontSize:12,color:"var(--text2)",lineHeight:1.4,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden",wordBreak:"break-word"}}>{String(post.caption||post.description||post.brief).replace(/<[^>]+>/g," ")}</p>}
+      {(post.caption||post.description)&&<p style={{fontSize:12,color:"var(--text2)",lineHeight:1.4,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden",wordBreak:"break-word"}}>{post.caption||post.description}</p>}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:8,borderTop:"1px solid var(--border)"}}>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <div style={{width:7,height:7,borderRadius:"50%",background:stage.color}}/>
