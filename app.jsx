@@ -55,7 +55,7 @@ function useUploadPct() {
 // Build number shown on every screen — read from the ?v= on this very script
 // tag (index.html), so it always matches what was actually deployed.
 const BUILD_NUMBER = (()=>{ try { const el = document.querySelector('script[src*="app.js"]'); const m = el && /[?&]v=([^&]+)/.exec(el.getAttribute("src")||""); return m ? m[1] : ""; } catch(e){ return ""; } })();
-const fmtFileSize = b => { b=Number(b)||0; return b>=1073741824 ? (b/1073741824).toFixed(2)+" GB" : b>=1048576 ? (b/1048576).toFixed(1)+" MB" : b>=1024 ? Math.round(b/1024)+" KB" : b+" B"; };
+const fmtUpSize = b => { b=Number(b)||0; return b>=1073741824 ? (b/1073741824).toFixed(2)+" GB" : b>=1048576 ? (b/1048576).toFixed(1)+" MB" : b>=1024 ? Math.round(b/1024)+" KB" : b+" B"; };
 function UploadProgressToast() {
   const items = useUploadProgress();
   if(!items.length) return null;
@@ -70,7 +70,7 @@ function UploadProgressToast() {
             </span>
           </div>
           <div style={{height:5,borderRadius:99,background:"var(--surface2)",overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:"var(--accent)",transition:"width 0.2s"}}/></div>
-          {i.total>1000&&<div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--text3)",marginTop:5,fontWeight:600}}><span>{i.queued?"Waiting in queue…":`${fmtFileSize(i.loaded)} of ${fmtFileSize(i.total)}`}</span><span>{fmtFileSize(i.total)}</span></div>}
+          {i.total>1000&&<div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--text3)",marginTop:5,fontWeight:600}}><span>{i.queued?"Waiting in queue…":`${fmtUpSize(i.loaded)} of ${fmtUpSize(i.total)}`}</span><span>{fmtUpSize(i.total)}</span></div>}
         </div>); })}
     </div>
   );
