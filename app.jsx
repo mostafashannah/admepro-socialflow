@@ -32313,7 +32313,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
           {k:"connections", label:"Connections", subs:[["integrations","Integrations"],["email","Email"]]},
           {k:"ai", label:"AI & Tasks", subs:[["ai_model","AI Agents"],["durations","Task Estimates"]]},
           {k:"reports", label:"Reports", subs:[["daily_report","Daily Reports"]]},
-          {k:"people", label:"People & Policy", subs:[["contract","Contract & Policy"]]},
+          {k:"people", label:"People & Policy", subs:[["contract","Contract & Policy"],["points","Reward Points"]]},
           {k:"system", label:"System", subs:[["storage","Storage"],["syslog","System Log"]]},
         ];
         const group = GROUPS.find(g=>g.subs.some(([k])=>k===settingsTab)) || GROUPS[0];
@@ -32339,6 +32339,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
         );
       })()}
 
+      {settingsTab==="points"&&<PointsSettings appSettings={appSettings} onSaveSettings={onSaveSettings}/>}
       {/* ── BRANDING TAB ── */}
       {settingsTab==="branding"&&(
       <div style={{display:"flex",flexDirection:"column",gap:24,maxWidth:"min(1100px,100%)"}}>
@@ -38539,6 +38540,7 @@ function TeamPerformancePage({currentUser, perfLogs, aiInsights, team, maiReport
         </div>
       </div>
 
+      <PointsLeaderboardSection/>
       {/* Best / Worst highlight */}
       {best&&worst&&best.email!==worst.email&&(
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
@@ -40333,6 +40335,234 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
 // ════════════════════════════════════════════════════════════════
 // MY PERFORMANCE PAGE - Personal productivity stats & time analysis
 // ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// REWARD POINTS — computed from data the system already records
+// (performance logs, routine tasks, due-date moves, Mai check-ins,
+// won leads) plus manual admin adjustments. Settings + adjustments live
+// in app_settings.points_system. OFF by default.
+// ════════════════════════════════════════════════════════════════
+const POINTS_RULES_DEFAULT = [
+  ["task_on_time",   "Task delivered on time",                 10],
+  ["task_clean",     "Delivered with no revisions",             5],
+  ["task_late",      "Task delivered late",                    -5],
+  ["routine_done",   "Routine task closed, all points ticked",  3],
+  ["routine_missed", "Routine task missed",                    -5],
+  ["extension",      "Due date moved (each time)",             -3],
+  ["mai_full",       "Mai check-in completed, all points",      5],
+  ["mai_missed",     "Mai check-in missed",                   -10],
+  ["lead_won",       "Lead closed won",                        25],
+];
+function pointsConfig(appSettings) {
+  let c = appSettings?.points_system;
+  if (typeof c === "string") { try { c = JSON.parse(c); } catch(e) { c = null; } }
+  c = c && typeof c === "object" ? c : {};
+  const rules = {}; POINTS_RULES_DEFAULT.forEach(([k,,v]) => { rules[k] = (c.rules && c.rules[k] != null && !isNaN(Number(c.rules[k]))) ? Number(c.rules[k]) : v; });
+  return { enabled: !!c.enabled, visibility: c.visibility || "private", reward_note: c.reward_note || "", rules, adjustments: Array.isArray(c.adjustments) ? c.adjustments : [] };
+}
+// month = "YYYY-MM". Returns {total, lines:[{date,label,pts}]}
+function calcMemberPoints(member, month, {perfLogs, posts, maiSessions, leads, cfg}) {
+  const lines = []; const R = cfg.rules; const inM = d => !!d && String(d).slice(0,7) === month;
+  const add = (date, key, label) => { if (R[key]) lines.push({date: String(date||"").slice(0,10), label, pts: R[key]}); };
+  const email = member.email;
+  (perfLogs||[]).forEach(l => {
+    if (l.user_email !== email || (l.stage_from||"").startsWith("returned_")) return;
+    const d = l.completed_at || l.created_at; if (!inM(d)) return;
+    const t = l.post_title || "task";
+    if (l.on_time === true || l.on_time === 1 || l.on_time === "1") add(d, "task_on_time", `On time: ${t}`); else add(d, "task_late", `Late: ${t}`);
+    if (!(Number(l.revision_count) > 0) && !(l.rejected === true || l.rejected === 1 || l.rejected === "1")) add(d, "task_clean", `No revisions: ${t}`);
+  });
+  (posts||[]).forEach(p => {
+    if (p.is_routine) {
+      if (p.assigned_to !== email || !inM(p.due_date)) return;
+      if (p.routine_status === "done") { const it = routineItems(p); if (!it.length || it.every(i => i.done)) add(p.routine_completed_at || p.due_date, "routine_done", `Routine done: ${p.title}`); }
+      else if (p.routine_status === "missed") add(p.due_date, "routine_missed", `Routine missed: ${p.title}`);
+      return;
+    }
+    if (!p.due_history || ![p.assigned_to, p.design_assigned_to, p.content_assigned_to].includes(email)) return;
+    let hist = []; try { hist = Array.isArray(p.due_history) ? p.due_history : JSON.parse(p.due_history); } catch(e) {}
+    (hist||[]).forEach(h => { if (h && inM(h.date || h.at) && h.to && String(h.to).slice(0,10) > String(h.date || h.at).slice(0,10)) add(h.date || h.at, "extension", `Due date moved: ${p.title}`); });
+  });
+  (maiSessions||[]).forEach(s => {
+    if (s.account_manager_email !== email || !inM(s.report_date || s.started_at)) return;
+    if (s.status === "missed") add(s.report_date, "mai_missed", `Missed Mai check-in (${s.report_type})`);
+    else if (s.score != null && s.max_score && Number(s.score) >= Number(s.max_score)) add(s.report_date, "mai_full", `Full Mai check-in (${s.report_type})`);
+  });
+  (leads||[]).forEach(l => {
+    if (l.status !== "closed_won" || !(l.assigned_to === email || l.assigned_to === member.id)) return;
+    const d = l.updated_at || l.updated_date || l.created_date; if (inM(d)) add(d, "lead_won", `Lead won: ${l.name || l.company || ""}`);
+  });
+  (cfg.adjustments||[]).forEach(a => { if (a.email === email && inM(a.date)) lines.push({date: a.date, label: `Manual: ${a.reason || "adjustment"}`, pts: Number(a.pts)||0, manual: true, id: a.id}); });
+  lines.sort((a,b) => b.date.localeCompare(a.date));
+  return { total: lines.reduce((s,l) => s + l.pts, 0), lines };
+}
+const POINTS_ROLES_EXCLUDED = ["admin","accountant","office_boy","client"];
+function MyPointsCard({member, cfg, data, month}) {
+  const [open, setOpen] = useState(false);
+  const r = calcMemberPoints(member, month, {...data, cfg});
+  const gain = r.lines.filter(l=>l.pts>0).reduce((s,l)=>s+l.pts,0), loss = r.lines.filter(l=>l.pts<0).reduce((s,l)=>s+l.pts,0);
+  return (
+    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:10}}>
+      <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+        <div style={{width:60,height:60,borderRadius:"50%",background:"linear-gradient(135deg,#f59e0b,#ef4444)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:18,flexShrink:0}}>{r.total}</div>
+        <div style={{flex:1,minWidth:160}}>
+          <p style={{fontSize:14,fontWeight:800}}>🏆 My Points — {new Date(month+"-01T12:00:00").toLocaleDateString(undefined,{month:"long",year:"numeric"})}</p>
+          <p style={{fontSize:12,color:"var(--text3)"}}><span style={{color:"#10b981",fontWeight:700}}>+{gain}</span> earned · <span style={{color:"#ef4444",fontWeight:700}}>{loss}</span> lost · resets every month</p>
+          {cfg.reward_note&&<p style={{fontSize:11,color:"var(--text2)",marginTop:3}}>🎁 {cfg.reward_note}</p>}
+        </div>
+        <button onClick={()=>setOpen(o=>!o)} style={{padding:"6px 12px",borderRadius:8,fontSize:12,fontWeight:700,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer"}}>{open?"Hide":"Details"}</button>
+      </div>
+      {open&&(r.lines.length===0
+        ? <p style={{fontSize:12,color:"var(--text3)"}}>No points yet this month.</p>
+        : <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:320,overflowY:"auto"}}>
+            {r.lines.map((l,i)=>(
+              <div key={i} style={{display:"flex",gap:8,alignItems:"center",fontSize:12,padding:"5px 8px",borderRadius:6,background:"var(--surface2)"}}>
+                <span style={{color:"var(--text3)",flexShrink:0,width:44}}>{l.date.slice(5)}</span>
+                <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.label}</span>
+                <span style={{fontWeight:800,color:l.pts>=0?"#10b981":"#ef4444",flexShrink:0}}>{l.pts>0?"+":""}{l.pts}</span>
+              </div>
+            ))}
+          </div>)}
+    </div>
+  );
+}
+function PointsLeaderboard({team, cfg, data, month, setMonth, canAdjust, onSaveSettings, appSettings, currentUser}) {
+  const [adj, setAdj] = useState(null);
+  const [openId, setOpenId] = useState(null);
+  const members = (team||[]).filter(m => (m.status||"active")==="active" && !POINTS_ROLES_EXCLUDED.includes(m.role));
+  const rows = members.map(m => ({m, r: calcMemberPoints(m, month, {...data, cfg})})).sort((a,b)=>b.r.total-a.r.total);
+  const roleLabel = r => ROLES?.[r]?.label || r;
+  const saveAdj = async () => {
+    if (!adj?.email || !Number(adj.pts)) return;
+    let raw = appSettings?.points_system; if (typeof raw==="string") { try { raw = JSON.parse(raw); } catch(e) { raw = {}; } }
+    raw = raw || {};
+    const next = {...raw, adjustments:[...(raw.adjustments||[]), {id:Date.now().toString(36), email:adj.email, pts:Number(adj.pts), reason:adj.reason||"", date:new Date().toISOString().slice(0,10), by:currentUser?.email}]};
+    await onSaveSettings({points_system: next}); setAdj(null);
+  };
+  const months = Array.from({length:6},(_,i)=>{ const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-i); return d.toISOString().slice(0,7); });
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+        <select value={month} onChange={e=>setMonth(e.target.value)} style={{padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13}}>
+          {months.map(m=><option key={m} value={m}>{new Date(m+"-01T12:00:00").toLocaleDateString(undefined,{month:"long",year:"numeric"})}</option>)}
+        </select>
+        {!cfg.enabled&&<span style={{fontSize:11,fontWeight:700,color:"#f59e0b",background:"#f59e0b18",padding:"4px 10px",borderRadius:99}}>Points are OFF — only admins see this. Turn on in Settings → People & Policy → Reward Points.</span>}
+        {canAdjust&&<button onClick={()=>setAdj({email:rows[0]?.m.email||"",pts:"",reason:""})} style={{marginLeft:"auto",padding:"7px 14px",borderRadius:8,fontSize:12,fontWeight:700,border:"none",background:"var(--accent)",color:"#fff",cursor:"pointer"}}>+ / − Adjust points</button>}
+      </div>
+      {adj&&(
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:14,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+          <select value={adj.email} onChange={e=>setAdj({...adj,email:e.target.value})} style={{padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13}}>
+            {members.map(m=><option key={m.id} value={m.email}>{m.name}</option>)}
+          </select>
+          <input type="number" placeholder="e.g. 20 or -10" value={adj.pts} onChange={e=>setAdj({...adj,pts:e.target.value})} style={{width:120,padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13}}/>
+          <input placeholder="Reason" value={adj.reason} onChange={e=>setAdj({...adj,reason:e.target.value})} style={{flex:1,minWidth:160,padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13}}/>
+          <button onClick={saveAdj} style={{padding:"7px 14px",borderRadius:8,fontSize:12,fontWeight:700,border:"none",background:"#10b981",color:"#fff",cursor:"pointer"}}>Save</button>
+          <button onClick={()=>setAdj(null)} style={{padding:"7px 14px",borderRadius:8,fontSize:12,fontWeight:700,border:"1px solid var(--border2)",background:"none",color:"var(--text2)",cursor:"pointer"}}>Cancel</button>
+        </div>
+      )}
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
+        {rows.length===0&&<p style={{padding:20,fontSize:13,color:"var(--text3)"}}>No team members.</p>}
+        {rows.map(({m,r},i)=>(
+          <div key={m.id} style={{borderBottom:"1px solid var(--border)"}}>
+            <div onClick={()=>setOpenId(openId===m.id?null:m.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",cursor:"pointer"}}>
+              <span style={{width:26,fontWeight:900,fontSize:15,color:i===0?"#f59e0b":i===1?"#94a3b8":i===2?"#b45309":"var(--text3)"}}>{i<3?["🥇","🥈","🥉"][i]:i+1}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name}</p>
+                <p style={{fontSize:11,color:"var(--text3)"}}>{roleLabel(m.role)} · {r.lines.length} entr{r.lines.length===1?"y":"ies"}</p>
+              </div>
+              <span style={{fontSize:18,fontWeight:900,color:r.total>=0?"#10b981":"#ef4444"}}>{r.total}</span>
+            </div>
+            {openId===m.id&&(
+              <div style={{padding:"0 16px 12px",display:"flex",flexDirection:"column",gap:4,maxHeight:300,overflowY:"auto"}}>
+                {r.lines.length===0?<p style={{fontSize:12,color:"var(--text3)"}}>Nothing this month.</p>:r.lines.map((l,j)=>(
+                  <div key={j} style={{display:"flex",gap:8,fontSize:12,padding:"4px 8px",borderRadius:6,background:"var(--surface2)"}}>
+                    <span style={{color:"var(--text3)",width:44,flexShrink:0}}>{l.date.slice(5)}</span>
+                    <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.label}</span>
+                    <span style={{fontWeight:800,color:l.pts>=0?"#10b981":"#ef4444"}}>{l.pts>0?"+":""}{l.pts}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+function PointsSettings({appSettings, onSaveSettings}) {
+  const cfg = pointsConfig(appSettings);
+  const [form, setForm] = useState(()=>({enabled:cfg.enabled, visibility:cfg.visibility, reward_note:cfg.reward_note, rules:{...cfg.rules}}));
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    setSaving(true);
+    let raw = appSettings?.points_system; if (typeof raw==="string") { try { raw = JSON.parse(raw); } catch(e) { raw = {}; } }
+    await onSaveSettings({points_system:{...(raw||{}), ...form}});
+    setSaving(false);
+  };
+  const inp = {padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13};
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16,maxWidth:720}}>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:16,display:"flex",alignItems:"center",gap:12}}>
+        <PermSwitch checked={form.enabled} onChange={()=>setForm({...form,enabled:!form.enabled})}/>
+        <div>
+          <p style={{fontSize:14,fontWeight:800}}>Reward points {form.enabled?"ON":"OFF"}</p>
+          <p style={{fontSize:12,color:"var(--text3)"}}>{form.enabled?"The team sees their points in My Performance; the leaderboard is in Team Performance.":"Hidden from the team. Admins can still preview the leaderboard in Team Performance."}</p>
+        </div>
+      </div>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:10}}>
+        <p style={{fontSize:13,fontWeight:800}}>Who sees the leaderboard</p>
+        {[["private","Each person sees only their own points (admin & Account Director see everyone)"],["public","Everyone sees the full leaderboard"]].map(([v,l])=>(
+          <label key={v} style={{display:"flex",gap:8,fontSize:13,cursor:"pointer"}}><input type="radio" checked={form.visibility===v} onChange={()=>setForm({...form,visibility:v})}/>{l}</label>
+        ))}
+        <p style={{fontSize:13,fontWeight:800,marginTop:6}}>Reward (shown to the team)</p>
+        <input value={form.reward_note} onChange={e=>setForm({...form,reward_note:e.target.value})} placeholder="e.g. Top of each role gets a bonus · 300 pts = half-day off" style={inp}/>
+      </div>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:8}}>
+        <p style={{fontSize:13,fontWeight:800}}>Point values</p>
+        <p style={{fontSize:11,color:"var(--text3)"}}>Negative = deduction. 0 turns a rule off. Points reset every month.</p>
+        {POINTS_RULES_DEFAULT.map(([k,label])=>(
+          <div key={k} style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{flex:1,fontSize:13}}>{label}</span>
+            <input type="number" value={form.rules[k]} onChange={e=>setForm({...form,rules:{...form.rules,[k]:e.target.value===""?0:Number(e.target.value)}})} style={{...inp,width:80,textAlign:"right"}}/>
+          </div>
+        ))}
+      </div>
+      <button onClick={save} disabled={saving} style={{alignSelf:"flex-start",padding:"10px 22px",borderRadius:10,fontSize:13,fontWeight:800,border:"none",background:"var(--accent)",color:"#fff",cursor:saving?"wait":"pointer"}}>{saving?"Saving…":"Save points settings"}</button>
+    </div>
+  );
+}
+
+const pointsBridge = {appSettings:null, leads:[], team:[], onSaveSettings:null, currentUser:null};
+const pointsData = () => ({perfLogs: perfBridge.logs, posts: perfBridge.posts, maiSessions: perfBridge.mai, leads: pointsBridge.leads});
+// My Performance: own points (+ public leaderboard). Renders nothing while points are OFF.
+function MyPointsSection() {
+  const cfg = pointsConfig(pointsBridge.appSettings);
+  const [month, setMonth] = useState(()=>new Date().toISOString().slice(0,7));
+  const me = (pointsBridge.team||[]).find(t=>t.email===pointsBridge.currentUser?.email);
+  if (!cfg.enabled || !me || POINTS_ROLES_EXCLUDED.includes(me.role)) return null;
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <MyPointsCard member={me} cfg={cfg} data={pointsData()} month={month}/>
+      {cfg.visibility==="public"&&<PointsLeaderboard team={pointsBridge.team} cfg={cfg} data={pointsData()} month={month} setMonth={setMonth} canAdjust={false}/>}
+    </div>
+  );
+}
+// Team Performance (admin) / Account Director: full leaderboard; admins see it even while OFF (preview).
+function PointsLeaderboardSection({title=true}) {
+  const cfg = pointsConfig(pointsBridge.appSettings);
+  const [month, setMonth] = useState(()=>new Date().toISOString().slice(0,7));
+  const [open, setOpen] = useState(false);
+  const cu = pointsBridge.currentUser; const isAdmin = cu?.role==="admin";
+  if (!isAdmin && !cfg.enabled) return null;
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
+      {title&&<button onClick={()=>setOpen(o=>!o)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,fontSize:15,fontWeight:800,color:"var(--text)",cursor:"pointer"}}>
+        <span>🏆 Reward Points {cfg.enabled?"":"(OFF — preview)"}</span><span style={{fontSize:12,color:"var(--text3)"}}>{open?"Hide ▲":"Show ▼"}</span>
+      </button>}
+      {(open||!title)&&<PointsLeaderboard team={pointsBridge.team} cfg={cfg} data={pointsData()} month={month} setMonth={setMonth} canAdjust={isAdmin} onSaveSettings={pointsBridge.onSaveSettings} appSettings={pointsBridge.appSettings} currentUser={cu}/>}
+    </div>
+  );
+}
+
 function MyPerformancePage({currentUser, posts, timeEntries, perfLogs, aiInsights}) {
   const {isMobile} = useResponsive();
   const [rangeDays, setRangeDays] = useState(7);
@@ -40439,8 +40669,9 @@ Based ONLY on this person's own numbers and task history above, give 3 specific,
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"100%"}}>
+      <div style={{order:-1}}><MyPointsSection/></div>
       {/* Header */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12,order:-2}}>
         <div>
           <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?22:28,fontWeight:800,marginBottom:4}}>My Performance</h1>
           <p style={{fontSize:13,color:"var(--text2)"}}>Personal productivity &amp; time tracking analytics</p>
@@ -50710,6 +50941,7 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
   timerBridge.entries = data.timeEntries||[];
   roleBridge.role = currentUser?.role||"";
   perfBridge.logs = data.perfLogs||[]; perfBridge.mai = data.maiReportSessions||[]; perfBridge.posts = data.posts||[];
+  pointsBridge.appSettings = appSettings; pointsBridge.leads = data.leads||[]; pointsBridge.team = data.team||[]; pointsBridge.onSaveSettings = (x)=>saveAppSettings(x); pointsBridge.currentUser = currentUser;
   clientAssetsBridge.assets = data.assets; clientAssetsBridge.addAsset = addAsset; clientAssetsBridge.clients = data.clients||[];
 
   const updateAsset = async (id, patch) => {
@@ -53559,7 +53791,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onDayClick={(jump)=>{ setTimelineJump(jump); setPage("my_timeline"); }}
           />
         )}
-        {page==="mai_reports"&&currentUser?.role==="account_director"&&<div style={{display:"flex",flexDirection:"column",gap:16}}><div><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Mai Reports</h2><p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Mai's check-ins with each account manager and executive</p></div><MaiReportsHub team={data.team} onUpdateTeamMember={updateTeamMember}/></div>}
+        {page==="mai_reports"&&currentUser?.role==="account_director"&&<div style={{display:"flex",flexDirection:"column",gap:16}}><div><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Mai Reports</h2><p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Mai's check-ins with each account manager and executive</p></div><MaiReportsHub team={data.team} onUpdateTeamMember={updateTeamMember}/><PointsLeaderboardSection/></div>}
         {page==="my_timeline"&&<MyTimelinePage posts={data.posts} team={data.team} currentUser={currentUser} timeEntries={data.timeEntries||[]} onPostClick={setSelectedPost} onStartTimer={startTimer} onPauseTimer={pauseTimer} onResumeTimer={resumeTimer} schedules={data.schedules||[]} scheduleOverrides={data.scheduleOverrides||[]} onOverrideSchedule={overrideSchedule} onShiftOverdue={shiftOverdueDueDate} initialJump={timelineJump} onJumpConsumed={()=>setTimelineJump(null)} onBackToCalendar={()=>setPage("my_calendar")} activityLogs={data.activityLogs||[]} appSettings={appSettings} onQuickAdd={(type,slot)=>{
           if(type==="post"){ setAddPostPresetSlot(slot); setShowAddPost(true); }
           else if(type==="task"){ setAddTaskPresetSlot(slot); setShowAddTask(true); }
