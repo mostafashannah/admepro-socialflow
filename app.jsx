@@ -39933,6 +39933,10 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     else if(slot.overdue && !slot.completed_today && !slot.snapshot) _tailEnd = dateStr < _todayKey ? DELAY_WINDOW.to*60 : Math.min(_nowM, DELAY_WINDOW.to*60);
                     const _tailStart = Math.max(slot.end_mins, DELAY_WINDOW.from*60);
                     const _tailW = Math.max(0, _tailEnd - _tailStart)/WORKING_MINS*100;
+                    // On a day that has already ended, the delayed block itself is stretched (solid) to where the delay froze (9 PM at the latest);
+                    // only today keeps the striped band, because today's delay is still growing.
+                    const _pastDayStretch = dateStr < _todayKey && _tailEnd > slot.end_mins && (slot.overdue || slot.ghost) && !slot.completed_today;
+                    const _stretchedPct = Math.max(widthPct, (_tailEnd - slot.start_mins)/WORKING_MINS*100);
                     return (
                       <React.Fragment key={`${slot.post_id}-${slot.snapshot?"done":slot.ghost?"ghost":"live"}-${slot.start_mins}-f`}>
                       <div key={`${slot.post_id}-${slot.snapshot?"done":slot.ghost?"ghost":"live"}-${slot.start_mins}`} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})${slot.overdue?" — OVERDUE":""}${slot.completed_today?" — Done, moved to review":""}${canMove?" — drag, or right-click to move (works across days too)":""}`}
@@ -39945,7 +39949,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                           setCopiedTask({postId:post.id, durationMins: slot.end_mins-slot.start_mins});
                           setToast(` "${post.title}" copied — right-click a free slot (any day) to move it there`);
                         }:undefined}
-                        style={{position:"absolute",zIndex:2,left:`${leftPct}%`,width:`${widthPct}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,background:slot.overdue?"#ef4444":slot.completed_today?"#22c55e":(stage?.color||"var(--accent)"),borderRadius:8,backgroundImage:"linear-gradient(180deg, rgba(255,255,255,0.16), rgba(0,0,0,0.08))",boxShadow:slot.overdue?"0 0 0 1.5px #b91c1c inset, 0 2px 6px rgba(0,0,0,0.2)":"0 2px 6px rgba(0,0,0,0.18)",cursor:post?(canMove?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 8px"}}>
+                        style={{position:"absolute",zIndex:2,left:`${leftPct}%`,width:`${_pastDayStretch?_stretchedPct:widthPct}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,background:slot.overdue?"#ef4444":slot.completed_today?"#22c55e":(stage?.color||"var(--accent)"),borderRadius:8,backgroundImage:"linear-gradient(180deg, rgba(255,255,255,0.16), rgba(0,0,0,0.08))",boxShadow:slot.overdue?"0 0 0 1.5px #b91c1c inset, 0 2px 6px rgba(0,0,0,0.2)":"0 2px 6px rgba(0,0,0,0.18)",cursor:post?(canMove?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 8px"}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
                           {post&&<TaskThumb post={post} team={team} size={34}/>}
                           <div style={{display:"flex",flexDirection:"column",minWidth:0,flex:1,lineHeight:1.2,gap:2}}>
@@ -39955,7 +39959,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                           </div>
                         </div>
                       </div>
-                      {_tailW>0 && <div title={`Delay since the due time (${slot.end_time})`} style={{position:"absolute",left:`${(_tailStart-WORKING_START*60)/WORKING_MINS*100}%`,width:`${_tailW}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,borderRadius:"0 8px 8px 0",background:"repeating-linear-gradient(135deg, rgba(220,38,38,0.35) 0, rgba(220,38,38,0.35) 6px, rgba(220,38,38,0.15) 6px, rgba(220,38,38,0.15) 12px)",border:"1px dashed #dc2626",borderLeft:"none",pointerEvents:"none",zIndex:1}}/>}
+                      {_tailW>0 && !_pastDayStretch && <div title={`Delay since the due time (${slot.end_time})`} style={{position:"absolute",left:`${(_tailStart-WORKING_START*60)/WORKING_MINS*100}%`,width:`${_tailW}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,borderRadius:"0 8px 8px 0",background:"repeating-linear-gradient(135deg, rgba(220,38,38,0.35) 0, rgba(220,38,38,0.35) 6px, rgba(220,38,38,0.15) 6px, rgba(220,38,38,0.15) 12px)",border:"1px dashed #dc2626",borderLeft:"none",pointerEvents:"none",zIndex:1}}/>}
                       </React.Fragment>
                     );
                   })}
