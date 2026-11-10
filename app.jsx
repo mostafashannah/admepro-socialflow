@@ -48967,7 +48967,19 @@ function App() {
     // moments after launch — fixed elements (bottom nav) sit too high with a
     // white gap under them until the first scroll. Re-measure a few times as
     // it settles, and nudge scroll so iOS re-lays out fixed elements.
-    const settle = () => { setAppHeight(); try { window.scrollTo(0, 0); } catch(e){} };
+    const settle = () => {
+      setAppHeight();
+      // The real scroller is <main>, not the window — a 1px nudge on it is
+      // what makes iOS re-place the fixed bottom nav (same as a user scroll).
+      try {
+        const m = document.getElementById("main-content");
+        if (m) {
+          const t = m.scrollTop;
+          if (m.scrollHeight > m.clientHeight + 1) { m.scrollTop = t + 1; requestAnimationFrame(()=>{ m.scrollTop = t; }); }
+        }
+        window.scrollTo(0, 0);
+      } catch(e){}
+    };
     const timers = [50, 250, 600, 1200, 2500].map(ms => setTimeout(settle, ms));
     window.addEventListener("pageshow", settle);
     window.addEventListener("orientationchange", settle);
