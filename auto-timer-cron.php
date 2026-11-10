@@ -60,12 +60,7 @@ foreach ($byOwner as $list) {
     foreach ($list as $p) {
         $est = $p['_est'];
         $cursor = max($WORK_START, min($p['_due'] - $est, $WORK_END - $est));
-        $guard = 0;
-        do {
-            $hit = null;
-            foreach ($taken as $t) { if ($t[0] < $cursor + $est && $t[1] > $cursor) { $hit = $t; break; } }
-            if ($hit) $cursor = $hit[1];
-        } while ($hit && $guard++ < 50);
+        // Tasks keep their own slot even when it overlaps another (parallel work) — same as the Timeline.
         $taken[] = [$cursor, $cursor + $est];
         $placed[$p['id']] = ['start' => $cursor, 'end' => $cursor + $est, 'member' => $p['_member'], 'post' => $p];
     }
@@ -88,7 +83,7 @@ foreach ($act as $e) {
 }
 
 // 2) Start timers for slots that are open right now (earliest slot first).
-$hasActive = $pdo->prepare("SELECT 1 FROM time_entries WHERE user_email = ? AND status = 'active' LIMIT 1");
+$hasActive = $pdo->prepare("SELECT 1 FROM time_entries WHERE user_email = ? AND status = 'active' AND (auto_started IS NULL OR auto_started = 0) LIMIT 1");
 $hasToday = $pdo->prepare("SELECT 1 FROM time_entries WHERE user_email = ? AND post_id = ? AND date = ? LIMIT 1");
 $ins = $pdo->prepare("INSERT INTO time_entries (id, post_id, post_title, user_email, user_name, started_at, date, status, total_seconds, project_id, auto_started) VALUES (UUID(), ?, ?, ?, ?, ?, ?, 'active', 0, ?, 1)");
 uasort($placed, fn($a, $b) => $a['start'] <=> $b['start']);
@@ -97,7 +92,7 @@ foreach ($placed as $pid => $slot) {
     $dbg("{$p['title']}: slot " . sprintf('%02d:%02d', intdiv($slot['start'], 60), $slot['start'] % 60) . '-' . sprintf('%02d:%02d', intdiv($slot['end'], 60), $slot['end'] % 60) . " owner {$slot['member']['email']}");
     if ($nowMins < $slot['start'] || $nowMins >= $slot['end']) { $dbg('   outside slot now'); continue; }
     $m = $slot['member'];
-    $hasActive->execute([$m['email']]); if ($hasActive->fetchColumn()) { $dbg('   owner already has a running timer'); continue; }
+    $hasActive->execute([$m['email']]); if ($hasActive->fetchColumn()) { $dbg('   owner has a timer they started by hand'); continue; } // only manual timers block; script timers on overlapping slots run in parallel
     // An entry for this task already exists today: if the script started it and paused it (slot ended / layout changed),
     // resume it now that its slot is open again; a task the person paused by hand is left alone.
     $existing = $pdo->prepare("SELECT id, status, auto_started FROM time_entries WHERE user_email = ? AND post_id = ? AND date = ? ORDER BY created_at DESC LIMIT 1");

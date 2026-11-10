@@ -882,18 +882,8 @@ function generateDailySchedule(posts, userEmail, date, userRole, includeGhosts=f
       // where NEW work gets auto-packed, not to moving something that's
       // already sitting on the schedule.
       cursor = Math.max(WORKING_START * 60, Math.min(dueMins - est, WORKING_END * 60 - est));
-      // Two tasks can end up anchored to the exact same due_time (a Calendar
-      // Plan defaulting every post to the same slot, both set manually,
-      // etc.) — rather than showing them stacked on top of each other,
-      // treat the SECOND one to land here as effectively un-anchored and
-      // push it to start right after whatever's already occupying that
-      // time, same as an un-timed task would pack in.
-      let collision = slots.find(s => s.start_mins < cursor+est && s.end_mins > cursor);
-      let guard = 0;
-      while(collision && guard++ < 50) {
-        cursor = collision.end_mins;
-        collision = slots.find(s => s.start_mins < cursor+est && s.end_mins > cursor);
-      }
+      // Tasks with their own due time keep their real slot even when it overlaps another one: people can work on several things in
+      // parallel, and the timeline rows stack overlapping blocks in separate lanes. (Only tasks WITHOUT a due time are packed one after another.)
     } else {
       // Find next free slot after the last used one. Deliberately does NOT
       // reset back to WORKING_START when a task doesn't fit before end of
