@@ -11144,6 +11144,8 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
   const prodToday = workingToday.filter(m=>!["account_manager","account_executive","account_director"].includes(m.role));
   const fmtH = sec => { const h=Math.floor(sec/3600), mm=Math.floor(sec%3600/60); return `${h}h ${String(mm).padStart(2,"0")}m`; };
   const teamSecs = workingToday.reduce((a,m)=>a+secsOf(m.email),0), prodSecs = prodToday.reduce((a,m)=>a+secsOf(m.email),0);
+  const dlyOf = list => list.reduce((a,m)=>a+(liveScorePenalty(m.email).delayHours||0)*3600,0);
+  const teamDly = dlyOf(workingToday), prodDly = dlyOf(prodToday);
   // ── Finance (simple cash view: money actually received / spent, by month)
   // Same rules as the Finance page's "This Month In/Out": invoice payments + subscription payments +
   // manual income/expenses, with outstanding (instalment) items counted in the month each
@@ -11249,8 +11251,10 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
         {tile("Delayed now", delayed, delayed?"open tasks past due":"everyone on time", delayed?"#ef4444":"#10b981", Icons.alert, ()=>setPage("my_timeline"))}
         {tile("Going live today", liveToday.length, `${liveReady} scheduled / published`, liveToday.length&&liveReady<liveToday.length?"#f59e0b":"#0ea5e9", Icons.send)}
         {tile("Tracked today", hrsToday.toFixed(1)+"h", isDirector?"team timer hours":<>
-          <span style={{display:"block"}}>Team avg <b style={{color:"var(--text)"}}>{workingToday.length?fmtH(teamSecs/workingToday.length):"—"}</b> ({workingToday.length})</span>
-          <span style={{display:"block"}}>Without account avg <b style={{color:"var(--text)"}}>{prodToday.length?fmtH(prodSecs/prodToday.length):"—"}</b> ({prodToday.length})</span>
+          <span style={{display:"block"}}>Team ({workingToday.length}): worked <b style={{color:"var(--text)"}}>{fmtH(teamSecs)}</b> + delayed <b style={{color:"#ef4444"}}>{fmtH(teamDly)}</b> = <b style={{color:"var(--text)"}}>{fmtH(teamSecs+teamDly)}</b></span>
+          <span style={{display:"block"}}>avg {workingToday.length?fmtH(teamSecs/workingToday.length):"—"} worked · {workingToday.length?fmtH((teamSecs+teamDly)/workingToday.length):"—"} actual</span>
+          <span style={{display:"block",marginTop:4}}>Without account ({prodToday.length}): worked <b style={{color:"var(--text)"}}>{fmtH(prodSecs)}</b> + delayed <b style={{color:"#ef4444"}}>{fmtH(prodDly)}</b> = <b style={{color:"var(--text)"}}>{fmtH(prodSecs+prodDly)}</b></span>
+          <span style={{display:"block"}}>avg {prodToday.length?fmtH(prodSecs/prodToday.length):"—"} worked · {prodToday.length?fmtH((prodSecs+prodDly)/prodToday.length):"—"} actual</span>
         </>, "#8b5cf6", Icons.clock)}
       </div>
 
@@ -40279,6 +40283,9 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   const prodWorking = workingMembers.filter(m=>!ACCT.includes(m.role));
   const prodTrackedSecs = combinedView ? prodWorking.reduce((sum,m)=>sum + (timeEntries||[]).filter(t=>t.user_email===m.email && t.date===dateStr).reduce((acc,t)=>acc + (Number(t.total_seconds)||0) + (t.status==='active' ? Math.floor((Date.now()-parseSqlUtc(t.started_at).getTime())/1000) : 0),0), 0) : 0;
   const prodAvgSecs = prodWorking.length ? Math.round(prodTrackedSecs / prodWorking.length) : 0;
+  // Delay hours (open tasks past due right now) — shown next to worked time, and summed into "actual day".
+  const delaySecsOf = list => list.reduce((a,m)=>a+Math.round((liveScorePenalty(m.email).delayHours||0)*3600),0);
+  const teamDelaySecs = combinedView ? delaySecsOf(workingMembers) : 0, prodDelaySecs = combinedView ? delaySecsOf(prodWorking) : 0;
   const combinedActiveTimers = combinedView ? timelineMembers.flatMap(m=>(timeEntries||[]).filter(t=>t.user_email===m.email && t.status==='active')) : null;
   const combinedCompletionPct = combinedView && combinedSlots.length > 0 ? Math.round(combinedSlots.filter(s => s.completed_today).length / combinedSlots.length * 100) : 0;
 
@@ -40356,7 +40363,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
         {[
           {label:"Total Tasks",value:summaryTotalTasks,color:"var(--accent)"},
           {label:"Active Now",value:summaryActiveNow,color:"#10b981",split:activeBreakdown},
-          {label:"Time Tracked",value:fmtSecs(summaryTrackedSecs),color:"#3b82f6",note:combinedView&&currentUser?.role==="admin"?`Team: ${fmtSecs(workingTrackedSecs)} · avg ${fmtSecs(avgTrackedSecs)} (${workingMembers.map(m=>(m.name||"").split(" ")[0]).join(", ")})`:null,note2:combinedView&&currentUser?.role==="admin"?`Without account team: ${fmtSecs(prodTrackedSecs)} · avg ${fmtSecs(prodAvgSecs)} (${prodWorking.map(m=>(m.name||"").split(" ")[0]).join(", ")})`:null},
+          {label:"Time Tracked",value:fmtSecs(summaryTrackedSecs),color:"#3b82f6",note:combinedView&&currentUser?.role==="admin"?`Team: worked ${fmtSecs(workingTrackedSecs)} + delayed ${fmtSecs(teamDelaySecs)} = ${fmtSecs(workingTrackedSecs+teamDelaySecs)} · avg ${fmtSecs(avgTrackedSecs)} / ${fmtSecs(workingMembers.length?Math.round((workingTrackedSecs+teamDelaySecs)/workingMembers.length):0)} (${workingMembers.map(m=>(m.name||"").split(" ")[0]).join(", ")})`:null,note2:combinedView&&currentUser?.role==="admin"?`Without account: worked ${fmtSecs(prodTrackedSecs)} + delayed ${fmtSecs(prodDelaySecs)} = ${fmtSecs(prodTrackedSecs+prodDelaySecs)} · avg ${fmtSecs(prodAvgSecs)} / ${fmtSecs(prodWorking.length?Math.round((prodTrackedSecs+prodDelaySecs)/prodWorking.length):0)} (${prodWorking.map(m=>(m.name||"").split(" ")[0]).join(", ")})`:null},
           {label:"Completion",value:`${summaryCompletionPct}%`,color:"#f59e0b"},
         ].map(stat=>(
           <div key={stat.label} style={{padding:14,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",display:"flex",flexDirection:"column",gap:4}}>
