@@ -21324,7 +21324,7 @@ function MemberScoringTab({member, perfLogs, maiReportSessions, posts=[]}) {
 // about and what time each check-in starts. Saved to
 // team_members.mai_checkin_config, read by mai-report-lib.php.
 const MAI_AM_CHECKLISTS = {
-  morning: [["checked_platforms","Checked social platforms for all assigned clients"],["checked_ad_accounts","Checked ad accounts for all assigned clients"],["answered_comms","Answered all client calls/messages"],["confirmed_posting","Confirmed today's posts are published or scheduled"],["confirmed_meetings","Confirmed today's meetings"],["confirmed_submissions","Confirmed today's submissions/deliverables"],["confirmed_lead_followups","Confirmed lead calls/follow-ups for today"]],
+  morning: [["checked_platforms","Checked social platforms for all assigned clients"],["checked_ad_accounts","Checked ad accounts for all assigned clients"],["answered_comms","Answered all client calls/messages"],["confirmed_posting","Confirmed today's posts are published or scheduled"],["confirmed_meetings","Confirmed today's meetings"],["confirmed_submissions","Confirmed today's submissions/deliverables"],["confirmed_lead_followups","Confirmed lead calls/follow-ups for today"],["routine_tasks","Each of her routine tasks for today, asked by name"]],
   eod: [["meetings_logged","Today's meetings each have a contact report logged"],["submissions_done","Today's submissions/deliverables were delivered"],["morning_items_done","Open items from the morning check-in are resolved or explained"]],
 };
 function MaiCheckinConfigPanel({member, onUpdateTeamMember}) {

@@ -42,6 +42,7 @@ const MAI_MORNING_CHECKLIST = [
     'confirmed_meetings'  => "Confirmed today's meetings",
     'confirmed_submissions' => "Confirmed today's submissions/deliverables",
     'confirmed_lead_followups' => 'Confirmed lead calls/follow-ups for today',
+    'routine_tasks'       => 'Went through each of her routine tasks for today, by name',
 ];
 
 const MAI_EOD_CHECKLIST = [
@@ -235,6 +236,14 @@ function maiStartReportSession(PDO $pdo, array $am, $reportType) {
     if (!waPrefAllows($pdo, $am['email'], 'wa_am_reports')) return null;
 
     $checklist = maiChecklistForAm($am, $reportType);
+    // Name her actual routine tasks for today, so Mai asks about each one.
+    if (isset($checklist['routine_tasks'])) {
+        $rt = $pdo->prepare("SELECT title, routine_status FROM posts WHERE is_routine = 1 AND assigned_to = :e AND LEFT(due_date,10) = :d ORDER BY due_time");
+        $rt->execute([':e' => $am['email'], ':d' => date('Y-m-d')]);
+        $names = array_map(fn($r) => $r['title'] . ($r['routine_status'] === 'done' ? ' (already marked done)' : ''), $rt->fetchAll(PDO::FETCH_ASSOC));
+        if ($names) $checklist['routine_tasks'] = 'Asked about EACH of her routine tasks for today by name and got a status for every one: ' . implode('; ', $names);
+        else unset($checklist['routine_tasks']); // nothing to ask about today
+    }
     $checklistState = [];
     foreach ($checklist as $key => $label) { $checklistState[$key] = ['label' => $label, 'done' => false, 'note' => null]; }
 
