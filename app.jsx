@@ -11828,7 +11828,7 @@ No markdown, no explanation.`;
 // ════════════════════════════════════════════════════════════════
 // CLIENTS PAGE
 // ════════════════════════════════════════════════════════════════
-function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggleHide,team=[]}) {
+function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggleHide,team=[],integrations=[]}) {
   const [search,setSearch] = useState("");
   const [showAdd,setShowAdd] = useState(false);
   const [showHidden,setShowHidden] = useState(false);
@@ -11906,11 +11906,26 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                  {(client.platforms||[]).slice(0,4).map(p=>(
-                    <span key={p} style={{fontSize:9,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",color:"var(--text3)",background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:6,padding:"2px 6px"}}>
-                      {PLT_ICON[p]||p}
-                    </span>
-                  ))}
+                  {(()=>{
+                    // Per-platform connection health for THIS client: green = connected & last run fine,
+                    // amber = connected but its last run failed / status error, grey = not connected.
+                    const SOCIAL = ["instagram","facebook","linkedin","tiktok","youtube","twitter","x","whatsapp","snapchat","pinterest"];
+                    const mine = (integrations||[]).filter(i=>i.client_id===client.id && SOCIAL.includes(i.app_key));
+                    const keys = [...new Set([...(client.platforms||[]), ...mine.map(i=>i.app_key)])];
+                    return keys.map(p=>{
+                      const ints = mine.filter(i=>i.app_key===p);
+                      const ok = ints.some(i=>i.status==="active" && i.last_run_status!=="error");
+                      const bad = !ok && ints.some(i=>i.status==="active"||i.status==="error");
+                      const col = ok?"#10b981":bad?"#f59e0b":"var(--text3)";
+                      const tip = ok?"Connected & working":bad?"Connected but failing — check Integrations":"Not connected";
+                      return (
+                        <span key={p} title={`${p}: ${tip}`} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:9,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",color:ok||bad?col:"var(--text3)",background:ok?"#10b98114":bad?"#f59e0b14":"var(--surface)",border:`1px solid ${ok?"#10b98155":bad?"#f59e0b55":"var(--border2)"}`,borderRadius:6,padding:"2px 6px"}}>
+                          <span style={{width:6,height:6,borderRadius:"50%",background:ok?"#10b981":bad?"#f59e0b":"var(--border2)"}}/>
+                          {PLT_ICON[p]||p}
+                        </span>
+                      );
+                    });
+                  })()}
                 </div>
                 <p style={{fontSize:11,color:"var(--text3)",whiteSpace:"nowrap"}}>
                   <b style={{color:"var(--text)"}}>{cProjects.length}</b> proj · <b style={{color:"var(--text)"}}>{cPosts.length}</b> posts · <b style={{color:"var(--text)"}}>{cPosts.filter(p=>p.stage==="published").length}</b> pub
@@ -53738,7 +53753,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         {page==="clients"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"clients.manage"))&&(()=>{
           const selectedClient = data.clients.find(c=>c.id===selectedClientId)||null;
           if(!selectedClient) return (
-            <ClientsPage clients={data.clients} projects={data.projects} posts={data.posts} team={data.team}
+            <ClientsPage clients={data.clients} projects={data.projects} posts={data.posts} team={data.team} integrations={data.integrations||[]}
               onAdd={addClient} onSelect={c=>{setSelectedClientId(c.id);setClientInitialTab(null);}}
               currentUser={currentUser} onToggleHide={toggleHideClient}/>
           );
