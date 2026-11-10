@@ -1228,6 +1228,28 @@ function calcMaiCheckinScore(sessions) {
   });
   return Math.round(sumPct/weight);
 }
+// Live score effect of work that is still open: each delayed task and each task sent back and re-opened costs points right away.
+// (Once a task is finished, the on-time flag and sent-back count in the performance log take over, so nothing is counted twice.)
+const SCORE_RULES = {delayBase:1, delayPerHour:0.75, delayCapPerTask:6, returnPerRound:3, returnCapPerTask:9, totalCap:30};
+function liveScorePenalty(userEmail) {
+  const out = {delayPts:0, returnPts:0, openDelayed:0, openReturned:0, delayHours:0};
+  try {
+    (perfBridge.posts||[]).forEach(p=>{
+      if(!p || p.is_routine || p.is_plan_parent || !["design","content_creation"].includes(p.stage)) return;
+      const owner = p.stage==="design" ? (p.design_assigned_to||p.assigned_to) : (p.content_assigned_to||p.assigned_to);
+      if(owner !== userEmail) return;
+      const d = postDelayInfo(p);
+      if(d && d.live && d.secs > 0) {
+        const hrs = d.secs/3600;
+        out.delayPts += Math.min(SCORE_RULES.delayCapPerTask, SCORE_RULES.delayBase + hrs*SCORE_RULES.delayPerHour);
+        out.openDelayed++; out.delayHours += hrs;
+      }
+      const rounds = Number(p.revision_count)||0;
+      if(rounds > 0) { out.returnPts += Math.min(SCORE_RULES.returnCapPerTask, rounds*SCORE_RULES.returnPerRound); out.openReturned++; }
+    });
+  } catch(e) {}
+  return out;
+}
 function calcUserPerf(userEmail, perfLogs, maiSessions) {
   const logs = (perfLogs||[]).filter(l => l.user_email === userEmail);
   const maiScore = calcMaiCheckinScore((maiSessions||[]).filter(s=>s.account_manager_email===userEmail));
@@ -1235,7 +1257,8 @@ function calcUserPerf(userEmail, perfLogs, maiSessions) {
     // No task-based logs (e.g. an account manager, who has no
     // PerformanceLog rows at all) — score off Mai check-ins alone if there
     // are any, rather than forcing a misleading 0.
-    return { score:maiScore??0, completionRate:0, onTimeRate:0, avgQuality:0, avgRevisions:0, total:0, logs:[], maiScore };
+    const _live0 = liveScorePenalty(userEmail); const _pen0 = Math.min(SCORE_RULES.totalCap, Math.round(_live0.delayPts + _live0.returnPts));
+    return { score:Math.max(0,(maiScore??0)-_pen0), baseScore:maiScore??0, livePenalty:_pen0, live:_live0, completionRate:0, onTimeRate:0, avgQuality:0, avgRevisions:0, total:0, logs:[], maiScore };
   }
   const total = logs.length;
   const onTime = logs.filter(l => l.on_time).length;
@@ -1256,8 +1279,11 @@ function calcUserPerf(userEmail, perfLogs, maiSessions) {
   // Fold in Mai check-in accountability where it exists (mainly account
   // managers) — a strong task-completion rate shouldn't be able to fully
   // paper over skipped check-ins.
-  const score = maiScore!=null ? Math.round(taskScore*0.7 + maiScore*0.3) : taskScore;
-  return { score, completionRate, onTimeRate, avgQuality, avgRevisions, total, logs, maiScore };
+  const baseScore = maiScore!=null ? Math.round(taskScore*0.7 + maiScore*0.3) : taskScore;
+  const live = liveScorePenalty(userEmail);
+  const penalty = Math.min(SCORE_RULES.totalCap, Math.round(live.delayPts + live.returnPts));
+  const score = Math.max(0, baseScore - penalty);
+  return { score, baseScore, livePenalty:penalty, live, completionRate, onTimeRate, avgQuality, avgRevisions, total, logs, maiScore };
 }
 function calcAllPerf(team, perfLogs, includeAll, maiSessions, posts) {
   return (team||[])
@@ -39388,7 +39414,7 @@ function TaskThumb({post, team=[], size=18}) {
 }
 
 // Hover card on a person's name in the timeline: today's load and real time, delivery quality and an Uber-style star rating.
-const perfBridge = {logs:[], mai:[]};
+const perfBridge = {logs:[], mai:[], posts:[]};
 function StarRating({value, size=16}) {
   const pct = Math.max(0, Math.min(100, value/5*100));
   return (
@@ -39441,6 +39467,12 @@ function MemberHoverCard({member, slots:allSlots=[], dateStr, members=[], style,
         {row("Tasks", `${slots.length}${slots.length?` (${done} done)`:""}`)}
         {row("Planned hours", fmtH(plannedSecs))}
         {row("Real execution time", realSecs>0?fmtH(realSecs):"—", realSecs>0?"#10b981":undefined)}
+        {perf.livePenalty>0&&<>
+          <p style={{fontSize:10,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",margin:"8px 0 2px"}}>Right now</p>
+          {perf.live.openDelayed>0&&row("Delayed open tasks", `${perf.live.openDelayed} (${perf.live.delayHours.toFixed(1)}h) · −${Math.round(perf.live.delayPts)}`, "#ef4444")}
+          {perf.live.openReturned>0&&row("Returned & still open", `${perf.live.openReturned} · −${Math.round(perf.live.returnPts)}`, "#ef4444")}
+          {row("Score effect", `−${perf.livePenalty} points`, "#ef4444")}
+        </>}
         {hasPerf&&perf.total>0&&<>
           <p style={{fontSize:10,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",margin:"8px 0 2px"}}>Overall</p>
           {row("Delivered on time", `${perf.onTimeRate}%`, perf.onTimeRate>=80?"#10b981":perf.onTimeRate>=60?"#f59e0b":"#ef4444")}
@@ -50549,7 +50581,7 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
 
   timerBridge.entries = data.timeEntries||[];
   roleBridge.role = currentUser?.role||"";
-  perfBridge.logs = data.perfLogs||[]; perfBridge.mai = data.maiReportSessions||[];
+  perfBridge.logs = data.perfLogs||[]; perfBridge.mai = data.maiReportSessions||[]; perfBridge.posts = data.posts||[];
   clientAssetsBridge.assets = data.assets; clientAssetsBridge.addAsset = addAsset; clientAssetsBridge.clients = data.clients||[];
 
   const updateAsset = async (id, patch) => {
