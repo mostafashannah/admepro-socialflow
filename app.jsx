@@ -3884,7 +3884,7 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c", photoIsDark=true}) => 
          background of its own. */
       .bottom-nav-float{
         display:flex;flex-shrink:0;justify-content:center;
-        position:fixed;left:50%;bottom:0;
+        position:absolute;left:50%;bottom:0;
         transform:translateX(-50%);
         width:max-content;
         padding-bottom:env(safe-area-inset-bottom);
@@ -50095,7 +50095,11 @@ function App() {
     // directly instead of depending on dvh settling correctly at all.
     const vv = window.visualViewport;
     const setAppHeight = () => {
-      const h = vv ? vv.height : window.innerHeight;
+      // iOS reports a too-small visualViewport height at launch (until the first scroll), which left a white
+      // gap under the app. Use the largest reported height unless the keyboard is open (then follow vv so
+      // inputs stay visible).
+      const ae = document.activeElement; const typing = ae && (ae.tagName==="INPUT"||ae.tagName==="TEXTAREA"||ae.isContentEditable);
+      const h = (vv && typing) ? vv.height : Math.max(vv?vv.height:0, window.innerHeight||0, document.documentElement.clientHeight||0);
       document.documentElement.style.setProperty("--app-height", h + "px");
     };
     setAppHeight();
@@ -50117,6 +50121,8 @@ function App() {
       } catch(e){}
     };
     const timers = [50, 250, 600, 1200, 2500].map(ms => setTimeout(settle, ms));
+    const onFocusChange = () => setTimeout(setAppHeight, 350);
+    document.addEventListener("focusin", onFocusChange); document.addEventListener("focusout", onFocusChange);
     window.addEventListener("pageshow", settle);
     window.addEventListener("orientationchange", settle);
     document.addEventListener("visibilitychange", settle);
@@ -50128,6 +50134,7 @@ function App() {
     }
     return () => {
       timers.forEach(clearTimeout);
+      document.removeEventListener("focusin", onFocusChange); document.removeEventListener("focusout", onFocusChange);
       window.removeEventListener("pageshow", settle);
       window.removeEventListener("orientationchange", settle);
       document.removeEventListener("visibilitychange", settle);

@@ -1343,7 +1343,7 @@ const isLight=wallpaper==="light";const shadowSm=isLight?"0 1px 3px rgba(0,0,0,0
          background of its own. */
       .bottom-nav-float{
         display:flex;flex-shrink:0;justify-content:center;
-        position:fixed;left:50%;bottom:0;
+        position:absolute;left:50%;bottom:0;
         transform:translateX(-50%);
         width:max-content;
         padding-bottom:env(safe-area-inset-bottom);
@@ -6494,13 +6494,16 @@ React.useEffect(()=>{// The CSS 100dvh unit doesn't reliably settle immediately 
 // the real visible screen height (it fires its own resize/scroll events
 // whenever Safari's toolbar shows/hides), so drive --app-height from it
 // directly instead of depending on dvh settling correctly at all.
-const vv=window.visualViewport;const setAppHeight=()=>{const h=vv?vv.height:window.innerHeight;document.documentElement.style.setProperty("--app-height",h+"px");};setAppHeight();// iOS (esp. home-screen app) reports a wrong viewport for the first
+const vv=window.visualViewport;const setAppHeight=()=>{// iOS reports a too-small visualViewport height at launch (until the first scroll), which left a white
+// gap under the app. Use the largest reported height unless the keyboard is open (then follow vv so
+// inputs stay visible).
+const ae=document.activeElement;const typing=ae&&(ae.tagName==="INPUT"||ae.tagName==="TEXTAREA"||ae.isContentEditable);const h=vv&&typing?vv.height:Math.max(vv?vv.height:0,window.innerHeight||0,document.documentElement.clientHeight||0);document.documentElement.style.setProperty("--app-height",h+"px");};setAppHeight();// iOS (esp. home-screen app) reports a wrong viewport for the first
 // moments after launch — fixed elements (bottom nav) sit too high with a
 // white gap under them until the first scroll. Re-measure a few times as
 // it settles, and nudge scroll so iOS re-lays out fixed elements.
 const settle=()=>{setAppHeight();// The real scroller is <main>, not the window — a 1px nudge on it is
 // what makes iOS re-place the fixed bottom nav (same as a user scroll).
-try{const m=document.getElementById("main-content");if(m){const t=m.scrollTop;if(m.scrollHeight>m.clientHeight+1){m.scrollTop=t+1;requestAnimationFrame(()=>{m.scrollTop=t;});}}window.scrollTo(0,0);}catch(e){}};const timers=[50,250,600,1200,2500].map(ms=>setTimeout(settle,ms));window.addEventListener("pageshow",settle);window.addEventListener("orientationchange",settle);document.addEventListener("visibilitychange",settle);if(vv){vv.addEventListener("resize",setAppHeight);vv.addEventListener("scroll",setAppHeight);}else{window.addEventListener("resize",setAppHeight);}return()=>{timers.forEach(clearTimeout);window.removeEventListener("pageshow",settle);window.removeEventListener("orientationchange",settle);document.removeEventListener("visibilitychange",settle);if(vv){vv.removeEventListener("resize",setAppHeight);vv.removeEventListener("scroll",setAppHeight);}else{window.removeEventListener("resize",setAppHeight);}};},[]);React.useEffect(()=>{// Hide the floating bottom nav whenever a text input/textarea is
+try{const m=document.getElementById("main-content");if(m){const t=m.scrollTop;if(m.scrollHeight>m.clientHeight+1){m.scrollTop=t+1;requestAnimationFrame(()=>{m.scrollTop=t;});}}window.scrollTo(0,0);}catch(e){}};const timers=[50,250,600,1200,2500].map(ms=>setTimeout(settle,ms));const onFocusChange=()=>setTimeout(setAppHeight,350);document.addEventListener("focusin",onFocusChange);document.addEventListener("focusout",onFocusChange);window.addEventListener("pageshow",settle);window.addEventListener("orientationchange",settle);document.addEventListener("visibilitychange",settle);if(vv){vv.addEventListener("resize",setAppHeight);vv.addEventListener("scroll",setAppHeight);}else{window.addEventListener("resize",setAppHeight);}return()=>{timers.forEach(clearTimeout);document.removeEventListener("focusin",onFocusChange);document.removeEventListener("focusout",onFocusChange);window.removeEventListener("pageshow",settle);window.removeEventListener("orientationchange",settle);document.removeEventListener("visibilitychange",settle);if(vv){vv.removeEventListener("resize",setAppHeight);vv.removeEventListener("scroll",setAppHeight);}else{window.removeEventListener("resize",setAppHeight);}};},[]);React.useEffect(()=>{// Hide the floating bottom nav whenever a text input/textarea is
 // focused (keyboard open) anywhere in the app — e.g. the Pro chat
 // composer — so it doesn't float awkwardly above/behind the keyboard.
 const isTextField=el=>el&&(el.tagName==="TEXTAREA"||el.tagName==="INPUT"&&!["checkbox","radio","button","submit"].includes(el.type));const onFocusIn=e=>{if(isTextField(e.target))setKeyboardOpen(true);};const onFocusOut=e=>{if(isTextField(e.target))setKeyboardOpen(false);};document.addEventListener("focusin",onFocusIn);document.addEventListener("focusout",onFocusOut);return()=>{document.removeEventListener("focusin",onFocusIn);document.removeEventListener("focusout",onFocusOut);};},[]);React.useEffect(()=>{const onPop=e=>{var _e$state3;const p=((_e$state3=e.state)===null||_e$state3===void 0?void 0:_e$state3.sfPage)||window.location.hash.replace("#","")||"home";if(VALID_PAGES.includes(p)){setPage_(p);// Restore whichever detail (if any) was open at this point in history —
