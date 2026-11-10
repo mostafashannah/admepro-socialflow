@@ -10815,7 +10815,7 @@ function HRDashboard({team,perfLogs,currentUser,setPage}) {
         <p style={{color:"var(--text2)",marginTop:4,fontSize:14}}>Welcome back, {currentUser.name.split(" ")[0]}</p>
       </div>
 
-      <PointsDashboardHero/>
+      <PointsDashboardHero setPage={setPage}/>
 
       <div className="grid-4" style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(auto-fill,minmax(200px,1fr))",gap:isMobile?6:12}}>
         {kpis.map(s=>(
@@ -11695,7 +11695,7 @@ No markdown, no explanation.`;
           </div>
           <FAB currentUser={currentUser} onAddClient={onAddClient} onAddCalendar={onAddCalendar} onAddTask={onAddTask} onCreateInvoice={onCreateInvoice} onAddProject={onAddProject}/>
         </div>
-        <PointsDashboardHero/>
+        <PointsDashboardHero setPage={setPage}/>
         {(isAdmin||currentUser?.role==="account_director")&&(
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             <select value={dateRange} onChange={e=>setDateRange(e.target.value)} style={{...inputSt,width:"auto",height:38,minHeight:38,flex:1,minWidth:100,padding:"0 14px",fontSize:12,borderRadius:99}}>
@@ -41116,7 +41116,7 @@ function pointsEligible(m, cfg) {
 }
 const POINTS_MOTTOS = ["Every on-time delivery counts — keep the streak alive!","Small wins every day add up to big rewards.","You're building something great — one task at a time.","Consistency beats intensity. Show up, deliver, win.","Today's effort is tomorrow's prize. Let's go!"];
 // Dashboard hero card for team members in the programme (only while points are ON).
-function PointsDashboardHero() {
+function PointsDashboardHero({setPage}) {
   const cfg = pointsConfig(pointsBridge.appSettings);
   const me = (pointsBridge.team||[]).find(t=>t.email===pointsBridge.currentUser?.email);
   if (!cfg.enabled || !pointsEligible(me, cfg)) return null;
@@ -41132,31 +41132,21 @@ function PointsDashboardHero() {
   const today = new Date().toISOString().slice(0,10);
   const todayPts = r.lines.filter(l=>l.date===today).reduce((s,l)=>s+l.pts,0);
   const motto = POINTS_MOTTOS[new Date().getDate() % POINTS_MOTTOS.length];
+  const title = rank===1?"You're #1 — defend the crown!":rank>0&&rank<=3?`You're #${rank} — the top spot is close!`:`You're #${rank||"–"} of ${peers.length} — climb up!`;
   return (
-    <div style={{position:"relative",overflow:"hidden",borderRadius:18,padding:"20px 22px",background:"linear-gradient(135deg,#f59e0b 0%,#ef4444 55%,#d90b2c 100%)",color:"#fff",boxShadow:"0 10px 30px rgba(239,68,68,0.25)"}}>
-      <div style={{position:"absolute",right:-30,top:-30,width:160,height:160,borderRadius:"50%",background:"rgba(255,255,255,0.12)"}}/>
-      <div style={{position:"absolute",right:40,bottom:-50,width:120,height:120,borderRadius:"50%",background:"rgba(255,255,255,0.08)"}}/>
-      <div style={{position:"relative",display:"flex",gap:18,alignItems:"center",flexWrap:"wrap"}}>
-        <div style={{width:84,height:84,borderRadius:"50%",background:"rgba(255,255,255,0.18)",border:"3px solid rgba(255,255,255,0.6)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-          <span style={{fontSize:26,fontWeight:900,lineHeight:1}}>{r.total}</span><span style={{fontSize:10,fontWeight:700,opacity:0.9}}>pts this month</span>
-        </div>
-        <div style={{flex:1,minWidth:200}}>
-          <p style={{fontSize:18,fontWeight:900,display:"flex",alignItems:"center",gap:8}}><Ico d={Icons.trophy} size={20} stroke="#fff"/>{rank===1?"You're #1 — defend the crown!":rank>0&&rank<=3?`You're #${rank} — the top spot is close!`:`You're #${rank||"–"} of ${peers.length} — climb up!`}</p>
-          <p style={{fontSize:13,opacity:0.95,marginTop:4}}>{motto}</p>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>
-            <span style={{fontSize:12,fontWeight:800,background:"rgba(255,255,255,0.2)",padding:"5px 10px",borderRadius:99}}>Today {todayPts>=0?"+":""}{todayPts}</span>
-            <span style={{fontSize:12,fontWeight:800,background:"rgba(255,255,255,0.2)",padding:"5px 10px",borderRadius:99}}>Balance {bal.balance} pts</span>
-            {ready>0&&<span style={{fontSize:12,fontWeight:800,background:"#fff",color:"#d90b2c",padding:"5px 10px",borderRadius:99,display:"inline-flex",alignItems:"center",gap:5}}><Ico d={Icons.award} size={12} stroke="#d90b2c"/>{ready} prize{ready>1?"s":""} ready to redeem!</span>}
-          </div>
-        </div>
+    <div onClick={()=>setPage&&setPage("rewards")} style={{position:"relative",overflow:"hidden",borderRadius:14,padding:"10px 16px",background:"linear-gradient(135deg,#f59e0b 0%,#ef4444 60%,#d90b2c 100%)",color:"#fff",boxShadow:"0 6px 18px rgba(239,68,68,0.22)",cursor:setPage?"pointer":"default",display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+      <div style={{width:48,height:48,borderRadius:"50%",background:"rgba(255,255,255,0.18)",border:"2px solid rgba(255,255,255,0.6)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+        <span style={{fontSize:16,fontWeight:900,lineHeight:1}}>{r.total}</span><span style={{fontSize:8,fontWeight:700,opacity:0.9}}>pts</span>
       </div>
-      {next&&(
-        <div style={{position:"relative",marginTop:14}}>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:700,marginBottom:5}}><span>Next prize: {next.name} ({prizeValueText(next)})</span><span>{Math.max(0,next.cost-bal.balance)} pts to go</span></div>
-          <div style={{height:10,borderRadius:99,background:"rgba(255,255,255,0.25)",overflow:"hidden"}}><div style={{width:pct+"%",height:"100%",background:"#fff",borderRadius:99}}/></div>
-        </div>
-      )}
-      <p style={{position:"relative",fontSize:11,opacity:0.85,marginTop:10}}>See details & redeem in Rewards & Points.{cfg.reward_note?` · ${cfg.reward_note}`:""}</p>
+      <div style={{flex:"1 1 220px",minWidth:0}}>
+        <p style={{fontSize:14,fontWeight:900,display:"flex",alignItems:"center",gap:6}}><Ico d={Icons.trophy} size={15} stroke="#fff"/>{title}</p>
+        <p style={{fontSize:11,opacity:0.95,marginTop:1}}>Today {todayPts>=0?"+":""}{todayPts} · Balance {bal.balance} pts{ready>0?` · ${ready} prize${ready>1?"s":""} ready to redeem!`:""}</p>
+        {next&&<div style={{display:"flex",alignItems:"center",gap:8,marginTop:6}}>
+          <div style={{flex:1,height:6,borderRadius:99,background:"rgba(255,255,255,0.25)",overflow:"hidden"}}><div style={{width:pct+"%",height:"100%",background:"#fff",borderRadius:99}}/></div>
+          <span style={{fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{Math.max(0,next.cost-bal.balance)} pts to {next.name}</span>
+        </div>}
+      </div>
+      {setPage&&<button onClick={e=>{e.stopPropagation();setPage("rewards");}} style={{padding:"7px 14px",borderRadius:99,border:"none",background:"#fff",color:"#d90b2c",fontWeight:800,fontSize:12,cursor:"pointer",flexShrink:0}}>Rewards & Points →</button>}
     </div>
   );
 }
