@@ -78,12 +78,19 @@ function drBuildReport(PDO $pdo, array $s): string {
         $todayRows = array_filter($rows, fn($r) => substr($r['due_date'], 0, 10) === $today);
         $doneN = count(array_filter($todayRows, fn($r) => $r['routine_status'] === 'done'));
         $missed = array_filter($rows, fn($r) => $r['routine_status'] === 'missed' || ($r['routine_status'] === 'open' && substr($r['due_date'], 0, 10) < $today));
-        $issues = array_filter($rows, fn($r) => $r['routine_status'] === 'done' && $r['routine_flag'] === 'issue');
+        // A "bad" end note = flagged as an issue by the person, OR the note text itself reports a problem
+        // even if they closed it as fine (English + Arabic keywords).
+        $badRe = '/\\b(no|not|didn\'?t|did not|can\'?t|cannot|couldn\'?t|won\'?t|wasn\'?t|isn\'?t|issue|issues|problem|problems|error|failed|fail|missing|missed|late|delay|delayed|pending|stuck|block|blocked|broken|down|complain|complaint|angry|urgent|wrong|bad|negative|drop|dropped|low|not yet)\\b|لا |لم |مش |مفيش|مشكلة|مشاكل|متأخر|تأخير|خطأ|غلط|ناقص|معلق|شكوى|زعلان|مقفول|واقع/iu';
+        $issues = array_filter($rows, fn($r) => $r['routine_status'] === 'done' && trim((string)$r['routine_note']) !== ''
+            && ($r['routine_flag'] === 'issue' || preg_match($badRe, (string)$r['routine_note'])));
         $out[] = "";
         $out[] = "🔁 *Routine tasks* — " . $doneN . "/" . count($todayRows) . " done today";
         if ($missed) { $out[] = "❌ Missed (" . count($missed) . "):"; foreach (array_slice($missed, 0, 8) as $r) $out[] = "• " . ($r['who'] ?: '—') . ": " . $r['title'] . " (" . substr($r['due_date'], 5, 5) . ")"; }
         else $out[] = "No missed routines ✅";
-        foreach (array_slice($issues, 0, 5) as $r) $out[] = "⚠️ " . ($r['who'] ?: '—') . " reported on \"" . $r['title'] . "\": " . mb_substr(trim((string)$r['routine_note']), 0, 80);
+        if ($issues) {
+            $out[] = "⚠️ *Routine notes needing attention* (" . count($issues) . "):";
+            foreach (array_slice($issues, 0, 12) as $r) $out[] = "• " . ($r['who'] ?: '—') . " — \"" . $r['title'] . "\"" . ($r['routine_flag'] === 'issue' ? ' (flagged)' : '') . ": " . mb_substr(trim((string)$r['routine_note']), 0, 200);
+        }
     }
 
     if (!empty($sec['hours'])) {
