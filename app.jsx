@@ -55,6 +55,7 @@ function useUploadPct() {
 // Build number shown on every screen — read from the ?v= on this very script
 // tag (index.html), so it always matches what was actually deployed.
 const BUILD_NUMBER = (()=>{ try { const el = document.querySelector('script[src*="app.js"]'); const m = el && /[?&]v=([^&]+)/.exec(el.getAttribute("src")||""); return m ? m[1] : ""; } catch(e){ return ""; } })();
+const fmtFileSize = b => { b=Number(b)||0; return b>=1073741824 ? (b/1073741824).toFixed(2)+" GB" : b>=1048576 ? (b/1048576).toFixed(1)+" MB" : b>=1024 ? Math.round(b/1024)+" KB" : b+" B"; };
 function UploadProgressToast() {
   const items = useUploadProgress();
   if(!items.length) return null;
@@ -69,6 +70,7 @@ function UploadProgressToast() {
             </span>
           </div>
           <div style={{height:5,borderRadius:99,background:"var(--surface2)",overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:"var(--accent)",transition:"width 0.2s"}}/></div>
+          {i.total>1000&&<div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--text3)",marginTop:5,fontWeight:600}}><span>{i.queued?"Waiting in queue…":`${fmtFileSize(i.loaded)} of ${fmtFileSize(i.total)}`}</span><span>{fmtFileSize(i.total)}</span></div>}
         </div>); })}
     </div>
   );
@@ -119,6 +121,13 @@ const downloadAllMedia = async (assets, zipName="media") => {
 };
 
 // Upload a file to self-hosted storage (vps-migration/storage.php) — returns public URL
+// Max 2 uploads in flight at once. Browsers allow ~6 connections per host; starting 4+ big uploads (plus
+// thumbnails loading) queued them all at 0% until the timeout fired. Waiting here costs no timeout time.
+const uploadQueue = {active:0, waiters:[]};
+const uploadSlot = async () => { if(uploadQueue.active>=2) await new Promise(r=>uploadQueue.waiters.push(r)); uploadQueue.active++; };
+const uploadSlotRelease = () => { uploadQueue.active--; const n = uploadQueue.waiters.shift(); if(n) n(); };
+// Keep the Choose-Media grid light: never load every thumbnail at once (images lazy, videos not preloaded).
+try { new MutationObserver(ms=>{ ms.forEach(m=>m.addedNodes.forEach(n=>{ if(n.nodeType!==1) return; (n.tagName==="IMG"?[n]:Array.from(n.querySelectorAll?.("img")||[])).forEach(i=>{ if(!i.getAttribute("loading")) { i.setAttribute("loading","lazy"); i.setAttribute("decoding","async"); } }); })); }).observe(document.documentElement,{childList:true,subtree:true}); } catch(e) {}
 const uploadToStorage = async (rawFile, folder="uploads") => {
   const file = await convertHeicIfNeeded(rawFile);
   const maxMB = window.__sfMaxUploadMB || DEFAULT_MAX_UPLOAD_MB;
@@ -137,30 +146,36 @@ const uploadToStorage = async (rawFile, folder="uploads") => {
     // routinely takes longer than that to actually finish uploading on a
     // normal connection, well before anything is actually wrong — scale the
     // allowance with file size instead of failing large-but-healthy uploads.
-    const uploadTimeoutMs = Math.max(120000, Math.round(file.size / (150*1024)) * 1000);
+    // Timeout = no progress for this long (not total time), so slow-but-moving uploads aren't killed.
+    const stallMs = 90000;
     // XHR instead of fetch so upload progress events are available.
     const upId = ++uploadProgressStore.seq;
-    uploadProgressStore.items[upId] = {id:upId, name:file.name, loaded:0, total:file.size, cancel:null};
+    uploadProgressStore.items[upId] = {id:upId, name:file.name, loaded:0, total:file.size, cancel:null, queued:true};
     uploadProgressNotify();
+    await uploadSlot();
     try {
-      res = await new Promise((resolve, reject) => {
+      const sendOnce = () => new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
+        let stall = null; const arm = () => { clearTimeout(stall); stall = setTimeout(()=>{ const er=new Error("timeout"); er.name="AbortError"; try{ xhr.abort(); }catch(e){} reject(er); }, stallMs); };
         xhr.open("POST", `${SB_STORAGE_URL}/object/${SB_BUCKET}/${path}`);
-        xhr.timeout = uploadTimeoutMs;
+        arm();
         xhr.setRequestHeader("apikey", SB_KEY);
         xhr.setRequestHeader("Authorization", `Bearer ${SB_KEY}`);
         xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
         xhr.setRequestHeader("x-upsert", "true");
-        xhr.upload.onprogress = (e) => { if(e.lengthComputable){ uploadProgressStore.items[upId] = {...uploadProgressStore.items[upId], loaded:e.loaded, total:e.total}; uploadProgressNotify(); } };
-        xhr.onload = () => resolve({ok:xhr.status>=200&&xhr.status<300, status:xhr.status, text:async()=>xhr.responseText});
-        xhr.onerror = () => reject(new Error("network error"));
-        xhr.ontimeout = () => { const er=new Error("timeout"); er.name="AbortError"; reject(er); };
-        xhr.onabort = () => { const er=new Error("Upload cancelled"); er.name="UploadCancelled"; reject(er); };
-        uploadProgressStore.items[upId].cancel = () => xhr.abort();
+        xhr.upload.onprogress = (e) => { arm(); if(e.lengthComputable){ uploadProgressStore.items[upId] = {...uploadProgressStore.items[upId], loaded:e.loaded, total:e.total, queued:false}; uploadProgressNotify(); } };
+        xhr.onload = () => { clearTimeout(stall); resolve({ok:xhr.status>=200&&xhr.status<300, status:xhr.status, text:async()=>xhr.responseText}); };
+        xhr.onerror = () => { clearTimeout(stall); reject(new Error("network error")); };
+        xhr.ontimeout = () => { clearTimeout(stall); const er=new Error("timeout"); er.name="AbortError"; reject(er); };
+        xhr.onabort = () => { clearTimeout(stall); const er=new Error("Upload cancelled"); er.name="UploadCancelled"; reject(er); };
+        uploadProgressStore.items[upId].cancel = () => { clearTimeout(stall); xhr.abort(); };
         uploadProgressNotify();
         xhr.send(file);
       });
+      try { res = await sendOnce(); }
+      catch(e1) { if(e1?.name==="UploadCancelled") throw e1; res = await sendOnce(); } // one automatic retry after a stall / network blip
     } finally {
+      uploadSlotRelease();
       delete uploadProgressStore.items[upId];
       uploadProgressNotify();
     }
@@ -5763,10 +5778,11 @@ function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [pickLimit, setPickLimit] = useState(60);
   const uploadPct = useUploadPct();
   const fileRef = useRef(null);
 
-  useEffect(()=>{ if(open) setSelected([]); },[open]);
+  useEffect(()=>{ if(open) { setSelected([]); setPickLimit(60); } },[open]);
   if(!open) return null;
 
   const mediaAssets = assets.filter(a=>["image","video"].includes(a.file_type||(
@@ -5817,7 +5833,7 @@ function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
         </div>
         {/* Search + Upload */}
         <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",display:"flex",gap:8}}>
-          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search assets…"
+          <input value={q} onChange={e=>{setQ(e.target.value);setPickLimit(60);}} placeholder="Search assets…"
             style={{flex:1,padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}/>
           <button onClick={()=>fileRef.current?.click()} disabled={uploading}
             style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:8,background:"var(--accent)",color:"#fff",border:"none",cursor:uploading?"default":"pointer",fontWeight:700,fontSize:12,opacity:uploading?0.6:1,flexShrink:0}}>
@@ -5837,15 +5853,15 @@ function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
             </div>
           ):(
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(110px,1fr))",gap:8}}>
-              {filtered.map(a=>{
+              {filtered.slice(0,pickLimit).map(a=>{
                 const isSel = selected.find(x=>x.id===a.id);
                 const isVid = (a.file_type==="video")||((a.file_url||"").match(/\.(mp4|mov|webm|m4v)/i));
                 return (
                   <div key={a.id} onClick={()=>toggle(a)} style={{position:"relative",aspectRatio:"1/1",borderRadius:8,overflow:"hidden",border:`2px solid ${isSel?"var(--accent)":"var(--border)"}`,cursor:"pointer",background:"var(--surface2)",transition:"border-color 0.15s"}}>
                     {isVid?(
-                      <video src={a.file_url} muted preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                      <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:"var(--surface2)"}}><Ico d={Icons.play} size={26} stroke="var(--text3)"/></div>
                     ):(
-                      <img src={a.file_url} alt={a.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                      <img src={a.file_url} alt={a.name} loading="lazy" decoding="async" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                     )}
                     {isSel&&<div style={{position:"absolute",inset:0,background:"var(--accent)44",display:"flex",alignItems:"center",justifyContent:"center"}}>
                       <div style={{width:24,height:24,borderRadius:99,background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -5859,6 +5875,7 @@ function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
               })}
             </div>
           )}
+          {filtered.length>pickLimit&&<div style={{textAlign:"center",marginTop:12}}><button onClick={()=>setPickLimit(n=>n+60)} style={{padding:"8px 18px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontWeight:700,fontSize:12,cursor:"pointer"}}>Show more ({filtered.length-pickLimit} left)</button></div>}
         </div>
         {/* Footer (multi-select confirm) */}
         {multiple&&selected.length>0&&(
