@@ -2314,12 +2314,16 @@ const EMAIL_TEMPLATES = {
       },
       terminate: (() => {
         const base = terminationLetterCopy(event.previous_value, firstName, event.effective_date?fmtDate(event.effective_date):null);
-        const payroll = terminationPayrollEstimate(event.payrollMember, event.effective_date, event.salaryRaises, event.absence);
+        const payroll = terminationPayrollEstimate(event.payrollMember, event.effective_date, event.salaryRaises, event.absence, event.extEvents);
         const contact = event.payrollContact;
         const contactLine = contact ? ` For any payroll follow-up, please reach out to ${contact.name}${contact.email?` at ${contact.email}`:""}${contact.whatsapp_number?` (WhatsApp: ${contact.whatsapp_number})`:""}.` : "";
         if(!payroll) return {...base, body: `${base.body}${contactLine}`};
         return {...base, body: `${base.body} Your estimated salary of EGP ${payroll.amount.toLocaleString()} (prorated through your last working day) is not final. The final amount will be calculated at the end of the month once your attendance has been reviewed, and paid in the next payroll round, on the ${payroll.payoutWindowLabel}.${payroll.absenceDays>0?` This estimate already includes a deduction of EGP ${payroll.absenceDeduction.toLocaleString()} for ${payroll.absenceDays} absent day(s) during your first 3 months.`:` Any absent days during your first 3 months will be deducted from the final amount.`}${contactLine}`};
       })(),
+      extend_probation: {
+        hero:"Probation period extended", sub:`Hi ${firstName}, we've decided to extend your probation period.`,
+        body:`Your probation now runs until ${event.new_value?fmtDate(event.new_value):"the new date"}. ${Number(event.amount)>0?`During the extension your monthly salary is EGP ${Number(event.amount).toLocaleString()}.`:"Your probation salary stays the same during the extension."} Please reach out to your manager or HR if you have any questions.`,
+      },
       other: {
         hero:event.title||"An update regarding your employment", sub:firstName?`Hi ${firstName},`:"",
         body:`Please reach out to your manager or HR if you have any questions.`,
@@ -2331,7 +2335,7 @@ const EMAIL_TEMPLATES = {
         <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:13px;color:#6b7280">${label}</td>
         <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:14px;font-weight:800;color:#111827;text-align:right">${value}</td>
       </tr>`;
-    const terminatePayroll = t==="terminate" ? terminationPayrollEstimate(event.payrollMember, event.effective_date, event.salaryRaises, event.absence) : null;
+    const terminatePayroll = t==="terminate" ? terminationPayrollEstimate(event.payrollMember, event.effective_date, event.salaryRaises, event.absence, event.extEvents) : null;
     const rowsHtml = t==="terminate" ? [
       offerRow("Reason", TERMINATION_REASON_MAP[event.previous_value]?.label || "Not specified"),
       offerRow("Last Working Day", event.effective_date?fmtDate(event.effective_date):""),
@@ -21221,6 +21225,7 @@ const TEAM_EVENT_TYPES = [
   {key:"promotion", label:"Promotion", color:"#8b5cf6", prevLabel:"Previous Title", newLabel:"New Title"},
   {key:"bonus", label:"Bonus", color:"#f59e0b"},
   {key:"commission", label:"Commission", color:"#06b6d4"},
+  {key:"extend_probation", label:"Extend Probation", color:"#0ea5e9", prevLabel:"Old end date", newLabel:"New end date", noInputs:true},
   {key:"deduction", label:"Deduction", color:"#ef4444"},
   {key:"warning", label:"Warning", color:"#ef4444"},
   {key:"demotion", label:"Demotion", color:"#ef4444", prevLabel:"Previous Title", newLabel:"New Title"},
@@ -21342,7 +21347,7 @@ async function computeFirst3MonthsAbsence(member, lastDayISO, rules) {
   return {days:days.size, lateDays, lateHours, rate, amount: Math.round((days.size + lateHours/8)*rate*100)/100};
 }
 
-function terminationPayrollEstimate(member, lastDayISO, raiseEvents, absence) {
+function terminationPayrollEstimate(member, lastDayISO, raiseEvents, absence, extEvents) {
   const salary = Number(member?.salary)||0;
   if(!lastDayISO || !salary) return null;
   const d = new Date(lastDayISO+"T00:00:00");
@@ -21380,6 +21385,7 @@ function terminationPayrollEstimate(member, lastDayISO, raiseEvents, absence) {
     let rate = salary;
     if(probationEndDate && new Date(dateStr+"T00:00:00") < probationEndDate) {
       rate = probationSalary;
+      (extEvents||[]).forEach(x=>{ const sal=Number(x.amount)||0; if(sal>0 && x.previous_value && x.new_value && dateStr>=String(x.previous_value).slice(0,10) && dateStr<String(x.new_value).slice(0,10)) rate = sal; });
     } else {
       const applicable = events.filter(e=>e.date<=dateStr).pop();
       if(applicable) rate = applicable.rate;
@@ -21432,7 +21438,7 @@ function TeamMemberHistoryTab({member, team=[], canEdit, currentUser, onUpdateTe
   const [emailingId, setEmailingId] = useState(null);
   const [emailedIds, setEmailedIds] = useState(new Set());
   const [showFormPreview, setShowFormPreview] = useState(false);
-  const blankForm = () => ({event_type:"salary_raise", title:"", previous_value:member.salary?String(member.salary):"", new_value:"", amount:"", deduction_mode:"fixed", deduction_days:"", promo_salary:"", effective_date:new Date().toISOString().slice(0,10), notes:""});
+  const blankForm = () => ({event_type:"salary_raise", title:"", previous_value:member.salary?String(member.salary):"", new_value:"", amount:"", deduction_mode:"fixed", deduction_days:"", promo_salary:"", ext_months:"1", ext_salary_mode:"same", ext_salary:"", effective_date:new Date().toISOString().slice(0,10), notes:""});
   const [form, setForm] = useState(blankForm);
   const [saving, setSaving] = useState(false);
 
@@ -21446,6 +21452,12 @@ function TeamMemberHistoryTab({member, team=[], canEdit, currentUser, onUpdateTe
   useEffect(()=>{ load(); },[member.id]);
 
   const cfg = TEAM_EVENT_MAP[form.event_type]||TEAM_EVENT_TYPES[0];
+  // Probation end = start date + probation_months (same rule payroll uses).
+  const startRaw = member.start_date || (member.created_at ? String(member.created_at).slice(0,10) : null);
+  const probEndOf = (months) => { if(!startRaw || !(Number(months)>0)) return null; const d = new Date(startRaw+"T00:00:00"); d.setMonth(d.getMonth()+Number(months)); return d.toISOString().slice(0,10); };
+  const curProbEnd = probEndOf(member.probation_months);
+  const extMonths = Math.max(0, parseInt(form.ext_months)||0);
+  const newProbEnd = probEndOf((Number(member.probation_months)||0) + extMonths);
 
   // A deduction can be entered either as a flat amount or as a number of
   // days to dock — days are converted to money using a 30-day daily rate off
@@ -21461,6 +21473,26 @@ function TeamMemberHistoryTab({member, team=[], canEdit, currentUser, onUpdateTe
     try {
       const isDeduction = form.event_type==="deduction";
       const finalAmount = isDeduction ? deductionAmount() : (form.amount?Number(form.amount):null);
+      // Extending probation: previous_value/new_value hold the old/new probation END dates, amount holds the
+      // salary to pay during the extension (null = keep the same probation salary). Payroll reads these.
+      const isExt = form.event_type==="extend_probation";
+      if(isExt) {
+        const months = Math.max(0, parseInt(form.ext_months)||0);
+        const customSal = form.ext_salary_mode==="custom" ? Number(String(form.ext_salary).replace(/[^0-9.]/g,"")) : 0;
+        if(months<1) { alert("Enter how many months to extend the probation by."); setSaving(false); return; }
+        if(form.ext_salary_mode==="custom" && !(customSal>0)) { alert("Enter the salary for the extension period."); setSaving(false); return; }
+        if(!(Number(member.probation_salary)>0) && !(customSal>0)) { alert("This member has no probation salary yet — enter a salary for the extension period."); setSaving(false); return; }
+        const oldEnd = curProbEnd || form.effective_date;
+        const newEnd = probEndOf((Number(member.probation_months)||0) + months) || probEndOf(months);
+        await ce("TeamMemberEvent",[{
+          team_member_id: member.id, team_member_name: member.name, event_type:"extend_probation", title: form.title.trim(),
+          previous_value: oldEnd, new_value: newEnd||"", amount: customSal>0?customSal:null, effective_date: form.effective_date||"",
+          notes: `Probation extended by ${months} month(s) until ${newEnd||"?"} — ${customSal>0?`salary EGP ${customSal.toLocaleString()} during the extension`:"same probation salary"}${form.notes?" — "+form.notes:""}`,
+          recorded_by: currentUser?.name||currentUser?.email||"",
+        }]);
+        if(onUpdateTeamMember) await onUpdateTeamMember(member.id, {probation_months:(Number(member.probation_months)||0)+months, ...(!(Number(member.probation_salary)>0)&&customSal>0?{probation_salary:customSal}:{})});
+        setShowAdd(false); setForm(blankForm); load(); setSaving(false); return;
+      }
       await ce("TeamMemberEvent",[{
         team_member_id: member.id, team_member_name: member.name,
         event_type: form.event_type, title: form.title.trim(),
@@ -21541,11 +21573,12 @@ function TeamMemberHistoryTab({member, team=[], canEdit, currentUser, onUpdateTe
         bonus:"You've received a bonus", commission:"You've earned a commission",
         deduction:"Salary deduction notice", warning:"Formal notice", demotion:"Notice of role change",
         terminate: terminationLetterCopy(e.previous_value, (member.name||"").split(" ")[0]).hero,
+        extend_probation:"Your probation period has been extended",
       };
       const subject = `[SocialFlow] ${subjects[e.event_type]||e.title||t.label}`;
       let absence = null;
       if(e.event_type==="terminate") { try { absence = await computeFirst3MonthsAbsence(member, e.effective_date); } catch(_){} }
-      const html = EMAIL_TEMPLATES.careerEvent(member.name, e.event_type==="terminate" ? {...e, payrollMember: member, salaryRaises: events.filter(ev=>ev.event_type==="salary_raise"), payrollContact, absence} : e);
+      const html = EMAIL_TEMPLATES.careerEvent(member.name, e.event_type==="terminate" ? {...e, payrollMember: member, salaryRaises: events.filter(ev=>ev.event_type==="salary_raise"), extEvents: events.filter(ev=>ev.event_type==="extend_probation"), payrollContact, absence} : e);
       const ok = await sendEmail(member.email, subject, html);
       if(ok) setEmailedIds(s=>new Set([...s, e.id]));
       else alert("Email failed to send.");
@@ -21635,7 +21668,7 @@ function TeamMemberHistoryTab({member, team=[], canEdit, currentUser, onUpdateTe
             <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Title</label>
             <input value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))} placeholder={`e.g. ${cfg.label} — ${new Date().getFullYear()}`} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}/>
           </div>
-          {cfg.prevLabel&&(
+          {cfg.prevLabel&&!cfg.noInputs&&(
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
               <div>
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>{cfg.prevLabel}</label>
@@ -21645,6 +21678,22 @@ function TeamMemberHistoryTab({member, team=[], canEdit, currentUser, onUpdateTe
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>{cfg.newLabel}</label>
                 <input type={form.event_type==="salary_raise"?"number":"text"} value={form.new_value} onChange={e=>setForm(f=>({...f,new_value:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}/>
               </div>
+            </div>
+          )}
+          {form.event_type==="extend_probation"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:10,padding:12,borderRadius:10,background:"var(--surface2)",border:"1px solid var(--border)"}}>
+              <div>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Extend probation by (months)</label>
+                <input type="number" min="1" value={form.ext_months} onChange={e=>setForm(f=>({...f,ext_months:e.target.value}))} style={{width:120,padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
+                <p style={{fontSize:11,color:"var(--text3)",marginTop:5}}>{curProbEnd?`Currently ends ${curProbEnd}`:"No probation end date yet"}{newProbEnd&&extMonths>0?` → will end ${newProbEnd}`:""}</p>
+              </div>
+              <div>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:6}}>Salary during the extension</label>
+                <label style={{display:"flex",gap:8,fontSize:13,cursor:"pointer",marginBottom:6}}><input type="radio" checked={form.ext_salary_mode==="same"} onChange={()=>setForm(f=>({...f,ext_salary_mode:"same"}))}/>Same probation salary{Number(member.probation_salary)>0?` (EGP ${Number(member.probation_salary).toLocaleString()})`:" (none set)"}</label>
+                <label style={{display:"flex",gap:8,fontSize:13,cursor:"pointer",alignItems:"center",flexWrap:"wrap"}}><input type="radio" checked={form.ext_salary_mode==="custom"} onChange={()=>setForm(f=>({...f,ext_salary_mode:"custom"}))}/>A different salary:
+                  <input type="number" value={form.ext_salary} disabled={form.ext_salary_mode!=="custom"} onChange={e=>setForm(f=>({...f,ext_salary:e.target.value}))} placeholder="EGP / month" style={{width:140,padding:"6px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/></label>
+              </div>
+              <p style={{fontSize:11,color:"var(--text3)",lineHeight:1.5}}>Saving moves their probation end date and flows into payroll: the extension period is paid at the salary chosen above, then they move to their normal salary.</p>
             </div>
           )}
           {form.event_type==="promotion"&&(
@@ -23102,6 +23151,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
           {canEditSalary&&row("Salary", member.salary?`EGP ${Number(member.salary).toLocaleString()}`:null)}
           {canEditSalary&&row("Probation Salary", member.probation_salary?`EGP ${Number(member.probation_salary).toLocaleString()}`:null)}
           {canEditSalary&&row("Probation Period", member.probation_months?`${member.probation_months} month(s)`:null)}
+          {canEditSalary&&(()=>{ const st=member.start_date||(member.created_at?String(member.created_at).slice(0,10):null); if(!st||!(Number(member.probation_months)>0)) return null; const d=new Date(st+"T00:00:00"); d.setMonth(d.getMonth()+Number(member.probation_months)); return row("Probation Ends", d.toISOString().slice(0,10)); })()}
           {row("Joined", member.created_at?fmtDate(member.created_at):null)}
         </div>
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>

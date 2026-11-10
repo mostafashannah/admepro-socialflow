@@ -62,6 +62,9 @@ $insert = $pdo->prepare(
     "INSERT INTO payroll_runs (id, team_member_id, member_name, salary_month, base_salary, vacation_overage_days, deduction_amount, net_amount, status)
      VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, 'pending')"
 );
+$extEventsStmt = $pdo->prepare(
+    "SELECT previous_value, new_value, amount FROM team_member_events WHERE team_member_id = ? AND event_type = 'extend_probation' ORDER BY effective_date ASC"
+);
 $raiseEventsStmt = $pdo->prepare(
     "SELECT effective_date, previous_value, new_value FROM team_member_events WHERE team_member_id = ? AND event_type = 'salary_raise' AND effective_date IS NOT NULL ORDER BY effective_date ASC"
 );
@@ -121,13 +124,15 @@ function firstThreeMonthsAbsenceDeduction($pdo, $memberId, $startDate, $termDate
     return round(count($days) * $rate + ($lateHours / 8) * $rate, 2);
 }
 
-function proratedMonthlySalary($currentSalary, $events, $year, $month, $startDay, $endDay, $daysInMonth, $probationEndDate, $probationSalary) {
+function proratedMonthlySalary($currentSalary, $events, $year, $month, $startDay, $endDay, $daysInMonth, $probationEndDate, $probationSalary, $ext = []) {
     $total = 0.0;
     for ($d = $startDay; $d <= $endDay; $d++) {
         $dateStr = sprintf('%04d-%02d-%02d', $year, $month, $d);
         $rate = $currentSalary;
         if ($probationEndDate && $dateStr < $probationEndDate) {
             $rate = $probationSalary;
+            // Extended probation with its own salary (team_member_events 'extend_probation'): [from, to) pays that salary.
+            foreach ($ext as $x) { if ($x['salary'] > 0 && $dateStr >= $x['from'] && $dateStr < $x['to']) $rate = $x['salary']; }
         } else {
             $applicable = null;
             foreach ($events as $e) { if ($e['date'] <= $dateStr) $applicable = $e; }
@@ -173,6 +178,8 @@ foreach ($members as $m) {
         return ['date' => $r['effective_date'], 'rate' => $parseNum($r['new_value']), 'prevRate' => $parseNum($r['previous_value'])];
     }, $raiseEventsStmt->fetchAll(PDO::FETCH_ASSOC));
 
+    $extEventsStmt->execute([$m['id']]);
+    $ext = array_map(fn($x) => ['from' => substr((string)$x['previous_value'],0,10), 'to' => substr((string)$x['new_value'],0,10), 'salary' => (float)$x['amount']], $extEventsStmt->fetchAll(PDO::FETCH_ASSOC));
     $probationSalary = floatval($m['probation_salary'] ?? 0);
     $probationMonths = intval($m['probation_months'] ?? 0);
     $probationEndDate = null;
@@ -180,7 +187,7 @@ foreach ($members as $m) {
         $probationEndDate = date('Y-m-d', strtotime($startDate . " +{$probationMonths} months"));
     }
 
-    $baseSalary = proratedMonthlySalary($fullSalary, $events, $year, $month, $startDay, $endDay, $daysInMonth, $probationEndDate, $probationSalary);
+    $baseSalary = proratedMonthlySalary($fullSalary, $events, $year, $month, $startDay, $endDay, $daysInMonth, $probationEndDate, $probationSalary, $ext);
 
     // Freelance OR attendance_policy_exempt is exempt from the vacation/
     // leave policy entirely — never deduct for vacation overage regardless
