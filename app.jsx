@@ -11102,7 +11102,7 @@ Return ONLY a JSON array of 5 objects: [{"title":"short","insight":"2 sentences 
 // going out, finance (this month, trend, money owed), pipeline and
 // client health.
 // ════════════════════════════════════════════════════════════════
-function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost}) {
+function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, onlineEmails, onlineClients=[]}) {
   const {isMobile} = useResponsive();
   const posts = data.posts||[], team = data.team||[], clients = (data.clients||[]).filter(c=>c.status!=="hidden"&&c.status!=="archived");
   const invoices = data.invoices||[], payments = data.payments||[], subs = data.subscriptions||[], subPays = data.subscriptionPayments||[], expenses = data.expenses||[];
@@ -11138,15 +11138,24 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost}) {
   const liveReady = liveToday.filter(p=>["scheduled","published"].includes(p.stage)).length;
   const hrsToday = timeEntries.filter(t=>String(t.date||"").slice(0,10)===todayStr).reduce((a,t)=>{ let s=num(t.total_seconds); if(t.status==="active"&&t.started_at) s+=Math.max(0,(Date.now()-tms(t.started_at))/1000); return a+s; },0)/3600;
   // ── Finance (simple cash view: money actually received / spent, by month)
-  const inRows = [...payments.map(p=>({d:p.payment_date,a:num(p.amount),k:"Invoices"})), ...subPays.filter(p=>p.status!=="failed").map(p=>({d:p.payment_date,a:num(p.amount),k:"Subscriptions"})), ...expenses.filter(e=>(e.type||"out")==="in"&&!e.outstanding_kind).map(e=>({d:e.date,a:num(e.amount),k:e.category||"Other income"}))];
-  const outRows = expenses.filter(e=>(e.type||"out")==="out"&&!e.outstanding_kind).map(e=>({d:e.date,a:num(e.amount),k:e.category||"other"}));
-  const sumM = (rows, m) => rows.filter(r=>ym(r.d)===m).reduce((a,r)=>a+r.a,0);
-  const prevM = (()=>{ const d=new Date(today.getFullYear(), today.getMonth()-1, 15); return d.toISOString().slice(0,7); })();
+  // Same rules as the Finance page's "This Month In/Out": invoice payments + subscription payments +
+  // manual income/expenses, with outstanding (instalment) items counted in the month each
+  // instalment was actually PAID (OutstandingPayment rows), not the month of the original entry.
+  const [outPays, setOutPays] = useState([]);
+  useEffect(()=>{ qe("OutstandingPayment", {}, "-date", 2000).then(r=>setOutPays(r.entities||[])).catch(()=>{}); },[]);
+  const expById = {}; expenses.forEach(e=>{ expById[e.id]=e; });
+  const lm = d => { if(!d) return ""; const x=new Date(d); return isNaN(x)?"":`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}`; };
+  const inRows = [...payments.map(p=>({d:p.payment_date,a:num(p.amount),k:"Invoices"})), ...subPays.map(p=>({d:p.payment_date,a:num(p.amount),k:"Subscriptions"})), ...expenses.filter(e=>(e.type||"out")==="in"&&!e.outstanding_kind).map(e=>({d:e.date,a:num(e.amount),k:e.category||"other"})),
+    ...outPays.filter(p=>expById[p.expense_id]?.outstanding_kind && (expById[p.expense_id].type||"out")==="in").map(p=>({d:p.date,a:num(p.amount),k:expById[p.expense_id].category||"other"}))];
+  const outRows = [...expenses.filter(e=>(e.type||"out")==="out"&&!e.outstanding_kind).map(e=>({d:e.date,a:num(e.amount),k:e.category||"other"})),
+    ...outPays.filter(p=>expById[p.expense_id]?.outstanding_kind && (expById[p.expense_id].type||"out")==="out").map(p=>({d:p.date,a:num(p.amount),k:expById[p.expense_id].category||"other"}))];
+  const sumM = (rows, m) => rows.filter(r=>lm(r.d)===m).reduce((a,r)=>a+r.a,0);
+  const prevM = lm(new Date(today.getFullYear(), today.getMonth()-1, 15));
   const mIn = sumM(inRows,thisM), mOut = sumM(outRows,thisM), mNet = mIn-mOut;
   const pIn = sumM(inRows,prevM), pOut = sumM(outRows,prevM);
   const dayOfMonth = today.getDate(), daysInMonth = new Date(today.getFullYear(), today.getMonth()+1, 0).getDate();
   const pace = mIn/dayOfMonth*daysInMonth;
-  const trend = Array.from({length:6},(_,i)=>{ const d=new Date(today.getFullYear(), today.getMonth()-5+i, 15); const m=d.toISOString().slice(0,7); return {m, l:d.toLocaleDateString(undefined,{month:"short"}), i:sumM(inRows,m), o:sumM(outRows,m)}; });
+  const trend = Array.from({length:6},(_,i)=>{ const d=new Date(today.getFullYear(), today.getMonth()-5+i, 15); const m=lm(d); return {m, l:d.toLocaleDateString(undefined,{month:"short"}), i:sumM(inRows,m), o:sumM(outRows,m)}; });
   const maxT = Math.max(1,...trend.map(t=>Math.max(t.i,t.o)));
   const owedInv = invoices.filter(i=>i.status!=="cancelled"&&i.status!=="draft").reduce((a,i)=>a+Math.max(0,num(i.balance_due ?? (num(i.total)-num(i.amount_paid)))),0);
   const owedSubs = overdueSubs.reduce((a,s)=>a+num(s.amount),0);
@@ -11154,7 +11163,7 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost}) {
   const upcoming = subs.filter(s=>s.status==="active" && s.next_payment_date && s.next_payment_date>=todayStr && s.next_payment_date<=in7);
   const upcomingAmt = upcoming.reduce((a,s)=>a+num(s.amount),0);
   const catMap = typeof EXPENSE_CAT_MAP!=="undefined" ? EXPENSE_CAT_MAP : {};
-  const cats = Object.entries(outRows.filter(r=>ym(r.d)===thisM).reduce((a,r)=>{a[r.k]=(a[r.k]||0)+r.a;return a;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const cats = Object.entries(outRows.filter(r=>lm(r.d)===thisM).reduce((a,r)=>{a[r.k]=(a[r.k]||0)+r.a;return a;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const maxCat = Math.max(1,...cats.map(c=>c[1]));
   const pct = (a,b) => b ? Math.round((a-b)/b*100) : null;
   // ── Team now
@@ -11185,17 +11194,16 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost}) {
   const head = (t, sub, icon, grad, right) => (
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:14,flexWrap:"wrap"}}>
       <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
-        <div style={{width:34,height:34,borderRadius:10,background:grad,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ico d={icon} size={17} stroke="#fff"/></div>
+        <div style={{width:32,height:32,borderRadius:9,background:"var(--surface2)",border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ico d={icon} size={16} stroke="var(--text2)"/></div>
         <div style={{minWidth:0}}><p style={{fontSize:15,fontWeight:800}}>{t}</p>{sub&&<p style={{fontSize:11,color:"var(--text3)"}}>{sub}</p>}</div>
       </div>{right}
     </div>);
   const link = (l, pg) => <button onClick={()=>setPage(pg)} style={{fontSize:12,fontWeight:700,color:"var(--accent)",background:"none",border:"none",cursor:"pointer"}}>{l} →</button>;
   const tile = (label, value, sub, color, icon, onClick) => (
-    <div onClick={onClick} style={{position:"relative",overflow:"hidden",borderRadius:14,padding:"14px 16px",background:`linear-gradient(135deg, ${color}, ${color}c4)`,color:"#fff",boxShadow:`0 6px 16px ${color}33`,cursor:onClick?"pointer":"default"}}>
-      <div style={{position:"absolute",right:-16,top:-16,width:64,height:64,borderRadius:"50%",background:"rgba(255,255,255,0.15)"}}/>
-      <div style={{display:"flex",alignItems:"center",gap:6,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.06em",opacity:0.92}}><Ico d={icon} size={12} stroke="#fff"/>{label}</div>
-      <p style={{fontSize:26,fontWeight:900,fontFamily:"'Montserrat',sans-serif",lineHeight:1.15,marginTop:4}}>{value}</p>
-      <p style={{fontSize:11,opacity:0.92}}>{sub}</p>
+    <div onClick={onClick} style={{borderRadius:14,padding:"14px 16px",background:"var(--surface)",border:"1px solid var(--border)",borderTop:`3px solid ${color}`,cursor:onClick?"pointer":"default"}}>
+      <div style={{display:"flex",alignItems:"center",gap:6,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.06em",color:"var(--text3)"}}><Ico d={icon} size={12} stroke={color}/>{label}</div>
+      <p style={{fontSize:26,fontWeight:800,fontFamily:"'Montserrat',sans-serif",lineHeight:1.15,marginTop:4,color:"var(--text)"}}>{value}</p>
+      <p style={{fontSize:11,color:"var(--text3)"}}>{sub}</p>
     </div>);
   const delta = (a,b,good) => { const p = pct(a,b); if(p==null) return null; const up = p>=0; const col = (up===good)?"#10b981":"#ef4444"; return <span style={{fontSize:11,fontWeight:800,color:col}}>{up?"▲":"▼"} {Math.abs(p)}% vs last month</span>; };
   const G = isMobile ? "1fr" : "repeat(auto-fit,minmax(360px,1fr))";
@@ -11203,12 +11211,12 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost}) {
     <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
       {/* Needs your action */}
       {actions.length>0 ? (
-        <div style={{...card,background:"linear-gradient(135deg, rgba(239,68,68,0.07), rgba(245,158,11,0.06)), var(--surface)",border:"1px solid rgba(239,68,68,0.25)"}}>
+        <div style={{...card,borderLeft:"4px solid #ef4444"}}>
           {head("Needs your action", `${actions.reduce((a,x)=>a+x.n,0)} things waiting for you`, Icons.alert, "linear-gradient(135deg,#ef4444,#f59e0b)")}
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             {actions.map((a,i)=>(
-              <button key={i} onClick={a.go} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 14px",borderRadius:12,border:`1px solid ${a.c}55`,background:a.c+"14",color:"var(--text)",cursor:"pointer",fontSize:13,fontWeight:700}}>
-                <span style={{width:26,height:26,borderRadius:8,background:a.c,display:"flex",alignItems:"center",justifyContent:"center"}}><Ico d={a.ico} size={14} stroke="#fff"/></span>
+              <button key={i} onClick={a.go} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:10,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",cursor:"pointer",fontSize:13,fontWeight:600}}>
+                <Ico d={a.ico} size={15} stroke={a.c}/>
                 <b style={{color:a.c,fontSize:16}}>{a.n}</b>{a.l}
               </button>))}
           </div>
@@ -11222,7 +11230,7 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost}) {
           </div>}
         </div>
       ) : (
-        <div style={{...card,display:"flex",alignItems:"center",gap:10,background:"linear-gradient(135deg, rgba(16,185,129,0.1), transparent), var(--surface)",border:"1px solid rgba(16,185,129,0.3)"}}>
+        <div style={{...card,display:"flex",alignItems:"center",gap:10,borderLeft:"4px solid #10b981"}}>
           <Ico d={Icons.check} size={18} stroke="#10b981"/><p style={{fontSize:14,fontWeight:700}}>All clear — nothing waiting for your decision.</p>
         </div>
       )}
@@ -11237,7 +11245,7 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost}) {
       </div>
 
       {/* Finance */}
-      <div style={{...card,background:"linear-gradient(160deg, rgba(16,185,129,0.07), rgba(14,165,233,0.05) 45%, transparent 75%), var(--surface)",border:"1px solid rgba(16,185,129,0.25)"}}>
+      <div style={card}>
         {head("Finance", `${today.toLocaleDateString(undefined,{month:"long",year:"numeric"})} · cash actually received and spent`, Icons.wallet, "linear-gradient(135deg,#10b981,#0ea5e9)", link("Open Finance","finance"))}
         <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(auto-fit,minmax(170px,1fr))",gap:12}}>
           {[
@@ -11247,21 +11255,21 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost}) {
             ["Owed to us", fmt(owedInv+owedSubs), <span style={{fontSize:11,color:"var(--text3)"}}>{overdueInv.length} overdue inv · {overdueSubs.length} overdue subs</span>, "#f59e0b", Icons.invoice],
             ["Due in 7 days", fmt(upcomingAmt), <span style={{fontSize:11,color:"var(--text3)"}}>{upcoming.length} subscription payment{upcoming.length!==1?"s":""}</span>, "#8b5cf6", Icons.repeat],
           ].map(([l,v,s,c,ic])=>(
-            <div key={l} style={{borderRadius:12,padding:"12px 14px",background:"var(--surface2)",borderLeft:`4px solid ${c}`}}>
+            <div key={l} style={{borderRadius:12,padding:"12px 14px",background:"var(--surface2)",border:"1px solid var(--border)"}}>
               <p style={{fontSize:10,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",display:"flex",alignItems:"center",gap:5}}><Ico d={ic} size={12} stroke={c}/>{l}</p>
-              <p style={{fontSize:22,fontWeight:900,fontFamily:"'Montserrat',sans-serif",color:c,lineHeight:1.2}}>{v} <span style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>EGP</span></p>
+              <p style={{fontSize:22,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:"var(--text)",lineHeight:1.2}}>{v} <span style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>EGP</span></p>
               {s}
             </div>))}
         </div>
         <div style={{display:"grid",gridTemplateColumns:G,gap:16,marginTop:16}}>
           <div>
-            <p style={{fontSize:12,fontWeight:800,color:"var(--text2)",marginBottom:8}}>Last 6 months <span style={{fontWeight:600,color:"var(--text3)"}}>· <span style={{color:"#10b981"}}>■</span> in <span style={{color:"#ef4444"}}>■</span> out</span></p>
+            <p style={{fontSize:12,fontWeight:800,color:"var(--text2)",marginBottom:8}}>Last 6 months <span style={{fontWeight:600,color:"var(--text3)"}}>· <span style={{color:"#10b981"}}>■</span> in <span style={{color:"#94a3b8"}}>■</span> out</span></p>
             <div style={{display:"flex",alignItems:"flex-end",gap:10,height:130}}>
               {trend.map(t=>(
                 <div key={t.m} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,height:"100%",justifyContent:"flex-end"}} title={`${t.l}: in ${fmt(t.i)} · out ${fmt(t.o)} · net ${fmt(t.i-t.o)}`}>
                   <div style={{display:"flex",alignItems:"flex-end",gap:3,width:"100%",height:105}}>
-                    <div style={{flex:1,height:Math.max(2,t.i/maxT*105),borderRadius:"5px 5px 0 0",background:"linear-gradient(180deg,#34d399,#10b981)"}}/>
-                    <div style={{flex:1,height:Math.max(2,t.o/maxT*105),borderRadius:"5px 5px 0 0",background:"linear-gradient(180deg,#fb7185,#ef4444)"}}/>
+                    <div style={{flex:1,height:Math.max(2,t.i/maxT*105),borderRadius:"4px 4px 0 0",background:"#10b981",opacity:t.m===thisM?1:0.75}}/>
+                    <div style={{flex:1,height:Math.max(2,t.o/maxT*105),borderRadius:"4px 4px 0 0",background:"#94a3b8",opacity:t.m===thisM?1:0.75}}/>
                   </div>
                   <span style={{fontSize:10,fontWeight:t.m===thisM?800:600,color:t.m===thisM?"var(--text)":"var(--text3)"}}>{t.l}</span>
                 </div>))}
@@ -11284,6 +11292,30 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost}) {
         </div>
       </div>
 
+      {/* Online now — real presence (last_seen heartbeat), team + client portal */}
+      {(()=>{ const onTeam = team.filter(m=>m.status==="active" && onlineEmails && onlineEmails.has(m.email)); return (
+        <div style={card}>
+          {head("Online now", `${onTeam.length} team member${onTeam.length!==1?"s":""} · ${onlineClients.length} client${onlineClients.length!==1?"s":""} on the portal`, Icons.globe, "", null)}
+          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:16}}>
+            <div>
+              <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Team</p>
+              {onTeam.length===0?<p style={{fontSize:13,color:"var(--text3)"}}>Nobody online right now.</p>:
+              <div style={{display:"flex",flexWrap:"wrap",gap:8}}>{onTeam.map(m=>(
+                <span key={m.id} style={{display:"inline-flex",alignItems:"center",gap:8,padding:"5px 12px 5px 5px",borderRadius:99,border:"1px solid var(--border)",background:"var(--surface2)",fontSize:12,fontWeight:600}}>
+                  <span style={{position:"relative"}}><Avatar name={m.name} size={24}/><span style={{position:"absolute",right:-1,bottom:-1,width:9,height:9,borderRadius:"50%",background:"#10b981",border:"2px solid var(--surface2)"}}/></span>{m.name}
+                </span>))}</div>}
+            </div>
+            <div>
+              <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Clients</p>
+              {onlineClients.length===0?<p style={{fontSize:13,color:"var(--text3)"}}>No clients on the portal right now.</p>:
+              <div style={{display:"flex",flexWrap:"wrap",gap:8}}>{onlineClients.map(c=>(
+                <span key={c.key} style={{display:"inline-flex",alignItems:"center",gap:8,padding:"5px 12px 5px 5px",borderRadius:99,border:"1px solid var(--border)",background:"var(--surface2)",fontSize:12,fontWeight:600}}>
+                  <span style={{position:"relative"}}><Avatar name={c.name} size={24}/><span style={{position:"absolute",right:-1,bottom:-1,width:9,height:9,borderRadius:"50%",background:"#10b981",border:"2px solid var(--surface2)"}}/></span>{c.name}{c.org?<span style={{color:"var(--text3)",fontWeight:500}}> · {c.org}</span>:null}
+                </span>))}</div>}
+            </div>
+          </div>
+        </div>); })()}
+
       <div style={{display:"grid",gridTemplateColumns:G,gap:16}}>
         {/* Team right now */}
         <div style={card}>
@@ -11304,7 +11336,7 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost}) {
           <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:340,overflowY:"auto"}}>
             {going.length===0&&<p style={{fontSize:13,color:"var(--text3)"}}>Nothing scheduled for today or tomorrow.</p>}
             {going.map(p=>{ const ready=["scheduled","published"].includes(p.stage); const st=STAGES.find(s=>s.key===p.stage); return (
-              <div key={p.id} onClick={()=>onOpenPost&&onOpenPost(p)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:10,background:ready?"#10b98110":"#f59e0b12",borderLeft:`4px solid ${ready?"#10b981":"#f59e0b"}`,cursor:"pointer"}}>
+              <div key={p.id} onClick={()=>onOpenPost&&onOpenPost(p)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:10,background:"var(--surface2)",borderLeft:`3px solid ${ready?"#10b981":"#f59e0b"}`,cursor:"pointer"}}>
                 <div style={{flex:1,minWidth:0}}><p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</p><p style={{fontSize:11,color:"var(--text3)"}}>{p.client_name} · {String(p.scheduled_date).slice(0,10)===todayStr?"Today":"Tomorrow"}{p.scheduled_time?` ${String(p.scheduled_time).slice(0,5)}`:""}</p></div>
                 <span style={{fontSize:10,fontWeight:800,color:ready?"#10b981":"#f59e0b",textTransform:"uppercase"}}>{ready?(p.stage==="published"?"Live":"Scheduled"):(st?.label||p.stage)}</span>
               </div>); })}
@@ -11327,7 +11359,7 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost}) {
           {head("Client health", `${health.filter(h=>h.flag).length} client${health.filter(h=>h.flag).length!==1?"s":""} need attention`, Icons.clients, "linear-gradient(135deg,#ec4899,#8b5cf6)", link("Clients","clients"))}
           <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:340,overflowY:"auto"}}>
             {health.map(h=>(
-              <div key={h.c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:10,background:h.flag?"#ef44440d":"var(--surface2)",borderLeft:`4px solid ${h.flag?"#ef4444":"#10b981"}`}}>
+              <div key={h.c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:10,background:"var(--surface2)",borderLeft:`3px solid ${h.flag?"#ef4444":"#10b981"}`}}>
                 <div style={{flex:1,minWidth:0}}>
                   <p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.c.name}</p>
                   <p style={{fontSize:11,color:h.flag?"#ef4444":"var(--text3)",fontWeight:h.flag?700:500}}>{h.flag||`Last post ${h.last||"—"}`}</p>
@@ -11614,7 +11646,7 @@ No markdown, no explanation.`;
       )}
 
       {/* ════ OVERVIEW TAB ════ */}
-      {tab==="overview"&&isAdmin&&<AdminControlCenter data={{...data, appSettings}} setPage={setPage} onDecideLeaveRequest={onDecideLeaveRequest} onOpenPost={onOpenPost}/>}
+      {tab==="overview"&&isAdmin&&<AdminControlCenter data={{...data, appSettings}} setPage={setPage} onDecideLeaveRequest={onDecideLeaveRequest} onOpenPost={onOpenPost} onlineEmails={liveMemberEmails} onlineClients={liveClients}/>}
       {!isAdmin&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           {/* A vacation/WFH/personal-leave request used to only ever surface
