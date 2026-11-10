@@ -39530,6 +39530,9 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   const [zoom, setZoom] = useState(1); // 1x–4x horizontal stretch on the combined timeline
   // Rows the viewer has stacked (collapsed) to a thin strip — remembered per browser.
   const [collapsedRows, setCollapsedRows] = usePersistentState("sf_timeline_collapsed", {});
+  // Small local notification for drag / copy actions on this page (the App's own toast isn't reachable from here).
+  const [localToast, setLocalToast] = useState("");
+  const setToast = (m) => { setLocalToast(String(m||"")); setTimeout(()=>setLocalToast(""), 3500); };
   const toggleRow = (k) => setCollapsedRows({...(collapsedRows||{}), [k]: !(collapsedRows||{})[k]});
   const [overrideTarget, setOverrideTarget] = useState(null); // {slot, post}
   const [overrideTime, setOverrideTime] = useState("09:00");
@@ -39738,6 +39741,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
         </div>
       </div>
 
+      {localToast&&<div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",zIndex:100000,background:"#111827",color:"#fff",padding:"10px 18px",borderRadius:10,fontSize:13,fontWeight:600,boxShadow:"0 8px 24px rgba(0,0,0,0.35)"}}>{localToast}</div>}
       {/* Summary bar */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
         {[
