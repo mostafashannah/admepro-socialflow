@@ -28705,7 +28705,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
       {/* Header */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
         <div>
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Leads & CRM</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{leads.length} leads · ${pipelineValue.toLocaleString()} pipeline</p>
@@ -39518,6 +39518,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   // can be moved across days this way, not just within the same one.
   const [copiedTask, setCopiedTask] = useState(null); // {postId, durationMins}
   const {isMobile} = useResponsive();
+  const nameColW = isMobile ? 118 : 166; // narrower sticky names column on phones so the timeline itself gets the room
   const [viewDate, setViewDate] = useState(()=>initialJump?.date ? new Date(initialJump.date+"T00:00:00") : new Date());
   const [tick, setTick] = useState(0);
   // Whether this page was opened by clicking a day on My Calendar — captured
@@ -39527,7 +39528,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   const isAM = ["account_manager","account_director","account_executive"].includes(currentUser?.role) || currentUser?.role==="admin";
   const [viewUser, setViewUser] = useState(()=>initialJump?.viewUser||null); // null = self
   const [combinedView, setCombinedView] = useState(()=>initialJump ? !!initialJump.combined : true);
-  const [zoom, setZoom] = useState(1); // 1x–4x horizontal stretch on the combined timeline
+  const [zoom, setZoom] = useState(()=>{ try{ return window.innerWidth<=640 ? 3 : 1; }catch(e){ return 1; } }); // 1x–4x horizontal stretch; phones start zoomed in so hours and blocks stay readable (scroll sideways)
   // Rows the viewer has stacked (collapsed) to a thin strip — remembered per browser.
   const [collapsedRows, setCollapsedRows] = usePersistentState("sf_timeline_collapsed", {});
   // Small local notification for drag / copy actions on this page (the App's own toast isn't reachable from here).
@@ -39743,7 +39744,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
 
       {localToast&&<div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",zIndex:100000,background:"#111827",color:"#fff",padding:"10px 18px",borderRadius:10,fontSize:13,fontWeight:600,boxShadow:"0 8px 24px rgba(0,0,0,0.35)"}}>{localToast}</div>}
       {/* Summary bar */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:isMobile?8:12}}>
         {[
           {label:"Total Tasks",value:summaryTotalTasks,color:"var(--accent)"},
           {label:"Active Now",value:summaryActiveNow,color:"#10b981",split:activeBreakdown},
@@ -39773,7 +39774,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
           <div style={{overflowX:"auto"}}>
           <div style={{minWidth:`${zoom*100}%`}}>
           <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:166,flexShrink:0,position:"sticky",left:0,marginLeft:-16,paddingLeft:16,alignSelf:"stretch",zIndex:4,fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",background:"var(--surface2)"}}>Combined Timeline</div>
+            <div style={{width:nameColW,flexShrink:0,position:"sticky",left:0,marginLeft:-16,paddingLeft:16,alignSelf:"stretch",zIndex:4,fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",background:"var(--surface2)"}}>Combined Timeline</div>
             {/* Ruler lives in a name-column + flex-timeline split identical to each
                 member row below, so hour ticks (percentage-positioned) line up
                 exactly with the percentage-positioned task bars underneath them. */}
@@ -39809,7 +39810,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             const isCollapsed = !!(collapsedRows||{})[member.email];
             if(isCollapsed) return (
               <div key={member.email} onClick={()=>toggleRow(member.email)} title="Click to expand" style={{display:"flex",alignItems:"center",padding:"8px 16px",borderBottom:"1px solid var(--border)",gap:10,cursor:"pointer"}}>
-                <div style={{width:166,flexShrink:0,position:"sticky",left:0,marginLeft:-16,paddingLeft:16,alignSelf:"stretch",zIndex:4,display:"flex",alignItems:"center",gap:8,background:"var(--surface)",zIndex:3}}>
+                <div style={{width:nameColW,flexShrink:0,position:"sticky",left:0,marginLeft:-16,paddingLeft:16,alignSelf:"stretch",zIndex:4,display:"flex",alignItems:"center",gap:8,background:"var(--surface)",zIndex:3}}>
                   <span style={{fontSize:11,color:"var(--text3)",width:12}}>▸</span>
                   <Avatar name={member.name} size={22} role={member.role} photoUrl={member.avatar_url}/>
                   <p style={{fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.name}</p>
@@ -39822,7 +39823,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             );
             return (
               <div key={member.email} style={{display:"flex",alignItems:"center",padding:"14px 16px",borderBottom:"1px solid var(--border)",gap:10}}>
-                <MemberHoverCard member={member} slots={lanedSlots} dateStr={dateStr} members={timelineMembers} style={{width:166,flexShrink:0,position:"sticky",left:0,marginLeft:-16,paddingLeft:16,alignSelf:"stretch",zIndex:4,display:"flex",alignItems:"center",gap:10,background:"var(--surface)",zIndex:3}}>
+                <MemberHoverCard member={member} slots={lanedSlots} dateStr={dateStr} members={timelineMembers} style={{width:nameColW,flexShrink:0,position:"sticky",left:0,marginLeft:-16,paddingLeft:16,alignSelf:"stretch",zIndex:4,display:"flex",alignItems:"center",gap:10,background:"var(--surface)",zIndex:3}}>
                   <span style={{position:"relative",display:"inline-flex",flexShrink:0,paddingBottom:2}}><Avatar name={member.name} size={30} role={member.role} photoUrl={member.avatar_url}/><MemberRatingBadge member={member}/></span>
                   <div style={{overflow:"hidden"}}>
                     <p style={{fontSize:13,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.name}{member.email===currentUser?.email?" (You)":""}</p>
@@ -40007,7 +40008,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             return (
               agentCollapsed ? (
               <div key={`agent-${sara.id}-timeline-row`} onClick={toggleAgent} title="Click to expand" style={{display:"flex",alignItems:"center",padding:"8px 16px",borderBottom:"1px solid var(--border)",gap:10,cursor:"pointer",background:sara.color+"08"}}>
-                <div style={{width:166,flexShrink:0,position:"sticky",left:0,marginLeft:-16,paddingLeft:16,alignSelf:"stretch",zIndex:4,display:"flex",alignItems:"center",gap:8,background:"var(--surface)",zIndex:3}}>
+                <div style={{width:nameColW,flexShrink:0,position:"sticky",left:0,marginLeft:-16,paddingLeft:16,alignSelf:"stretch",zIndex:4,display:"flex",alignItems:"center",gap:8,background:"var(--surface)",zIndex:3}}>
                   <span style={{fontSize:11,color:"var(--text3)",width:12}}>▸</span>
                   <div style={{width:22,height:22,borderRadius:"50%",background:sara.color,flexShrink:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:11,fontWeight:800}}>{avatarUrl?<img src={avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"S"}</div>
                   <p style={{fontSize:12,fontWeight:700}}>{agentLabel}</p>
@@ -40019,7 +40020,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
               </div>
               ) : (
               <div key={`agent-${sara.id}-timeline-row`} style={{display:"flex",alignItems:"center",padding:"14px 16px",borderBottom:"1px solid var(--border)",gap:10,background:sara.color+"08"}}>
-                <div style={{width:166,flexShrink:0,position:"sticky",left:0,marginLeft:-16,paddingLeft:16,alignSelf:"stretch",zIndex:4,display:"flex",alignItems:"center",gap:10,background:"var(--surface)",zIndex:3}}>
+                <div style={{width:nameColW,flexShrink:0,position:"sticky",left:0,marginLeft:-16,paddingLeft:16,alignSelf:"stretch",zIndex:4,display:"flex",alignItems:"center",gap:10,background:"var(--surface)",zIndex:3}}>
                   <div style={{width:30,height:30,borderRadius:"50%",background:sara.color,flexShrink:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:13,fontWeight:800}}>
                     {avatarUrl?<img src={avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"S"}
                   </div>
@@ -53081,7 +53082,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
 
         {/* Page content */}
         <main id="main-content" className="main-content" ref={mainScrollRef}
-          style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?84:28,display:"flex",flexDirection:"column",minHeight:0}}>
+          style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?"calc(110px + env(safe-area-inset-bottom))":28,display:"flex",flexDirection:"column",minHeight:0}}>
           {page==="home"&&<ProHomePage
               currentUser={currentUser} data={{...data, appSettings}}
               setPage={setPage}
