@@ -3871,14 +3871,15 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c", photoIsDark=true}) => 
         margin-bottom:6px;
         border-radius:999px;
         background:rgba(255,255,255,0.16);
-        background:color-mix(in srgb, var(--surface) 16%, transparent);
+        background:color-mix(in srgb, var(--surface) 92%, transparent);
         backdrop-filter:blur(18px) saturate(160%);-webkit-backdrop-filter:blur(18px) saturate(160%);
         border:1px solid rgba(255,255,255,0.22);
         box-shadow:0 6px 20px rgba(0,0,0,0.15);
       }
+      .main-content.mc-scroll > *{ flex-shrink:0; }
       .main-content{
         padding:14px!important;
-        padding-bottom:14px!important;
+        padding-bottom:calc(110px + env(safe-area-inset-bottom))!important;
         overflow-x:hidden!important;
         scrollbar-width:none;-ms-overflow-style:none;
       }
@@ -53081,7 +53082,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         })()}
 
         {/* Page content */}
-        <main id="main-content" className="main-content" ref={mainScrollRef}
+        <main id="main-content" className={page==="home"?"main-content":"main-content mc-scroll"} ref={mainScrollRef}
           style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?"calc(110px + env(safe-area-inset-bottom))":28,display:"flex",flexDirection:"column",minHeight:0}}>
           {page==="home"&&<ProHomePage
               currentUser={currentUser} data={{...data, appSettings}}
