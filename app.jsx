@@ -11398,7 +11398,7 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
         {/* Team right now */}
         <div style={card}>
           {head("Team right now", `${teamNow.filter(t=>t.working).length} working on a task · ${teamNow.filter(t=>t.delayed).length} with delays`, Icons.users, "linear-gradient(135deg,#6366f1,#8b5cf6)", link("Timeline","my_timeline"))}
-          <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:340,overflowY:"auto"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:6,...(isMobile?{}:{maxHeight:340,overflowY:"auto"})}}>
             {teamNow.map(t=>(
               <div key={t.m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:10,background:"var(--surface2)"}}>
                 <div style={{position:"relative"}}><Avatar name={t.m.name} size={30}/><span style={{position:"absolute",right:-1,bottom:-1,width:10,height:10,borderRadius:"50%",border:"2px solid var(--surface2)",background:t.working?"#10b981":"#9ca3af"}}/></div>
@@ -11411,7 +11411,7 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
         {/* Going live */}
         <div style={card}>
           {head("Going live — next 48h", `${going.length} post${going.length!==1?"s":""} · ${going.filter(p=>!["scheduled","published"].includes(p.stage)).length} not ready yet`, Icons.send, "linear-gradient(135deg,#0ea5e9,#10b981)", link("Calendar","calendar"))}
-          <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:340,overflowY:"auto"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:6,...(isMobile?{}:{maxHeight:340,overflowY:"auto"})}}>
             {going.length===0&&<p style={{fontSize:13,color:"var(--text3)"}}>Nothing scheduled for today or tomorrow.</p>}
             {going.map(p=>{ const ready=["scheduled","published"].includes(p.stage); const st=STAGES.find(s=>s.key===p.stage); return (
               <div key={p.id} onClick={()=>onOpenPost&&onOpenPost(p)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:10,background:"var(--surface2)",borderLeft:`3px solid ${ready?"#10b981":"#f59e0b"}`,cursor:"pointer"}}>
@@ -11435,7 +11435,7 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
         {/* Client health */}
         <div style={card}>
           {head("Client health", `${health.filter(h=>h.flag).length} client${health.filter(h=>h.flag).length!==1?"s":""} need attention`, Icons.clients, "linear-gradient(135deg,#ec4899,#8b5cf6)", link("Clients","clients"))}
-          <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:340,overflowY:"auto"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:6,...(isMobile?{}:{maxHeight:340,overflowY:"auto"})}}>
             {health.map(h=>(
               <div key={h.c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:10,background:"var(--surface2)",borderLeft:`3px solid ${h.flag?"#ef4444":"#10b981"}`}}>
                 <div style={{flex:1,minWidth:0}}>
@@ -11911,7 +11911,7 @@ No markdown, no explanation.`;
                       <span style={{fontSize:10,background:"var(--surface2)",color:"var(--text3)",padding:"2px 8px",borderRadius:99,fontWeight:700,border:"1px solid var(--border2)"}}>{visibleTeam.length} members</span>
                     </div>
                   </div>
-                  <div style={{maxHeight:"min(280px,40vh)",overflowY:"auto"}}>
+                  <div style={isMobile?{}:{maxHeight:"min(280px,40vh)",overflowY:"auto"}}>
                     {visibleTeam.map(member=>{
                       const mPerf=perf.find(p=>p.email===member.email)||{};
                       // Deliberately uses the unfiltered `posts`, not `filteredPosts` —
@@ -11960,7 +11960,7 @@ No markdown, no explanation.`;
                     <h3 style={{fontWeight:700,fontSize:14}}>My Tasks</h3>
                     <span style={{fontSize:10,background:"#3b82f622",color:"#3b82f6",padding:"2px 8px",borderRadius:99,fontWeight:700,border:"1px solid #3b82f644"}}>{myPosts.length} total</span>
                   </div>
-                  <div style={{maxHeight:"min(280px,40vh)",overflowY:"auto"}}>
+                  <div style={isMobile?{}:{maxHeight:"min(280px,40vh)",overflowY:"auto"}}>
                     {myPosts.length===0?(
                       <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:20}}>No tasks assigned to you.</p>
                     ):myPosts.slice(0,10).map(post=>(
@@ -12037,7 +12037,7 @@ No markdown, no explanation.`;
                 <h3 style={{fontWeight:700,fontSize:14}}>Notifications</h3>
                 {myNotifs.length>0&&<span style={{fontSize:11,background:"var(--accent)",color:"#fff",padding:"1px 8px",borderRadius:99,fontWeight:700}}>{myNotifs.length}</span>}
               </div>
-              <div style={{maxHeight:"min(360px,40vh)",overflowY:"auto"}}>
+              <div style={isMobile?{}:{maxHeight:"min(360px,40vh)",overflowY:"auto"}}>
                 {(()=>{ const myAllNotifs = notifications.filter(n=>n.recipient_email===currentUser.email); return myAllNotifs.slice(0,8).map((n,i)=>{
                   const c={info:"#3b82f6",approval:"#10b981",rejection:"#ef4444",assignment:"#8b5cf6",comment:"#f59e0b",stage_change:"#06b6d4",performance:"#8b5cf6",performance_alert:"#ef4444"}[n.type]||"#6b7280";
                   const isClickable = (n.link_type==="page"||n.link_type==="post") && n.link_id;
@@ -54965,7 +54965,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
     {toast&&<Toast message={toast} onDone={()=>setToast(null)}/>}
 
     {/* AI Chatbot — global floating bubble; hidden on home page where the full Pro workspace already shows */}
-    {page!=="home" && !sidebarOpen && <Chatbot
+    {false && page!=="home" && !sidebarOpen && <Chatbot
       currentUser={currentUser}
       currentPage={page}
       data={{...data, appSettings}}
