@@ -745,6 +745,7 @@ function generateDailySchedule(posts, userEmail, date, userRole, includeGhosts=f
   // null on any other day (past/future dates aren't bounded by "now").
   const nowFloorMins = date === today ? (new Date().getHours()*60 + new Date().getMinutes()) : null;
   const ownedStage = ROLE_OWNED_STAGE[userRole];
+  const carriedIds = new Set();
   const myPosts = posts.filter(p => {
     // wasOwnerOf (not just live assigned_to) so a content creator's/
     // designer's own work is still findable for them (My Tasks, etc.) even
@@ -835,7 +836,11 @@ function generateDailySchedule(posts, userEmail, date, userRole, includeGhosts=f
       // page, in its own normal slot, just rendered red (see isOverduePost)
       // to signal it's overdue. Requested explicitly: "not done to not be
       // shifted... to be also on its slot but colored red as overdue."
-      return p.due_date === date;
+      if (p.due_date === date) return true;
+      // Carried over: a task still open with its owner after its due day also shows on TODAY's board (its original day keeps its own red block),
+      // and its delay keeps counting from where it froze until it is moved to review.
+      if (date === today && ownedStage && p.stage === ownedStage && p.due_date < today) { carriedIds.add(p.id); return true; }
+      return false;
     }
     // Tasks without a due_date only appear on today's view
     return date === today;
@@ -847,7 +852,7 @@ function generateDailySchedule(posts, userEmail, date, userRole, includeGhosts=f
   // Overdue = still in their own stage after the due date, OR after today's due_time has passed (delay counts live until it moves to review).
   const nowMinsDay = new Date().getHours()*60 + new Date().getMinutes();
   const isOverduePost = (p) => p.is_routine ? (p.routine_status==='missed' || (p.routine_status==='open' && !!(p.due_date && (p.due_date < today || (p.due_date === today && p.due_time && timeToMins(p.due_time)!=null && nowMinsDay > timeToMins(p.due_time)))))) : !!(p.stage === ROLE_OWNED_STAGE[userRole] && p.due_date && (p.due_date < today || (p.due_date === today && p.due_time && timeToMins(p.due_time)!=null && nowMinsDay > timeToMins(p.due_time))));
-  myPosts.sort((a,b) => priorityScore(b) - priorityScore(a));
+  myPosts.sort((a,b) => ((carriedIds.has(b.id)?1:0) - (carriedIds.has(a.id)?1:0)) || (priorityScore(b) - priorityScore(a)));
 
   // Use due_time as the anchor when available, otherwise pack sequentially
   const slots = [];
@@ -858,7 +863,12 @@ function generateDailySchedule(posts, userEmail, date, userRole, includeGhosts=f
     // Overdue tasks keep their real due_time anchor same as anything else
     // now — they stay on their own original day/slot instead of jumping
     // the queue on today's view, so there's no reason to ignore it anymore.
-    if(post.due_time) {
+    if(carriedIds.has(post.id)) {
+      cursor = WORKING_START * 60;
+      let collision = slots.find(s => s.start_mins < cursor+est && s.end_mins > cursor);
+      let guard = 0;
+      while(collision && guard++ < 50) { cursor = collision.end_mins; collision = slots.find(s => s.start_mins < cursor+est && s.end_mins > cursor); }
+    } else if(post.due_time) {
       const [hh, mm] = post.due_time.split(":").map(Number);
       // due_time is the DEADLINE the task must be finished by, not when
       // work on it starts — a 180-min task due at 3:30 needs to occupy
@@ -961,6 +971,7 @@ function generateDailySchedule(posts, userEmail, date, userRole, includeGhosts=f
       end_time: minsToAmPm(cursor + dur),
       duration_mins: dur,
       completed_today: completedToday,
+      carried: carriedIds.has(post.id),
       // Only flag it red/overdue while it's still sitting in THEIR own
       // stage, unfinished — once they've actually moved it forward (e.g.
       // to Client Approval, waiting on someone else entirely), it's no
@@ -4417,7 +4428,7 @@ function insideDelayWindow(ms=Date.now()) {
   const h = d.getHours() + d.getMinutes()/60; return h >= DELAY_WINDOW.from && h < DELAY_WINDOW.to;
 }
 // Delay counter: from the task's due time until it is moved to review (live while it is still with its owner).
-function postDelayInfo(post) {
+function postDelayInfo(post, asOfDate) {
   if(!post?.due_date) return null;
   const hhmm = (post.due_time && /^\d{1,2}:\d{2}/.test(post.due_time)) ? post.due_time.slice(0,5) : "23:59";
   const [h,m] = hhmm.split(":").map(Number);
@@ -4431,13 +4442,17 @@ function postDelayInfo(post) {
     if(c) endTs = c;
   }
   if(!endTs) return null;
+  // Viewing a PAST day: show the delay as it stood at the end of that day (the task is still open, but that day's block stays frozen).
+  const todayKey = new Date().toISOString().split("T")[0];
+  let frozenDay = false;
+  if(asOfDate && inOwnerStage && asOfDate < todayKey) { const e = new Date(`${asOfDate}T23:59:59`); endTs = Math.min(endTs, e.getTime()); frozenDay = true; }
   const secs = workingDelaySecs(dueTs.getTime(), endTs);
   if(secs <= 0) return null;
-  return {secs, live: inOwnerStage, pausedNow: inOwnerStage && !insideDelayWindow()};
+  return {secs, live: inOwnerStage && !frozenDay, frozenDay, pausedNow: inOwnerStage && !frozenDay && !insideDelayWindow()};
 }
-function DelayBadge({post, light=false, big=false}) {
+function DelayBadge({post, light=false, big=false, asOf=null}) {
   const [,setTick] = useState(0);
-  const info = postDelayInfo(post);
+  const info = postDelayInfo(post, asOf);
   useEffect(()=>{ if(!info?.live) return; const id=setInterval(()=>setTick(x=>x+1),1000); return ()=>clearInterval(id); },[info?.live]);
   if(!info) return null;
   const t = Math.max(0, info.secs);
@@ -4447,8 +4462,8 @@ function DelayBadge({post, light=false, big=false}) {
   const color = light ? "#fff" : "#ef4444";
   return (
     <span style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:big?14:10,fontWeight:800,color,fontFamily:"monospace",whiteSpace:"nowrap",...(big?{background:"#ef444418",padding:"8px 12px",borderRadius:8}:{})}}>
-      <span>{info.live?(info.pausedNow?"⏸":"⏰"):"✓"}</span>
-      <span>{info.live?`Delayed ${hms}${info.pausedNow?" (paused)":""}`:`Delivered ${human} late`}</span>
+      <span>{info.frozenDay?"⏸":info.live?(info.pausedNow?"⏸":"⏰"):"✓"}</span>
+      <span>{info.frozenDay?`Delayed ${hms} (that day)`:info.live?`Delayed ${hms}${info.pausedNow?" (paused)":""}`:`Delivered ${human} late`}</span>
     </span>
   );
 }
@@ -39884,8 +39899,8 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                           {post&&<TaskThumb post={post} team={team} size={34}/>}
                           <div style={{display:"flex",flexDirection:"column",minWidth:0,flex:1,lineHeight:1.25}}>
                             <span style={{fontSize:11.5,color:"#fff",fontWeight:800,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
-                            {widthPct>8&&<span style={{fontSize:9.5,color:"#fff",opacity:0.9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slot.start_time}–{slot.end_time}{slot.ghost?` · moved to ${fmtDate(slot.ghost_to)}`:""}{post?.is_routine?` · 🔁 ${routineCounts(post).done}/${routineCounts(post).total}`:""}{slot.overdue?" · OVERDUE":slot.completed_today?" · Done":""}</span>}
-                            {widthPct>12&&(slot.ghost ? <span style={{fontSize:10,fontWeight:800,color:"#fff",fontFamily:"monospace",whiteSpace:"nowrap"}}>⏸ Delayed {(()=>{const t=Math.max(0,slot.ghost_delay_secs||0);return `${String(Math.floor(t/3600)).padStart(2,"0")}:${String(Math.floor(t%3600/60)).padStart(2,"0")}:${String(t%60).padStart(2,"0")}`;})()}</span> : post&&postDelayInfo(post) ? <DelayBadge post={post} light/> : post&&postTimerInfo(post) ? <LiveTimerBadge post={post} light/> : <span style={{fontSize:9,color:"#fff",opacity:0.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{[post?.client_name, stage?.label].filter(Boolean).join(" · ")}</span>)}
+                            {widthPct>8&&<span style={{fontSize:9.5,color:"#fff",opacity:0.9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slot.start_time}–{slot.end_time}{slot.ghost?` · moved to ${fmtDate(slot.ghost_to)}`:""}{slot.carried?" · carried over":""}{post?.is_routine?` · 🔁 ${routineCounts(post).done}/${routineCounts(post).total}`:""}{slot.overdue?" · OVERDUE":slot.completed_today?" · Done":""}</span>}
+                            {widthPct>12&&(slot.ghost ? <span style={{fontSize:10,fontWeight:800,color:"#fff",fontFamily:"monospace",whiteSpace:"nowrap"}}>⏸ Delayed {(()=>{const t=Math.max(0,slot.ghost_delay_secs||0);return `${String(Math.floor(t/3600)).padStart(2,"0")}:${String(Math.floor(t%3600/60)).padStart(2,"0")}:${String(t%60).padStart(2,"0")}`;})()}</span> : post&&postDelayInfo(post, dateStr) ? <DelayBadge post={post} light asOf={dateStr}/> : post&&postTimerInfo(post) ? <LiveTimerBadge post={post} light/> : <span style={{fontSize:9,color:"#fff",opacity:0.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{[post?.client_name, stage?.label].filter(Boolean).join(" · ")}</span>)}
                           </div>
                         </div>
                       </div>
