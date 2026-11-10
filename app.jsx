@@ -39327,17 +39327,20 @@ function AssignExistingTaskModal({open, onClose, slot, posts, team, clients, onA
           <p style={{fontSize:12,color:"#ef4444"}}>{member?.name||"This member"} only has {(check.freeMins/60).toFixed(1)}h left today from this slot, but this task needs {(check.durationMins/60).toFixed(1)}h — not enough room before end of day. Pick an earlier slot, or a different day.</p>
         )}
         {check&&!check.fits&&check.reason==="busy"&&(
-          <div style={{padding:10,background:"#ef444411",border:"1px solid #ef444444",borderRadius:"var(--rs)",display:"flex",flexDirection:"column",gap:8}}>
-            <p style={{fontSize:12,color:"#ef4444"}}>{member?.name||"This member"} only has {(check.freeMins/60).toFixed(1)}h free from this slot before "{check.blockerTitle}" starts — this task needs {(check.durationMins/60).toFixed(1)}h.</p>
-            <Btn variant="secondary" onClick={()=>{onPushAndAssign(taskId, slot, check.daySlots, check.durationMins, manualMinutesForSave);onClose();}} style={{fontSize:12}}>
-              Push "{check.blockerTitle}" (and anything after it) later, then add this
-            </Btn>
+          <div style={{padding:10,background:"#f59e0b14",border:"1px solid #f59e0b55",borderRadius:"var(--rs)",display:"flex",flexDirection:"column",gap:8}}>
+            <p style={{fontSize:12,color:"var(--text2)"}}>{member?.name||"This member"} already has "{check.blockerTitle}" at this time. You can add this task <strong>in parallel</strong> (both at once, shown on two lines), or push the other task later.</p>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <Btn onClick={()=>{onAssign(taskId, slot, manualMinutesForSave);onClose();}} style={{fontSize:12}}>Add in parallel</Btn>
+              <Btn variant="secondary" onClick={()=>{onPushAndAssign(taskId, slot, check.daySlots, check.durationMins, manualMinutesForSave);onClose();}} style={{fontSize:12}}>
+                Push "{check.blockerTitle}" (and anything after it) later, then add this
+              </Btn>
+            </div>
           </div>
         )}
 
         <div style={{display:"flex",gap:10,paddingTop:4}}>
           <Btn variant="secondary" onClick={onClose} style={{flex:1}}>Cancel</Btn>
-          <Btn onClick={()=>{onAssign(taskId, slot, manualMinutesForSave);onClose();}} disabled={!taskId||!check?.fits} style={{flex:2}}>Add to Slot</Btn>
+          <Btn onClick={()=>{onAssign(taskId, slot, manualMinutesForSave);onClose();}} disabled={!taskId||(check&&!check.fits&&check.reason!=="busy")} style={{flex:2}}>Add to Slot</Btn>
         </div>
       </div>
     </Modal>
