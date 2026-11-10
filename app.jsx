@@ -11101,6 +11101,26 @@ Return ONLY a JSON array of 5 objects: [{"title":"short","insight":"2 sentences 
 // going out, finance (this month, trend, money owed), pipeline and
 // client health.
 // ════════════════════════════════════════════════════════════════
+// Compact worked / delayed / actual table (admin) used on the timeline card and dashboard tile.
+function TimeBreakdown({rows}) {
+  const f = sec => { sec=Math.max(0,Math.round(sec||0)); const h=Math.floor(sec/3600), m=Math.floor(sec%3600/60); return `${h}h ${String(m).padStart(2,"0")}m`; };
+  const cell = {padding:"4px 6px",textAlign:"right",whiteSpace:"nowrap"};
+  return (
+    <div style={{overflowX:"auto",maxWidth:"100%"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:11,marginTop:6,display:"table",fontFamily:"inherit"}}>
+      <thead><tr style={{color:"var(--text3)",fontWeight:700}}>
+        <th style={{...cell,textAlign:"left"}}></th><th style={cell}>Worked</th><th style={cell}>Delayed</th><th style={cell}>Actual</th><th style={cell}>Avg / person</th>
+      </tr></thead>
+      <tbody>{rows.map(r=>(
+        <tr key={r.label} style={{borderTop:"1px solid var(--border)"}} title={r.names||""}>
+          <td style={{...cell,textAlign:"left",fontWeight:700,color:"var(--text2)"}}>{r.label} <span style={{color:"var(--text3)",fontWeight:600}}>({r.n})</span></td>
+          <td style={{...cell,fontWeight:700,color:"var(--text)"}}>{f(r.worked)}</td>
+          <td style={{...cell,fontWeight:700,color:"#ef4444"}}>{f(r.delayed)}</td>
+          <td style={{...cell,fontWeight:800,color:"var(--text)"}}>{f(r.worked+r.delayed)}</td>
+          <td style={{...cell,fontWeight:700,color:"var(--text2)"}}>{r.n?f((r.worked+r.delayed)/r.n):"—"}</td>
+        </tr>))}</tbody>
+    </table></div>
+  );
+}
 function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, onlineEmails, onlineClients=[], viewer=null}) {
   const isDirector = viewer?.role==="account_director"; // same centre, no finance, only her own approvals
   const {isMobile} = useResponsive();
@@ -11250,13 +11270,15 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
         {tile("Finished today", doneToday, "task stages completed", "#10b981", Icons.check)}
         {tile("Delayed now", delayed, delayed?"open tasks past due":"everyone on time", delayed?"#ef4444":"#10b981", Icons.alert, ()=>setPage("my_timeline"))}
         {tile("Going live today", liveToday.length, `${liveReady} scheduled / published`, liveToday.length&&liveReady<liveToday.length?"#f59e0b":"#0ea5e9", Icons.send)}
-        {tile("Tracked today", hrsToday.toFixed(1)+"h", isDirector?"team timer hours":<>
-          <span style={{display:"block"}}>Team ({workingToday.length}): worked <b style={{color:"var(--text)"}}>{fmtH(teamSecs)}</b> + delayed <b style={{color:"#ef4444"}}>{fmtH(teamDly)}</b> = <b style={{color:"var(--text)"}}>{fmtH(teamSecs+teamDly)}</b></span>
-          <span style={{display:"block"}}>avg {workingToday.length?fmtH(teamSecs/workingToday.length):"—"} worked · {workingToday.length?fmtH((teamSecs+teamDly)/workingToday.length):"—"} actual</span>
-          <span style={{display:"block",marginTop:4}}>Without account ({prodToday.length}): worked <b style={{color:"var(--text)"}}>{fmtH(prodSecs)}</b> + delayed <b style={{color:"#ef4444"}}>{fmtH(prodDly)}</b> = <b style={{color:"var(--text)"}}>{fmtH(prodSecs+prodDly)}</b></span>
-          <span style={{display:"block"}}>avg {prodToday.length?fmtH(prodSecs/prodToday.length):"—"} worked · {prodToday.length?fmtH((prodSecs+prodDly)/prodToday.length):"—"} actual</span>
-        </>, "#8b5cf6", Icons.clock)}
+        {tile("Tracked today", hrsToday.toFixed(1)+"h", "team timer hours", "#8b5cf6", Icons.clock)}
       </div>
+
+      {!isDirector&&(
+        <div style={card}>
+          {head("Team time today", "Worked = timer time · Delayed = open tasks past due · Actual = both", Icons.clock, "", null)}
+          <TimeBreakdown rows={[{label:"Team",n:workingToday.length,worked:teamSecs,delayed:teamDly,names:workingToday.map(m=>m.name).join(", ")},{label:"Without account",n:prodToday.length,worked:prodSecs,delayed:prodDly,names:prodToday.map(m=>m.name).join(", ")}]}/>
+        </div>
+      )}
 
       {/* Finance */}
       {!isDirector&&<div style={card}>
@@ -40363,14 +40385,13 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
         {[
           {label:"Total Tasks",value:summaryTotalTasks,color:"var(--accent)"},
           {label:"Active Now",value:summaryActiveNow,color:"#10b981",split:activeBreakdown},
-          {label:"Time Tracked",value:fmtSecs(summaryTrackedSecs),color:"#3b82f6",note:combinedView&&currentUser?.role==="admin"?`Team: worked ${fmtSecs(workingTrackedSecs)} + delayed ${fmtSecs(teamDelaySecs)} = ${fmtSecs(workingTrackedSecs+teamDelaySecs)} · avg ${fmtSecs(avgTrackedSecs)} / ${fmtSecs(workingMembers.length?Math.round((workingTrackedSecs+teamDelaySecs)/workingMembers.length):0)} (${workingMembers.map(m=>(m.name||"").split(" ")[0]).join(", ")})`:null,note2:combinedView&&currentUser?.role==="admin"?`Without account: worked ${fmtSecs(prodTrackedSecs)} + delayed ${fmtSecs(prodDelaySecs)} = ${fmtSecs(prodTrackedSecs+prodDelaySecs)} · avg ${fmtSecs(prodAvgSecs)} / ${fmtSecs(prodWorking.length?Math.round((prodTrackedSecs+prodDelaySecs)/prodWorking.length):0)} (${prodWorking.map(m=>(m.name||"").split(" ")[0]).join(", ")})`:null},
+          {label:"Time Tracked",value:fmtSecs(summaryTrackedSecs),color:"#3b82f6",breakdown:combinedView&&currentUser?.role==="admin"?[{label:"Team",n:workingMembers.length,worked:workingTrackedSecs,delayed:teamDelaySecs,names:workingMembers.map(m=>m.name).join(", ")},{label:"Without account",n:prodWorking.length,worked:prodTrackedSecs,delayed:prodDelaySecs,names:prodWorking.map(m=>m.name).join(", ")}]:null},
           {label:"Completion",value:`${summaryCompletionPct}%`,color:"#f59e0b"},
         ].map(stat=>(
-          <div key={stat.label} style={{padding:14,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",display:"flex",flexDirection:"column",gap:4}}>
+          <div key={stat.label} style={{padding:14,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",display:"flex",flexDirection:"column",gap:4,minWidth:0,...(stat.breakdown?{gridColumn:"1/-1"}:{})}}>
             <p style={{fontSize:11,color:"var(--text3)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{stat.label}</p>
             <p style={{fontSize:20,fontWeight:800,color:stat.color,fontFamily:"monospace"}}>{stat.value}</p>
-            {stat.note&&<p style={{fontSize:11,fontWeight:700,color:"var(--text3)"}}>{stat.note}</p>}
-            {stat.note2&&<p style={{fontSize:11,fontWeight:700,color:"var(--text3)"}}>{stat.note2}</p>}
+            {stat.breakdown&&<TimeBreakdown rows={stat.breakdown}/>}
             {stat.split&&<div style={{display:"flex",gap:10,fontSize:11,fontWeight:700}}><span style={{color:"#16a34a"}}>● {stat.split.onTime} on time</span><span style={{color:"#ef4444"}}>● {stat.split.delayed} delayed</span></div>}
           </div>
         ))}
