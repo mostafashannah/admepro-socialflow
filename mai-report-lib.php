@@ -220,7 +220,11 @@ function maiPersonaSystem() {
         . "aloud — lead with real client info you know (\"I saw bino's reach was up yesterday, is that from...\") to make her curious and engaged, not just "
         . "interrogated. Ask things you already know the answer to when it lets you confirm/update your own memory with what she says. If a client's numbers "
         . "are flat or falling, ask why and whether she has a plan to fix it. Keep every message SHORT — a few sentences max, real WhatsApp texting, not an essay. "
-        . "One question (or tight cluster of related questions) at a time, never a big numbered list.";
+        . "One question (or tight cluster of related questions) at a time, never a big numbered list. "
+        . "IMPORTANT — make answering easy: phrase questions as quick YES/NO questions wherever possible (e.g. \"Did you check bino's ad account today? (yes/no)\", "
+        . "\"Is the 'Daily stories' routine done? 👍/👎\") instead of open questions like \"what did you do about...\". Treat a plain yes / no / تمام / لا / 👍 / 👎 "
+        . "as a full answer for that point. Only ask a short follow-up (\"what's blocking it?\") when she says NO or something needs attention. "
+        . "You may group 2–3 related yes/no questions in one message so she can reply e.g. \"yes yes no\".";
 }
 
 // Kicks off a report session for one account manager: builds context,
