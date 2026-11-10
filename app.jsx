@@ -40475,10 +40475,13 @@ function PrizesStore({member, cfg, data}) {
   };
   const stCol = {pending:"#f59e0b", approved:"#10b981", rejected:"#ef4444"};
   return (
-    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:18,display:"flex",flexDirection:"column",gap:14}}>
+    <div style={{background:"linear-gradient(160deg, rgba(16,185,129,0.08), rgba(99,102,241,0.06) 45%, transparent 75%), var(--surface)",border:"1px solid rgba(99,102,241,0.25)",borderRadius:16,padding:18,display:"flex",flexDirection:"column",gap:14}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-        <p style={{fontSize:15,fontWeight:800,display:"flex",alignItems:"center",gap:8}}><Ico d={Icons.award} size={17} stroke="var(--accent)"/>Prizes</p>
-        <span style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13,fontWeight:800,color:bal.balance>=0?"#f59e0b":"#ef4444",background:(bal.balance>=0?"#f59e0b":"#ef4444")+"1a",padding:"6px 14px",borderRadius:99}}><Ico d={Icons.wallet} size={14} stroke="currentColor"/>{bal.balance} pts available</span>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg,#10b981,#6366f1)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 12px rgba(99,102,241,0.35)"}}><Ico d={Icons.award} size={18} stroke="#fff"/></div>
+          <div><p style={{fontSize:15,fontWeight:800}}>Prizes</p><p style={{fontSize:11,color:"var(--text3)",fontWeight:600}}>Turn your hard work into real rewards</p></div>
+        </div>
+        <span style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13,fontWeight:800,color:"#fff",background:bal.balance>=0?"linear-gradient(90deg,#8b5cf6,#ec4899)":"#ef4444",padding:"7px 14px",borderRadius:99,boxShadow:"0 4px 12px rgba(139,92,246,0.35)"}}><Ico d={Icons.wallet} size={14} stroke="currentColor"/>{bal.balance} pts available</span>
       </div>
       <p style={{fontSize:12,color:"var(--text3)",marginTop:-6}}>Earned since points started: {bal.earned} · redeemed: {bal.spent}. Your balance carries over every month.</p>
       {(cfg.prizes||[]).length===0 ? <p style={{fontSize:13,color:"var(--text3)"}}>No prizes set yet.</p> :
@@ -40499,7 +40502,7 @@ function PrizesStore({member, cfg, data}) {
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:5}}><span>{Math.max(0,bal.balance)} / {pz.cost} pts</span><span>{ok?"Ready!":`${pz.cost-Math.max(0,bal.balance)} to go`}</span></div>
                 <div style={{height:7,borderRadius:99,background:"var(--border)",overflow:"hidden"}}><div style={{width:pct+"%",height:"100%",borderRadius:99,background:ok?col:"linear-gradient(90deg,#f59e0b,#ef4444)"}}/></div>
               </div>
-              <button disabled={!ok||busy===pz.id} onClick={()=>redeem(pz)} style={{marginTop:2,padding:"10px 12px",borderRadius:10,fontSize:13,fontWeight:800,border:"none",background:ok?col:"var(--border)",color:ok?"#fff":"var(--text3)",cursor:ok?"pointer":"not-allowed"}}>{busy===pz.id?"…":ok?`Redeem for ${pz.cost} pts`:"Keep going"}</button>
+              <button disabled={!ok||busy===pz.id} onClick={()=>redeem(pz)} style={{marginTop:2,padding:"10px 12px",borderRadius:10,fontSize:13,fontWeight:800,border:"none",background:ok?`linear-gradient(90deg, ${col}, ${col}cc)`:"linear-gradient(90deg,#f59e0b22,#ef444422)",color:ok?"#fff":"#f97316",cursor:ok?"pointer":"not-allowed",boxShadow:ok?`0 4px 14px ${col}55`:"none"}}>{busy===pz.id?"…":ok?`Redeem for ${pz.cost} pts`:"Keep going — you've got this!"}</button>
             </div>
           ); })}
         </div>}
@@ -40548,26 +40551,30 @@ function MyPointsCard({member, cfg, data, month}) {
   const bal = pointsBalance(member, cfg, data);
   const monthName = new Date(month+"-01T12:00:00").toLocaleDateString(undefined,{month:"long",year:"numeric"});
   const tile = (label, value, color, icon) => (
-    <div style={{flex:"1 1 140px",minWidth:0,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:12,padding:"14px 16px",display:"flex",alignItems:"center",gap:12}}>
-      <div style={{width:38,height:38,borderRadius:10,background:color+"1f",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ico d={icon} size={18} stroke={color}/></div>
-      <div style={{minWidth:0}}>
-        <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>{label}</p>
-        <p style={{fontSize:22,fontWeight:900,color,lineHeight:1.15,fontFamily:"'Montserrat',sans-serif"}}>{value}</p>
+    <div style={{flex:"1 1 140px",minWidth:0,position:"relative",overflow:"hidden",background:`linear-gradient(135deg, ${color}, ${color}bb)`,borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:12,color:"#fff",boxShadow:`0 6px 18px ${color}40`}}>
+      <div style={{position:"absolute",right:-18,top:-18,width:70,height:70,borderRadius:"50%",background:"rgba(255,255,255,0.15)"}}/>
+      <div style={{width:38,height:38,borderRadius:10,background:"rgba(255,255,255,0.22)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ico d={icon} size={18} stroke="#fff"/></div>
+      <div style={{minWidth:0,position:"relative"}}>
+        <p style={{fontSize:10,fontWeight:800,opacity:0.9,textTransform:"uppercase",letterSpacing:"0.06em"}}>{label}</p>
+        <p style={{fontSize:24,fontWeight:900,lineHeight:1.15,fontFamily:"'Montserrat',sans-serif"}}>{value}</p>
       </div>
     </div>
   );
   const shown = all ? r.lines : r.lines.slice(0,6);
   return (
-    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:18,display:"flex",flexDirection:"column",gap:14}}>
+    <div style={{background:"linear-gradient(160deg, rgba(245,158,11,0.08), rgba(239,68,68,0.05) 40%, transparent 70%), var(--surface)",border:"1px solid rgba(245,158,11,0.25)",borderRadius:16,padding:18,display:"flex",flexDirection:"column",gap:14}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
-        <p style={{fontSize:15,fontWeight:800,display:"flex",alignItems:"center",gap:8}}><Ico d={Icons.trophy} size={17} stroke="var(--accent)"/>My Points · {monthName}</p>
-        <span style={{fontSize:11,color:"var(--text3)",fontWeight:600}}>Monthly score resets on the 1st</span>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg,#f59e0b,#ef4444)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 12px rgba(239,68,68,0.35)"}}><Ico d={Icons.trophy} size={18} stroke="#fff"/></div>
+          <div><p style={{fontSize:15,fontWeight:800}}>My Points · {monthName}</p><p style={{fontSize:11,color:"var(--text3)",fontWeight:600}}>{r.total>=100?"You're on fire — keep it up!":r.total>0?"Great start — every task counts!":"Fresh start — your next on-time task is +"+(cfg.rules.task_on_time||10)+"!"}</p></div>
+        </div>
+        <span style={{fontSize:11,fontWeight:800,color:"#fff",background:"linear-gradient(90deg,#6366f1,#8b5cf6)",padding:"4px 10px",borderRadius:99}}>Resets on the 1st</span>
       </div>
       <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-        {tile("This month", r.total, r.total>=0?"#d90b2c":"#ef4444", Icons.trophy)}
+        {tile("This month", r.total, r.total>=0?"#d90b2c":"#b91c1c", Icons.trophy)}
         {tile("Earned", "+"+gain, "#10b981", Icons.coinUp)}
-        {tile("Lost", loss, "#ef4444", Icons.alert)}
-        {tile("Balance", bal.balance, "#f59e0b", Icons.wallet)}
+        {tile("Lost", loss, "#f43f5e", Icons.alert)}
+        {tile("Balance", bal.balance, "#8b5cf6", Icons.wallet)}
       </div>
       {cfg.reward_note&&<div style={{fontSize:12,color:"var(--text2)",display:"flex",alignItems:"center",gap:8,padding:"10px 12px",borderRadius:10,background:"var(--accent)10",border:"1px dashed var(--accent)55"}}><Ico d={Icons.award} size={14} stroke="var(--accent)"/>{cfg.reward_note}</div>}
       <div>
@@ -40575,7 +40582,7 @@ function MyPointsCard({member, cfg, data, month}) {
         {r.lines.length===0 ? <p style={{fontSize:13,color:"var(--text3)",padding:"14px 0"}}>No points yet this month — deliver on time to start earning.</p> :
         <div style={{display:"flex",flexDirection:"column"}}>
           {shown.map((l,i)=>(
-            <div key={i} style={{display:"flex",gap:12,alignItems:"center",padding:"10px 4px",borderTop:i?"1px solid var(--border)":"none"}}>
+            <div key={i} style={{display:"flex",gap:12,alignItems:"center",padding:"10px 12px",marginTop:i?6:0,borderRadius:10,background:(l.pts>=0?"#10b981":"#ef4444")+"0f",borderLeft:`4px solid ${l.pts>=0?"#10b981":"#ef4444"}`}}>
               <div style={{width:30,height:30,borderRadius:"50%",background:(l.pts>=0?"#10b981":"#ef4444")+"1f",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ico d={l.pts>=0?Icons.check:Icons.x} size={14} stroke={l.pts>=0?"#10b981":"#ef4444"}/></div>
               <div style={{flex:1,minWidth:0}}>
                 <p style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.label}</p>
@@ -53996,7 +54003,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onDayClick={(jump)=>{ setTimelineJump(jump); setPage("my_timeline"); }}
           />
         )}
-        {page==="rewards"&&<div style={{display:"flex",flexDirection:"column",gap:16}}><div><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800,display:"flex",alignItems:"center",gap:10}}><Ico d={Icons.trophy} size={22} stroke="var(--accent)"/>Rewards & Points</h2><p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Earn points for great work and redeem them for prizes</p></div><PointsDashboardHero/><MyPointsSection/>{currentUser?.role==="admin"&&<PointsLeaderboardSection/>}</div>}
+        {page==="rewards"&&<div style={{display:"flex",flexDirection:"column",gap:16}}><div style={{display:"flex",alignItems:"center",gap:12}}><div style={{width:46,height:46,borderRadius:14,background:"linear-gradient(135deg,#f59e0b,#ef4444,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 6px 18px rgba(239,68,68,0.35)",flexShrink:0}}><Ico d={Icons.trophy} size={24} stroke="#fff"/></div><div><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:900,background:"linear-gradient(90deg,#f59e0b,#ef4444,#8b5cf6)",WebkitBackgroundClip:"text",backgroundClip:"text",color:"transparent"}}>Rewards & Points</h2><p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Great work deserves great rewards — earn points, climb the board, claim your prizes</p></div></div><PointsDashboardHero/><MyPointsSection/>{currentUser?.role==="admin"&&<PointsLeaderboardSection/>}</div>}
         {page==="mai_reports"&&currentUser?.role==="account_director"&&<div style={{display:"flex",flexDirection:"column",gap:16}}><div><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Mai Reports</h2><p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Mai's check-ins with each account manager and executive</p></div><MaiReportsHub team={data.team} onUpdateTeamMember={updateTeamMember}/><PointsLeaderboardSection/></div>}
         {page==="my_timeline"&&<MyTimelinePage posts={data.posts} team={data.team} currentUser={currentUser} timeEntries={data.timeEntries||[]} onPostClick={setSelectedPost} onStartTimer={startTimer} onPauseTimer={pauseTimer} onResumeTimer={resumeTimer} schedules={data.schedules||[]} scheduleOverrides={data.scheduleOverrides||[]} onOverrideSchedule={overrideSchedule} onShiftOverdue={shiftOverdueDueDate} initialJump={timelineJump} onJumpConsumed={()=>setTimelineJump(null)} onBackToCalendar={()=>setPage("my_calendar")} activityLogs={data.activityLogs||[]} appSettings={appSettings} onQuickAdd={(type,slot)=>{
           if(type==="post"){ setAddPostPresetSlot(slot); setShowAddPost(true); }
