@@ -48133,6 +48133,9 @@ function sessionTitle(msgs) {
 }
 
 function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUpsertMemory, onDeleteMemory}) {
+  // Mobile: while typing (keyboard up, bottom nav hidden) the pinned composer drops to the bottom edge.
+  const [proTyping, setProTyping] = useState(false);
+  useEffect(()=>{ const tf=t=>t&&(t.tagName==="INPUT"||t.tagName==="TEXTAREA"||t.isContentEditable); const i=e=>{ if(tf(e.target)) setProTyping(true); }; const o=e=>{ if(tf(e.target)) setProTyping(false); }; document.addEventListener("focusin",i); document.addEventListener("focusout",o); return ()=>{ document.removeEventListener("focusin",i); document.removeEventListener("focusout",o); }; },[]);
   // ── SHARED session storage with the floating Chatbot ──
   // Same keys: PRO_CHAT_SESSIONS_KEY + PRO_CHAT_ACTIVE_KEY → continues whatever chat is open in floating bubble
   const [chatSessions, setChatSessions] = useState(()=>loadProSessions(currentUser?.email));
@@ -49250,12 +49253,15 @@ RULES:
         {/* Client selector */}
         {["admin","account_manager","account_director","account_executive"].includes(role)&&(
           isMobile ? (
-            <div style={{position:"relative",borderRadius:99,background:"var(--surface2)",display:"flex",alignItems:"center"}}>
+            <div style={{position:"relative",borderRadius:99,background:"var(--surface2)",display:"flex",alignItems:"center",gap:5,order:-1,minWidth:0,maxWidth:"62vw",padding:"5px 11px"}}>
+              <Ico d={Icons.clients} size={12} stroke="var(--text3)"/>
+              <span style={{fontSize:11,fontWeight:700,color:"var(--text2)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{selectedClient?.name||"Auto-detect client"}</span>
+              <Ico d={Icons.chevD} size={11} stroke="var(--text3)"/>
               <select value={selectedClient?.id||""} onChange={e=>{
                 const c=(data?.clients||[]).find(cl=>cl.id===e.target.value)||null;
                 setSelectedClient(c);
                 if(c) addBotMsg(`Context set to **${c.name}**. All answers and actions will use ${c.name}'s memory and data.`,"info");
-              }} style={{padding:"6px 10px",borderRadius:99,fontSize:11,fontWeight:600,background:"transparent",border:"none",color:"var(--text2)",cursor:"pointer",maxWidth:90,appearance:"none"}}>
+              }} style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:0,cursor:"pointer",appearance:"none"}}>
                 <option value="">Auto-detect</option>
                 {(data?.clients||[]).filter(c=>!c.hidden).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
@@ -49344,7 +49350,7 @@ RULES:
       )}
 
       {/* ── Messages area ── */}
-      <div style={{flex:1,overflowY:"auto",padding:isMobile?"16px":"24px max(24px, calc((100% - 980px)/2))",display:"flex",flexDirection:"column",justifyContent:isEmpty?"center":"flex-start",...(isMobile?{overflowX:"hidden",minWidth:0,overflowWrap:"anywhere"}:{})}}>
+      <div style={{flex:1,overflowY:"auto",padding:isMobile?(isEmpty?"16px":"16px 16px calc(220px + env(safe-area-inset-bottom))"):"24px max(24px, calc((100% - 980px)/2))",display:"flex",flexDirection:"column",justifyContent:isEmpty?"center":"flex-start",...(isMobile?{overflowX:"hidden",minWidth:0,overflowWrap:"anywhere"}:{})}}>
         {isEmpty ? (
           <div style={{textAlign:"center",maxWidth:640,width:"100%",margin:"0 auto"}}>
             <h2 style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontFamily:"'Montserrat',sans-serif",fontWeight:600,fontSize:isMobile?22:32,color:"var(--text)",marginBottom:28}}>
@@ -49387,12 +49393,16 @@ RULES:
       </div>
 
       {/* ── Input area (pinned bottom, once the conversation has started) ── */}
-      {!isEmpty && (
-        <div style={isMobile?{padding:"8px 12px calc(92px + env(safe-area-inset-bottom))",background:"linear-gradient(transparent, var(--bg) 22px)",flexShrink:0}:{padding:"16px max(24px, calc((100% - 980px)/2))",borderTop:"1px solid var(--border)",background:"var(--surface)",flexShrink:0}}>
+      {!isEmpty && !isMobile && (
+        <div style={{padding:"16px max(24px, calc((100% - 980px)/2))",borderTop:"1px solid var(--border)",background:"var(--surface)",flexShrink:0}}>
           {Composer}
           <p style={{fontSize:11,color:"var(--text3)",marginTop:8,textAlign:"center"}}>Pro can make mistakes. Double-check important info.</p>
         </div>
       )}
+      {!isEmpty && isMobile && ReactDOM.createPortal(
+        <div style={{position:"fixed",left:0,right:0,bottom:proTyping?"0px":"calc(68px + env(safe-area-inset-bottom))",zIndex:150,padding:"14px 12px 6px",background:"linear-gradient(transparent, var(--bg) 16px)"}}>
+          {Composer}
+        </div>, document.body)}
 
       {/* Brain inspector */}
       {brainOpen && selectedClient && (()=>{
