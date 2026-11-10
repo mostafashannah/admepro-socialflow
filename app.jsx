@@ -40458,7 +40458,7 @@ function PointsDashboardHero() {
           <div style={{height:10,borderRadius:99,background:"rgba(255,255,255,0.25)",overflow:"hidden"}}><div style={{width:pct+"%",height:"100%",background:"#fff",borderRadius:99}}/></div>
         </div>
       )}
-      <p style={{position:"relative",fontSize:11,opacity:0.85,marginTop:10}}>See details & redeem in My Performance.{cfg.reward_note?` · ${cfg.reward_note}`:""}</p>
+      <p style={{position:"relative",fontSize:11,opacity:0.85,marginTop:10}}>See details & redeem in Rewards & Points.{cfg.reward_note?` · ${cfg.reward_note}`:""}</p>
     </div>
   );
 }
@@ -40842,7 +40842,6 @@ Based ONLY on this person's own numbers and task history above, give 3 specific,
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"100%"}}>
-      <div style={{order:-1}}><MyPointsSection/></div>
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12,order:-2}}>
         <div>
@@ -43800,6 +43799,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       {key:"my_calendar", label:"My Calendar", ico:Icons.calendar},
       {key:"my_timeline", label:"My Timeline", ico:Icons.clock},
       {key:"my_performance", label:"My Performance", ico:Icons.trendUp},
+      ...((()=>{ const c=pointsConfig(pointsBridge.appSettings); const me=(pointsBridge.team||[]).find(t=>t.email===pointsBridge.currentUser?.email); return pointsBridge.currentUser?.role==="admin" || (c.enabled && pointsEligible(me,c)); })()?[{key:"rewards", label:"Rewards & Points", ico:Icons.award}]:[]),
     ]}]),
     ...(canViewClientsNav ? [{ group: "CLIENTS", icon: Icons.clients, items: [
       {key:"clients", label:"Clients", ico:Icons.clients},
@@ -49198,7 +49198,7 @@ function App() {
     setImpersonatorUser(null);
     setPage(returnPage);
   };
-  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","mai_reports","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment"];
+  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","mai_reports","rewards","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment"];
   const [page,setPage_] = useState(()=>{
     try{
       // A contact-report email sent internally links straight to
@@ -49208,7 +49208,7 @@ function App() {
       // to avoid getting stuck on a detail page that hasn't loaded data yet
       const hash = window.location.hash.replace("#","");
       // Only use hash/localStorage if it's a top-level list page (not a detail context)
-      const SAFE_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","mai_reports","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment"];
+      const SAFE_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","mai_reports","rewards","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment"];
       if(hash && SAFE_PAGES.includes(hash)) return hash;
       const stored = localStorage.getItem("sf_page");
       return (stored && SAFE_PAGES.includes(stored)) ? stored : "home";
@@ -53525,7 +53525,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
 
         {/* ── STICKY TOP BAR (all breakpoints) ── */}
         {(()=>{
-          const PAGE_NAMES = {home:"Pro — AI Workspace",dashboard:"Dashboard",clients:"Clients",projects:"Projects",tasks:"Posts & Tasks",calendar:"Calendar",assets:"Assets",templates:"Templates",quotes:"Quotes",invoices:"Invoices",subscriptions:"Subscriptions",users:"Team",reports:"My Report",performance:"Performance",leads:"Leads",agents:"Agents Control Center",settings:"Settings",account:"Account",my_tasks:"My Tasks",my_calendar:"My Calendar",my_timeline:"My Timeline",mai_reports:"Mai Reports",my_performance:"My Performance",team_members:"Team Members"};
+          const PAGE_NAMES = {home:"Pro — AI Workspace",dashboard:"Dashboard",clients:"Clients",projects:"Projects",tasks:"Posts & Tasks",calendar:"Calendar",assets:"Assets",templates:"Templates",quotes:"Quotes",invoices:"Invoices",subscriptions:"Subscriptions",users:"Team",reports:"My Report",performance:"Performance",leads:"Leads",agents:"Agents Control Center",settings:"Settings",account:"Account",my_tasks:"My Tasks",my_calendar:"My Calendar",my_timeline:"My Timeline",mai_reports:"Mai Reports",rewards:"Rewards & Points",my_performance:"My Performance",team_members:"Team Members"};
           return (
             <div style={{
               position:"sticky",top:0,zIndex:100,
@@ -53964,6 +53964,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onDayClick={(jump)=>{ setTimelineJump(jump); setPage("my_timeline"); }}
           />
         )}
+        {page==="rewards"&&<div style={{display:"flex",flexDirection:"column",gap:16}}><div><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>🏆 Rewards & Points</h2><p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Earn points for great work and redeem them for prizes</p></div><PointsDashboardHero/><MyPointsSection/>{currentUser?.role==="admin"&&<PointsLeaderboardSection/>}</div>}
         {page==="mai_reports"&&currentUser?.role==="account_director"&&<div style={{display:"flex",flexDirection:"column",gap:16}}><div><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Mai Reports</h2><p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Mai's check-ins with each account manager and executive</p></div><MaiReportsHub team={data.team} onUpdateTeamMember={updateTeamMember}/><PointsLeaderboardSection/></div>}
         {page==="my_timeline"&&<MyTimelinePage posts={data.posts} team={data.team} currentUser={currentUser} timeEntries={data.timeEntries||[]} onPostClick={setSelectedPost} onStartTimer={startTimer} onPauseTimer={pauseTimer} onResumeTimer={resumeTimer} schedules={data.schedules||[]} scheduleOverrides={data.scheduleOverrides||[]} onOverrideSchedule={overrideSchedule} onShiftOverdue={shiftOverdueDueDate} initialJump={timelineJump} onJumpConsumed={()=>setTimelineJump(null)} onBackToCalendar={()=>setPage("my_calendar")} activityLogs={data.activityLogs||[]} appSettings={appSettings} onQuickAdd={(type,slot)=>{
           if(type==="post"){ setAddPostPresetSlot(slot); setShowAddPost(true); }
