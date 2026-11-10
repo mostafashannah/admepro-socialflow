@@ -20232,7 +20232,9 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   // return below — this useEffect used to sit after that return, so it was
   // skipped whenever a member's profile was open, violating the Rules of
   // Hooks (React error #300, "rendered fewer hooks than expected").
-  React.useEffect(()=>{ if(isScopedAccountManager && tab!=="requests") setTab("requests"); },[isScopedAccountManager]);
+  const isAD = currentUser?.role==="account_director";
+  const [maiPick, setMaiPick] = useState(null);
+  React.useEffect(()=>{ if(isScopedAccountManager && tab!=="requests" && !(isAD && tab==="mai_reports")) setTab("requests"); },[isScopedAccountManager]);
   React.useEffect(()=>{ if(isOfficeBoy && myOwnRecord && viewingMember?.id!==myOwnRecord.id) setViewingMember(myOwnRecord); },[isOfficeBoy, myOwnRecord?.id]);
 
   if(isOfficeBoy && !myOwnRecord) {
@@ -20306,6 +20308,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
 
   const tabs = isScopedAccountManager ? [
     {id:"requests", label:"Client Requests", count: pendingRequests.length, badge:true},
+    ...(isAD?[{id:"mai_reports", label:"Mai Reports", count:0}]:[]),
   ] : [
     {id:"team", label:"Team Members", count: team?.length||0},
     {id:"invites", label:"Invitations", count: (invitations||[]).filter(i=>i.status==="pending").length},
@@ -20465,6 +20468,22 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
         </div>
       )}
 
+      {tab==="mai_reports"&&isAD&&(()=>{
+        // Account Director: Mai's check-in reports (and controls) for every active account manager / executive.
+        const ams = (team||[]).filter(t=>["account_manager","account_executive"].includes(t.role) && (t.status||"active")==="active").sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+        const sel = ams.find(t=>t.id===maiPick) || ams[0];
+        if(!sel) return <div style={{padding:30,textAlign:"center",color:"var(--text2)",fontSize:13}}>No active account managers or executives.</div>;
+        return (
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {ams.map(t=>(
+                <button key={t.id} onClick={()=>setMaiPick(t.id)} style={{padding:"7px 14px",borderRadius:999,fontSize:12,fontWeight:700,border:"1px solid "+(sel.id===t.id?"var(--accent)":"var(--border2)"),background:sel.id===t.id?"var(--accent)":"var(--surface2)",color:sel.id===t.id?"#fff":"var(--text2)",cursor:"pointer"}}>{(t.name||"").split(" ")[0]} <span style={{opacity:0.75,fontWeight:600}}>· {t.role==="account_executive"?"AE":"AM"}</span></button>
+              ))}
+            </div>
+            <AccountManagerMaiReportsTab key={sel.id} member={sel} onUpdateTeamMember={onUpdateTeamMember}/>
+          </div>
+        );
+      })()}
       {tab==="requests"&&(
         <div>
           {pendingRequests.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text2)"}}>No pending access requests.</div>}
