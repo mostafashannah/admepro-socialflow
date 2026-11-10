@@ -770,9 +770,11 @@ function generateDailySchedule(posts, userEmail, date, userRole, includeGhosts=f
       // A task shows only on its own due day — finishing it on a later day does NOT carry it onto that day.
       // (Entries with a due_date snapshot are drawn separately as "done" blocks — see the snapshot pass at the end of this function.)
       const _hOld = _h.filter(h=>h && typeof h==="object" && !h.due_date);
-      if ((!p.due_date || p.due_date===date) && _hOld.some(h=>h.date===date && h.by && h.by===userEmail)) return true;
+      // If this person's finished work on this day is already drawn from an exact snapshot, don't draw it a second time from the old-style entries.
+      const _hasSnap = _h.some(h=>h && typeof h==="object" && h.due_date && String(h.due_date).slice(0,10)===date && h.by===userEmail);
+      if (!_hasSnap && (!p.due_date || p.due_date===date) && _hOld.some(h=>h.date===date && h.by && h.by===userEmail)) return true;
       // On its due day, work this person finished (even if they clicked finish later) stays visible as done.
-      if (p.due_date && p.due_date===date && _hOld.some(h=>h.by && h.by===userEmail)) return true;
+      if (!_hasSnap && p.due_date && p.due_date===date && _hOld.some(h=>h.by && h.by===userEmail)) return true;
     }
     if (!wasOwnerOf(p, userEmail, userRole)) return false;
     // A Calendar Plan parent card isn't a single time-boxed piece of work —
@@ -810,8 +812,9 @@ function generateDailySchedule(posts, userEmail, date, userRole, includeGhosts=f
     try { const raw = completedDatesField ? p[completedDatesField] : null; completedHistory = raw ? (Array.isArray(raw) ? raw : JSON.parse(raw)) : []; } catch(e) { completedHistory = []; }
     // A completion stamped with someone else's name isn't this person's finished work.
     const completedOnViewedDay = completedHistory.some(h=>!h.due_date && h.date===date && (!h.by || h.by===userEmail)) || !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
-    if (completedOnViewedDay && (!p.due_date || p.due_date===date)) return true;
-    if (p.due_date && p.due_date===date && (completedHistory.some(h=>!h.due_date && (!h.by||h.by===userEmail)) || completedAt)) return true;
+    const _snapToday = completedHistory.some(h=>h && h.due_date && String(h.due_date).slice(0,10)===date && h.by===userEmail);
+    if (completedOnViewedDay && !_snapToday && (!p.due_date || p.due_date===date)) return true;
+    if (!_snapToday && p.due_date && p.due_date===date && (completedHistory.some(h=>!h.due_date && (!h.by||h.by===userEmail)) || completedAt)) return true;
     if (ownedStage && p.stage !== ownedStage) return false;
     // Sent back for another round and now owned by SOMEONE ELSE — only the
     // current owner of this stage has it as active work; the earlier person
@@ -987,6 +990,19 @@ function generateDailySchedule(posts, userEmail, date, userRole, includeGhosts=f
         let st = h.start_mins, en = h.end_mins;
         if(st==null || en==null) { const dur = Number(h.duration_mins)>0 ? Number(h.duration_mins) : 60; const dm = timeToMins(p.due_time); st = Math.max(WORKING_START*60, Math.min((dm==null?WORKING_START*60+dur:dm)-dur, WORKING_END*60-dur)); en = st+dur; }
         slots.push({post_id:p.id, start_mins:st, end_mins:en, start_time:minsToAmPm(st), end_time:minsToAmPm(en), duration_mins:en-st, completed_today:true, overdue:false, snapshot:true});
+      });
+      // Delivered on a LATER day than its due day: that day's board shows it closed, ending at the real delivery time.
+      hist.forEach(h=>{
+        if(!h || typeof h!=="object" || !h.due_date || h.by!==userEmail || String(h.date).slice(0,10)!==date) return;
+        if(String(h.due_date).slice(0,10) === date) return;
+        const atRaw = h.at || (isDesignerRole(userRole) ? p.design_completed_at : p.content_completed_at);
+        if(!atRaw) return;
+        const at = h.at ? new Date(h.at) : parseSqlUtc(atRaw);
+        if(isNaN(at.getTime()) || at.toISOString().split("T")[0] !== date) return;
+        const endM = Math.max(WORKING_START*60+15, Math.min(WORKING_END*60, at.getHours()*60+at.getMinutes()));
+        const dur = Number(h.duration_mins) > 0 ? Number(h.duration_mins) : 60;
+        const stM = Math.max(WORKING_START*60, endM-dur);
+        slots.push({post_id:p.id, start_mins:stM, end_mins:endM, start_time:minsToAmPm(stM), end_time:minsToAmPm(endM), duration_mins:endM-stM, completed_today:true, overdue:false, snapshot:true, delivered_here:true, due_was:String(h.due_date).slice(0,10)});
       });
     });
   }
@@ -39934,7 +39950,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                           {post&&<TaskThumb post={post} team={team} size={34}/>}
                           <div style={{display:"flex",flexDirection:"column",minWidth:0,flex:1,lineHeight:1.2,gap:2}}>
                             <span style={{fontSize:12,lineHeight:1.2,color:"#fff",fontWeight:800,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
-                            {widthPct>8&&<span style={{fontSize:11,lineHeight:1.2,color:"#fff",opacity:0.9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slot.start_time}–{slot.end_time}{slot.ghost?` · moved to ${fmtDate(slot.ghost_to)}`:""}{slot.carried?" · carried over":""}{post?.is_routine?` · 🔁 ${routineCounts(post).done}/${routineCounts(post).total}`:""}{slot.overdue?" · OVERDUE":slot.completed_today?" · Done":""}</span>}
+                            {widthPct>8&&<span style={{fontSize:11,lineHeight:1.2,color:"#fff",opacity:0.9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slot.start_time}–{slot.end_time}{slot.ghost?` · moved to ${fmtDate(slot.ghost_to)}`:""}{slot.delivered_here?` · due ${fmtDate(slot.due_was)}`:""}{slot.carried?" · carried over":""}{post?.is_routine?` · 🔁 ${routineCounts(post).done}/${routineCounts(post).total}`:""}{slot.overdue?" · OVERDUE":slot.completed_today?" · Done":""}</span>}
                             {widthPct>12&&(slot.ghost ? <span style={{fontSize:11,lineHeight:1.2,fontWeight:800,color:"#fff",fontFamily:"monospace",whiteSpace:"nowrap"}}>⏸ Delayed {(()=>{const t=Math.max(0,slot.ghost_delay_secs||0);return `${String(Math.floor(t/3600)).padStart(2,"0")}:${String(Math.floor(t%3600/60)).padStart(2,"0")}:${String(t%60).padStart(2,"0")}`;})()}</span> : post&&postDelayInfo(post, dateStr) ? <DelayBadge post={post} light asOf={dateStr}/> : post&&postTimerInfo(post) ? <LiveTimerBadge post={post} light/> : <span style={{fontSize:10.5,lineHeight:1.2,color:"#fff",opacity:0.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{[post?.client_name, stage?.label].filter(Boolean).join(" · ")}</span>)}
                           </div>
                         </div>
@@ -51826,8 +51842,9 @@ Return ONLY valid JSON (no markdown, no explanation):
       }
     } catch(e) { snap = {}; }
     const idx = entries.findIndex(e=>e.date===today && (e.by||"")===(by||"") && (e.due_date||"")===(snap.due_date||""));
-    if (idx >= 0) entries[idx] = {date:today, duration_mins, by, ...snap};
-    else entries = [...entries, {date:today, duration_mins, by, ...snap}];
+    const deliveredAt = new Date().toISOString();
+    if (idx >= 0) entries[idx] = {date:today, duration_mins, by, at:deliveredAt, ...snap};
+    else entries = [...entries, {date:today, duration_mins, by, at:deliveredAt, ...snap}];
     return JSON.stringify(entries);
   };
   const handleStageChange = async (post,newStage,overrides={}) => {
