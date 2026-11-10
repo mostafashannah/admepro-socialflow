@@ -20468,22 +20468,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
         </div>
       )}
 
-      {tab==="mai_reports"&&isAD&&(()=>{
-        // Account Director: Mai's check-in reports (and controls) for every active account manager / executive.
-        const ams = (team||[]).filter(t=>["account_manager","account_executive"].includes(t.role) && (t.status||"active")==="active").sort((a,b)=>(a.name||"").localeCompare(b.name||""));
-        const sel = ams.find(t=>t.id===maiPick) || ams[0];
-        if(!sel) return <div style={{padding:30,textAlign:"center",color:"var(--text2)",fontSize:13}}>No active account managers or executives.</div>;
-        return (
-          <div style={{display:"flex",flexDirection:"column",gap:12}}>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              {ams.map(t=>(
-                <button key={t.id} onClick={()=>setMaiPick(t.id)} style={{padding:"7px 14px",borderRadius:999,fontSize:12,fontWeight:700,border:"1px solid "+(sel.id===t.id?"var(--accent)":"var(--border2)"),background:sel.id===t.id?"var(--accent)":"var(--surface2)",color:sel.id===t.id?"#fff":"var(--text2)",cursor:"pointer"}}>{(t.name||"").split(" ")[0]} <span style={{opacity:0.75,fontWeight:600}}>· {t.role==="account_executive"?"AE":"AM"}</span></button>
-              ))}
-            </div>
-            <AccountManagerMaiReportsTab key={sel.id} member={sel} onUpdateTeamMember={onUpdateTeamMember}/>
-          </div>
-        );
-      })()}
+      {tab==="mai_reports"&&isAD&&<MaiReportsHub team={team} onUpdateTeamMember={onUpdateTeamMember}/>}
       {tab==="requests"&&(
         <div>
           {pendingRequests.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text2)"}}>No pending access requests.</div>}
@@ -21387,6 +21372,24 @@ function MaiCheckinConfigPanel({member, onUpdateTeamMember}) {
       </div>
     </div>
   );
+}
+
+function MaiReportsHub({team, onUpdateTeamMember}) {
+  const [maiPick, setMaiPick] = useState(null);
+        // Account Director: Mai's check-in reports (and controls) for every active account manager / executive.
+        const ams = (team||[]).filter(t=>["account_manager","account_executive"].includes(t.role) && (t.status||"active")==="active").sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+        const sel = ams.find(t=>t.id===maiPick) || ams[0];
+        if(!sel) return <div style={{padding:30,textAlign:"center",color:"var(--text2)",fontSize:13}}>No active account managers or executives.</div>;
+        return (
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {ams.map(t=>(
+                <button key={t.id} onClick={()=>setMaiPick(t.id)} style={{padding:"7px 14px",borderRadius:999,fontSize:12,fontWeight:700,border:"1px solid "+(sel.id===t.id?"var(--accent)":"var(--border2)"),background:sel.id===t.id?"var(--accent)":"var(--surface2)",color:sel.id===t.id?"#fff":"var(--text2)",cursor:"pointer"}}>{(t.name||"").split(" ")[0]} <span style={{opacity:0.75,fontWeight:600}}>· {t.role==="account_executive"?"AE":"AM"}</span></button>
+              ))}
+            </div>
+            <AccountManagerMaiReportsTab key={sel.id} member={sel} onUpdateTeamMember={onUpdateTeamMember}/>
+          </div>
+        );
 }
 
 function AccountManagerMaiReportsTab({member, onUpdateTeamMember}) {
@@ -43424,8 +43427,9 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       {key:"users", label:"User Management", ico:Icons.users},
       ...(canViewPerformance?[{key:"performance", label:"Team Performance", ico:Icons.award}]:[]),
       ...(canManageRecruitment?[{key:"recruitment", label:"Recruitment", ico:Icons.briefcase}]:[]),
-    ]}] : (canManageRecruitment ? [{ group: "TEAM", icon: Icons.users, items: [
-      {key:"recruitment", label:"Recruitment", ico:Icons.briefcase},
+    ]}] : ((canManageRecruitment||currentUser?.role==="account_director") ? [{ group: "TEAM", icon: Icons.users, items: [
+      ...(currentUser?.role==="account_director"?[{key:"mai_reports", label:"Mai Reports", ico:Icons.award}]:[]),
+      ...(canManageRecruitment?[{key:"recruitment", label:"Recruitment", ico:Icons.briefcase}]:[]),
     ]}] : [])),
     ...((canAgency||isAdmin) ? [{ group: "TOOLS", icon: Icons.wand, items: [
       ...(canAgency?[
@@ -48790,7 +48794,7 @@ function App() {
     setImpersonatorUser(null);
     setPage(returnPage);
   };
-  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment"];
+  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","mai_reports","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment"];
   const [page,setPage_] = useState(()=>{
     try{
       // A contact-report email sent internally links straight to
@@ -48800,7 +48804,7 @@ function App() {
       // to avoid getting stuck on a detail page that hasn't loaded data yet
       const hash = window.location.hash.replace("#","");
       // Only use hash/localStorage if it's a top-level list page (not a detail context)
-      const SAFE_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment"];
+      const SAFE_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","mai_reports","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment"];
       if(hash && SAFE_PAGES.includes(hash)) return hash;
       const stored = localStorage.getItem("sf_page");
       return (stored && SAFE_PAGES.includes(stored)) ? stored : "home";
@@ -53116,7 +53120,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
 
         {/* ── STICKY TOP BAR (all breakpoints) ── */}
         {(()=>{
-          const PAGE_NAMES = {home:"Pro — AI Workspace",dashboard:"Dashboard",clients:"Clients",projects:"Projects",tasks:"Posts & Tasks",calendar:"Calendar",assets:"Assets",templates:"Templates",quotes:"Quotes",invoices:"Invoices",subscriptions:"Subscriptions",users:"Team",reports:"My Report",performance:"Performance",leads:"Leads",agents:"Agents Control Center",settings:"Settings",account:"Account",my_tasks:"My Tasks",my_calendar:"My Calendar",my_timeline:"My Timeline",my_performance:"My Performance",team_members:"Team Members"};
+          const PAGE_NAMES = {home:"Pro — AI Workspace",dashboard:"Dashboard",clients:"Clients",projects:"Projects",tasks:"Posts & Tasks",calendar:"Calendar",assets:"Assets",templates:"Templates",quotes:"Quotes",invoices:"Invoices",subscriptions:"Subscriptions",users:"Team",reports:"My Report",performance:"Performance",leads:"Leads",agents:"Agents Control Center",settings:"Settings",account:"Account",my_tasks:"My Tasks",my_calendar:"My Calendar",my_timeline:"My Timeline",mai_reports:"Mai Reports",my_performance:"My Performance",team_members:"Team Members"};
           return (
             <div style={{
               position:"sticky",top:0,zIndex:100,
@@ -53555,6 +53559,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onDayClick={(jump)=>{ setTimelineJump(jump); setPage("my_timeline"); }}
           />
         )}
+        {page==="mai_reports"&&currentUser?.role==="account_director"&&<div style={{display:"flex",flexDirection:"column",gap:16}}><div><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Mai Reports</h2><p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Mai's check-ins with each account manager and executive</p></div><MaiReportsHub team={data.team} onUpdateTeamMember={updateTeamMember}/></div>}
         {page==="my_timeline"&&<MyTimelinePage posts={data.posts} team={data.team} currentUser={currentUser} timeEntries={data.timeEntries||[]} onPostClick={setSelectedPost} onStartTimer={startTimer} onPauseTimer={pauseTimer} onResumeTimer={resumeTimer} schedules={data.schedules||[]} scheduleOverrides={data.scheduleOverrides||[]} onOverrideSchedule={overrideSchedule} onShiftOverdue={shiftOverdueDueDate} initialJump={timelineJump} onJumpConsumed={()=>setTimelineJump(null)} onBackToCalendar={()=>setPage("my_calendar")} activityLogs={data.activityLogs||[]} appSettings={appSettings} onQuickAdd={(type,slot)=>{
           if(type==="post"){ setAddPostPresetSlot(slot); setShowAddPost(true); }
           else if(type==="task"){ setAddTaskPresetSlot(slot); setShowAddTask(true); }
