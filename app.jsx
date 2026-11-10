@@ -2322,7 +2322,7 @@ const EMAIL_TEMPLATES = {
       })(),
       extend_probation: {
         hero:"Probation period extended", sub:`Hi ${firstName}, we've decided to extend your probation period.`,
-        body:`Your probation now runs until ${event.new_value?fmtDate(event.new_value):"the new date"}. ${Number(event.amount)>0?`During the extension your monthly salary is EGP ${Number(event.amount).toLocaleString()}.`:"Your probation salary stays the same during the extension."} Please reach out to your manager or HR if you have any questions.`,
+        body:`Your probation now runs until ${event.new_value?fmtDate(event.new_value):"the new date"}. During this period your salary remains your probation salary${Number(event.probationSalary)>0?` of EGP ${Number(event.probationSalary).toLocaleString()}`:""}. Your salary will increase after this period if you pass the probation. Please reach out to your manager or HR if you have any questions.`,
       },
       other: {
         hero:event.title||"An update regarding your employment", sub:firstName?`Hi ${firstName},`:"",
@@ -2343,6 +2343,11 @@ const EMAIL_TEMPLATES = {
       offerRow("First 3 Months Absence Deduction", terminatePayroll&&terminatePayroll.absenceDays>0?`${terminatePayroll.absenceDays} day(s) · EGP ${terminatePayroll.absenceDeduction.toLocaleString()}`:null),
       offerRow("Payable On", terminatePayroll?terminatePayroll.payoutWindowLabel:null),
       offerRow("Payroll Contact", event.payrollContact?`${event.payrollContact.name}${event.payrollContact.email?` (${event.payrollContact.email})`:""}`:null),
+    ].join("") : t==="extend_probation" ? [
+      offerRow("Previous Probation End", event.previous_value?fmtDate(event.previous_value):null),
+      offerRow("New Probation End", event.new_value?fmtDate(event.new_value):null),
+      offerRow("Probation Salary", Number(event.probationSalary)>0?`EGP ${Number(event.probationSalary).toLocaleString()}`:null),
+      offerRow("Decided On", event.effective_date?fmtDate(event.effective_date):""),
     ].join("") : [
       offerRow("Previous", event.previous_value),
       offerRow("New", event.new_value),
@@ -21578,7 +21583,7 @@ function TeamMemberHistoryTab({member, team=[], canEdit, currentUser, onUpdateTe
       const subject = `[SocialFlow] ${subjects[e.event_type]||e.title||t.label}`;
       let absence = null;
       if(e.event_type==="terminate") { try { absence = await computeFirst3MonthsAbsence(member, e.effective_date); } catch(_){} }
-      const html = EMAIL_TEMPLATES.careerEvent(member.name, e.event_type==="terminate" ? {...e, payrollMember: member, salaryRaises: events.filter(ev=>ev.event_type==="salary_raise"), extEvents: events.filter(ev=>ev.event_type==="extend_probation"), payrollContact, absence} : e);
+      const html = EMAIL_TEMPLATES.careerEvent(member.name, e.event_type==="terminate" ? {...e, payrollMember: member, salaryRaises: events.filter(ev=>ev.event_type==="salary_raise"), extEvents: events.filter(ev=>ev.event_type==="extend_probation"), payrollContact, absence} : e.event_type==="extend_probation" ? {...e, probationSalary: Number(e.amount)>0 ? Number(e.amount) : Number(member.probation_salary)||0} : e);
       const ok = await sendEmail(member.email, subject, html);
       if(ok) setEmailedIds(s=>new Set([...s, e.id]));
       else alert("Email failed to send.");
@@ -21772,8 +21777,9 @@ function TeamMemberHistoryTab({member, team=[], canEdit, currentUser, onUpdateTe
               <iframe
                 srcDoc={EMAIL_TEMPLATES.careerEvent(member.name, {
                   event_type: form.event_type, title: form.title,
-                  previous_value: form.previous_value||"", new_value: form.new_value||"",
-                  amount: form.event_type==="deduction" ? deductionAmount() : (form.amount?Number(form.amount):null),
+                  previous_value: form.event_type==="extend_probation" ? (curProbEnd||"") : (form.previous_value||""), new_value: form.event_type==="extend_probation" ? (newProbEnd||"") : (form.new_value||""),
+                  probationSalary: form.event_type==="extend_probation" ? (form.ext_salary_mode==="custom" ? Number(form.ext_salary)||0 : Number(member.probation_salary)||0) : undefined,
+                  amount: form.event_type==="extend_probation" ? (form.ext_salary_mode==="custom" ? (Number(form.ext_salary)||null) : null) : form.event_type==="deduction" ? deductionAmount() : (form.amount?Number(form.amount):null),
                   effective_date: form.effective_date||"",
                   notes: form.event_type==="deduction"&&form.deduction_mode==="days"?`${form.deduction_days} day(s) deducted${form.notes?" — "+form.notes:""}`:(form.notes||""),
                   payrollMember: form.event_type==="terminate" ? member : undefined,
