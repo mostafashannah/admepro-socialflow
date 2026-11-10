@@ -39883,7 +39883,17 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     // from dragging entirely rather than letting a move on
                     // one day's view surprise-relocate it on another.
                     const canMove = !!(isAM&&onMoveTask&&post&&!slot.completed_today&&!slot.ghost);
+
+                    // Delay tail: the red stretch from where the slot ended to where the delay counter has reached (up to 9 PM; a past day stays frozen at its end).
+                    const _todayKey = new Date().toISOString().split("T")[0];
+                    const _nowM = new Date().getHours()*60 + new Date().getMinutes();
+                    let _tailEnd = slot.end_mins;
+                    if(slot.ghost) _tailEnd = slot.end_mins + Math.round((slot.ghost_delay_secs||0)/60);
+                    else if(slot.overdue && !slot.completed_today && !slot.snapshot) _tailEnd = dateStr < _todayKey ? DELAY_WINDOW.to*60 : Math.min(_nowM, DELAY_WINDOW.to*60);
+                    const _tailStart = Math.max(slot.end_mins, DELAY_WINDOW.from*60);
+                    const _tailW = Math.max(0, _tailEnd - _tailStart)/WORKING_MINS*100;
                     return (
+                      <React.Fragment key={`${slot.post_id}-${slot.snapshot?"done":slot.ghost?"ghost":"live"}-${slot.start_mins}-f`}>
                       <div key={`${slot.post_id}-${slot.snapshot?"done":slot.ghost?"ghost":"live"}-${slot.start_mins}`} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})${slot.overdue?" — OVERDUE":""}${slot.completed_today?" — Done, moved to review":""}${canMove?" — drag, or right-click to move (works across days too)":""}`}
                         onClick={(e)=>{e.stopPropagation();onPostClick&&post&&onPostClick(post);}}
                         draggable={canMove}
@@ -39904,6 +39914,8 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                           </div>
                         </div>
                       </div>
+                      {_tailW>0 && <div title={`Delay since the due time (${slot.end_time})`} style={{position:"absolute",left:`${(_tailStart-WORKING_START*60)/WORKING_MINS*100}%`,width:`${_tailW}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,borderRadius:"0 8px 8px 0",background:"repeating-linear-gradient(135deg, rgba(220,38,38,0.35) 0, rgba(220,38,38,0.35) 6px, rgba(220,38,38,0.15) 6px, rgba(220,38,38,0.15) 12px)",border:"1px dashed #dc2626",borderLeft:"none",pointerEvents:"none",zIndex:1}}/>}
+                      </React.Fragment>
                     );
                   })}
                 </div>
