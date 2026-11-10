@@ -989,7 +989,9 @@ function generateDailySchedule(posts, userEmail, date, userRole, includeGhosts=f
         if(!h || typeof h!=="object" || !h.due_date || String(h.due_date).slice(0,10)!==date || h.by!==userEmail) return;
         let st = h.start_mins, en = h.end_mins;
         if(st==null || en==null) { const dur = Number(h.duration_mins)>0 ? Number(h.duration_mins) : 60; const dm = timeToMins(p.due_time); st = Math.max(WORKING_START*60, Math.min((dm==null?WORKING_START*60+dur:dm)-dur, WORKING_END*60-dur)); en = st+dur; }
-        slots.push({post_id:p.id, start_mins:st, end_mins:en, start_time:minsToAmPm(st), end_time:minsToAmPm(en), duration_mins:en-st, completed_today:true, overdue:false, snapshot:true});
+        // Delivered on a later day than it was due: that day's block stretches to where the delay froze (9 PM), since it stayed late all day.
+        const _lateDelivery = h.date && String(h.date).slice(0,10) > String(h.due_date).slice(0,10) && en < DELAY_WINDOW.to*60;
+        slots.push({post_id:p.id, start_mins:st, end_mins:en, start_time:minsToAmPm(st), end_time:minsToAmPm(en), duration_mins:en-st, completed_today:true, overdue:false, snapshot:true, stretch_to:_lateDelivery ? DELAY_WINDOW.to*60 : null});
       });
       // Delivered on a LATER day than its due day: that day's board shows it closed, ending at the real delivery time.
       hist.forEach(h=>{
@@ -39935,7 +39937,8 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     const _tailW = Math.max(0, _tailEnd - _tailStart)/WORKING_MINS*100;
                     // On a day that has already ended, the delayed block itself is stretched (solid) to where the delay froze (9 PM at the latest);
                     // only today keeps the striped band, because today's delay is still growing.
-                    const _pastDayStretch = dateStr < _todayKey && _tailEnd > slot.end_mins && (slot.overdue || slot.ghost) && !slot.completed_today;
+                    if(slot.stretch_to) _tailEnd = slot.stretch_to;
+                    const _pastDayStretch = (!!slot.stretch_to && _tailEnd > slot.end_mins) || (dateStr < _todayKey && _tailEnd > slot.end_mins && (slot.overdue || slot.ghost) && !slot.completed_today);
                     const _stretchedPct = Math.max(widthPct, (_tailEnd - slot.start_mins)/WORKING_MINS*100);
                     return (
                       <React.Fragment key={`${slot.post_id}-${slot.snapshot?"done":slot.ghost?"ghost":"live"}-${slot.start_mins}-f`}>
