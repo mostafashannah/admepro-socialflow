@@ -40168,7 +40168,8 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   // can be moved across days this way, not just within the same one.
   const [copiedTask, setCopiedTask] = useState(null); // {postId, durationMins}
   const {isMobile} = useResponsive();
-  const nameColW = isMobile ? 118 : 166; // narrower sticky names column on phones so the timeline itself gets the room
+  const nameColW = isMobile ? 118 : 166;
+  const [timeOpen, setTimeOpen] = useState(false); // narrower sticky names column on phones so the timeline itself gets the room
   const [viewDate, setViewDate] = useState(()=>initialJump?.date ? new Date(initialJump.date+"T00:00:00") : new Date());
   const [tick, setTick] = useState(0);
   // Whether this page was opened by clicking a day on My Calendar — captured
@@ -40407,22 +40408,33 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
       </div>
 
       {localToast&&<div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",zIndex:100000,background:"#111827",color:"#fff",padding:"10px 18px",borderRadius:10,fontSize:13,fontWeight:600,boxShadow:"0 8px 24px rgba(0,0,0,0.35)"}}>{localToast}</div>}
-      {/* Summary bar */}
+      {/* Summary — 4 cards, then Time Tracked (collapsible: brief when closed, full table when open) */}
       <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:isMobile?8:12}}>
         {[
           {label:"Total Tasks",value:summaryTotalTasks,color:"var(--accent)"},
-          {label:"Active Now",value:summaryActiveNow,color:"#10b981",split:activeBreakdown},
-          {label:"Time Tracked",value:fmtSecs(summaryTrackedSecs),color:"#3b82f6",breakdown:combinedView&&currentUser?.role==="admin"?[{label:"Team",n:workingMembers.length,worked:workingTrackedSecs,delayed:teamDelaySecs,names:workingMembers.map(m=>m.name).join(", ")},{label:"Without account",n:prodWorking.length,worked:prodTrackedSecs,delayed:prodDelaySecs,names:prodWorking.map(m=>m.name).join(", ")}]:null},
+          {label:"Active · On Time",value:activeBreakdown.onTime,color:"#10b981"},
+          {label:"Active · Delayed",value:activeBreakdown.delayed,color:"#ef4444"},
           {label:"Completion",value:`${summaryCompletionPct}%`,color:"#f59e0b"},
         ].map(stat=>(
-          <div key={stat.label} style={{padding:14,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",display:"flex",flexDirection:"column",gap:4,minWidth:0,...(stat.breakdown?{gridColumn:"1/-1"}:{})}}>
+          <div key={stat.label} style={{padding:14,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",display:"flex",flexDirection:"column",gap:4,minWidth:0}}>
             <p style={{fontSize:11,color:"var(--text3)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{stat.label}</p>
             <p style={{fontSize:20,fontWeight:800,color:stat.color,fontFamily:"monospace"}}>{stat.value}</p>
-            {stat.breakdown&&<TimeBreakdown rows={stat.breakdown}/>}
-            {stat.split&&<div style={{display:"flex",gap:10,fontSize:11,fontWeight:700}}><span style={{color:"#16a34a"}}>● {stat.split.onTime} on time</span><span style={{color:"#ef4444"}}>● {stat.split.delayed} delayed</span></div>}
           </div>
         ))}
       </div>
+      {(()=>{ const rows = combinedView&&currentUser?.role==="admin"?[{label:"Team",n:workingMembers.length,worked:workingTrackedSecs,delayed:teamDelaySecs,names:workingMembers.map(m=>m.name).join(", ")},{label:"Without account",n:prodWorking.length,worked:prodTrackedSecs,delayed:prodDelaySecs,names:prodWorking.map(m=>m.name).join(", ")}]:null; const team = rows&&rows[0];
+        return (
+        <div style={{padding:14,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",minWidth:0}}>
+          <div onClick={()=>rows&&setTimeOpen(o=>!o)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",cursor:rows?"pointer":"default"}}>
+            <div>
+              <p style={{fontSize:11,color:"var(--text3)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>Time Tracked</p>
+              <p style={{fontSize:20,fontWeight:800,color:"#3b82f6",fontFamily:"monospace"}}>{fmtSecs(summaryTrackedSecs)}</p>
+            </div>
+            {team&&!timeOpen&&<p style={{fontSize:12,color:"var(--text2)",fontWeight:600}}>Avg / person <b style={{color:"var(--text)"}}>{team.n?fmtHrsMin(team.worked/team.n/3600):"—"}</b> worked · {team.n} working</p>}
+            {rows&&<span style={{fontSize:12,fontWeight:700,color:"var(--text3)"}}>{timeOpen?"Hide details ▲":"Details ▼"}</span>}
+          </div>
+          {rows&&timeOpen&&<TimeBreakdown rows={rows}/>}
+        </div>); })()}
 
       {/* Combined timeline — every team member's day on one board (AM/admin only) */}
       {combinedView && (
