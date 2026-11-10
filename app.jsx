@@ -54965,7 +54965,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
     {toast&&<Toast message={toast} onDone={()=>setToast(null)}/>}
 
     {/* AI Chatbot — global floating bubble; hidden on home page where the full Pro workspace already shows */}
-    {false && page!=="home" && !sidebarOpen && <Chatbot
+    {!isMobile && page!=="home" && !sidebarOpen && <Chatbot
       currentUser={currentUser}
       currentPage={page}
       data={{...data, appSettings}}
