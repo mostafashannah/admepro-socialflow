@@ -4461,7 +4461,7 @@ function DelayBadge({post, light=false, big=false, asOf=null}) {
   const human = mins>=60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins}m`;
   const color = light ? "#fff" : "#ef4444";
   return (
-    <span style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:big?14:10,fontWeight:800,color,fontFamily:"monospace",whiteSpace:"nowrap",...(big?{background:"#ef444418",padding:"8px 12px",borderRadius:8}:{})}}>
+    <span style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:big?14:10,lineHeight:big?"normal":"13px",fontWeight:800,color,fontFamily:"monospace",whiteSpace:"nowrap",...(big?{background:"#ef444418",padding:"8px 12px",borderRadius:8}:{})}}>
       <span>{info.frozenDay?"⏸":info.live?(info.pausedNow?"⏸":"⏰"):"✓"}</span>
       <span>{info.frozenDay?`Delayed ${hms} (that day)`:info.live?`Delayed ${hms}${info.pausedNow?" (paused)":""}`:`Delivered ${human} late`}</span>
     </span>
@@ -4478,7 +4478,7 @@ function LiveTimerBadge({post, big=false, light=false}) {
   const over = info.remaining < 0;
   const color = light ? "#fff" : (over ? "#ef4444" : "#10b981");
   return (
-    <span style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:big?15:10,fontWeight:800,color,fontFamily:"monospace",whiteSpace:"nowrap",...(big?{background:over?"#ef444418":"#10b98118",padding:"8px 12px",borderRadius:8}:{})}}>
+    <span style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:big?15:10,lineHeight:big?"normal":"13px",fontWeight:800,color,fontFamily:"monospace",whiteSpace:"nowrap",...(big?{background:over?"#ef444418":"#10b98118",padding:"8px 12px",borderRadius:8}:{})}}>
       <span>{info.running?"▶":"⏸"}</span>
       <span>{hms(info.tracked)}</span>
       <span style={{fontFamily:"inherit",fontWeight:700,opacity:light?0.95:1}}>· {over ? `${human(info.remaining)} over` : `${human(info.remaining)} left`}</span>
@@ -39757,7 +39757,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
               return {...slot, lane};
             });
             const laneCount = Math.max(1, lanesEnd.length);
-            const laneH = 58; // taller blocks so each task can show more detail
+            const laneH = 66; // tall enough that three text lines never clip, even with larger device fonts
             const rowH = laneCount*laneH + (laneCount-1)*3;
             const isCollapsed = !!(collapsedRows||{})[member.email];
             if(isCollapsed) return (
@@ -39904,11 +39904,11 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                           setCopiedTask({postId:post.id, durationMins: slot.end_mins-slot.start_mins});
                           setToast(` "${post.title}" copied — right-click a free slot (any day) to move it there`);
                         }:undefined}
-                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,background:slot.overdue?"#ef4444":slot.completed_today?"#22c55e":(stage?.color||"var(--accent)"),borderRadius:8,backgroundImage:"linear-gradient(180deg, rgba(255,255,255,0.16), rgba(0,0,0,0.08))",boxShadow:slot.overdue?"0 0 0 1.5px #b91c1c inset, 0 2px 6px rgba(0,0,0,0.2)":"0 2px 6px rgba(0,0,0,0.18)",cursor:post?(canMove?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 8px"}}>
+                        style={{position:"absolute",zIndex:2,left:`${leftPct}%`,width:`${widthPct}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,background:slot.overdue?"#ef4444":slot.completed_today?"#22c55e":(stage?.color||"var(--accent)"),borderRadius:8,backgroundImage:"linear-gradient(180deg, rgba(255,255,255,0.16), rgba(0,0,0,0.08))",boxShadow:slot.overdue?"0 0 0 1.5px #b91c1c inset, 0 2px 6px rgba(0,0,0,0.2)":"0 2px 6px rgba(0,0,0,0.18)",cursor:post?(canMove?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 8px"}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
                           {post&&<TaskThumb post={post} team={team} size={34}/>}
-                          <div style={{display:"flex",flexDirection:"column",minWidth:0,flex:1,lineHeight:1.25}}>
-                            <span style={{fontSize:11.5,color:"#fff",fontWeight:800,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
+                          <div style={{display:"flex",flexDirection:"column",minWidth:0,flex:1,lineHeight:"13px",gap:1}}>
+                            <span style={{fontSize:11.5,lineHeight:"14px",color:"#fff",fontWeight:800,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
                             {widthPct>8&&<span style={{fontSize:9.5,color:"#fff",opacity:0.9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slot.start_time}–{slot.end_time}{slot.ghost?` · moved to ${fmtDate(slot.ghost_to)}`:""}{slot.carried?" · carried over":""}{post?.is_routine?` · 🔁 ${routineCounts(post).done}/${routineCounts(post).total}`:""}{slot.overdue?" · OVERDUE":slot.completed_today?" · Done":""}</span>}
                             {widthPct>12&&(slot.ghost ? <span style={{fontSize:10,fontWeight:800,color:"#fff",fontFamily:"monospace",whiteSpace:"nowrap"}}>⏸ Delayed {(()=>{const t=Math.max(0,slot.ghost_delay_secs||0);return `${String(Math.floor(t/3600)).padStart(2,"0")}:${String(Math.floor(t%3600/60)).padStart(2,"0")}:${String(t%60).padStart(2,"0")}`;})()}</span> : post&&postDelayInfo(post, dateStr) ? <DelayBadge post={post} light asOf={dateStr}/> : post&&postTimerInfo(post) ? <LiveTimerBadge post={post} light/> : <span style={{fontSize:9,color:"#fff",opacity:0.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{[post?.client_name, stage?.label].filter(Boolean).join(" · ")}</span>)}
                           </div>
