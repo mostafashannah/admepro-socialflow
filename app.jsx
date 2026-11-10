@@ -12017,8 +12017,6 @@ No markdown, no explanation.`;
                   {[
                     {label:"Design queue", sub:`${myPosts.filter(p=>p.stage==="design").length} in Design`, page:"my_tasks", icon:Icons.tasks},
                     {label:"Brand Guidelines", sub:"On-brand references per client", page:"brand_guidelines_tool", icon:Icons.palette||Icons.clients},
-                    {label:"Image Generator", sub:"gpt-image-1 / Freepik / Magnific", page:"image_generator", icon:Icons.sparkle},
-                    {label:"Video Generator", sub:"Kling / MiniMax", page:"video_generator", icon:Icons.sparkle},
                     {label:"Assets Library", sub:"Browse & upload brand files", page:"assets", icon:Icons.assets},
                   ].map(item=>(
                     <button key={item.page} onClick={()=>setPage(item.page)} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:"var(--rs)",border:"1px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",textAlign:"left"}}>
@@ -44566,8 +44564,6 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     ...((canAgency||isAdmin) ? [{ group: "TOOLS", icon: Icons.wand, items: [
       ...(canAgency?[
         {key:"assets", label:"Assets", ico:Icons.assets},
-        {key:"image_generator", label:"Image Generator", ico:Icons.sparkle},
-        {key:"video_generator", label:"Video Generator", ico:Icons.sparkle},
       ]:[]),
       // Standalone client-picker Brand Guidelines view — graphic designers
       // need brand references without needing full Clients section access.
