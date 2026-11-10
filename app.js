@@ -7003,7 +7003,8 @@ if(["content_creation","design","internal_review","client_approval"].includes(ne
 // below reads this instead of post.stage; everything else (assigned_to,
 // due_date, etc.) still legitimately comes from whatever the caller
 // passed in.
-const priorStage=(_data$posts$find$stag=(_data$posts$find=data.posts.find(p=>p.id===post.id))===null||_data$posts$find===void 0?void 0:_data$posts$find.stage)!==null&&_data$posts$find$stag!==void 0?_data$posts$find$stag:post.stage;// Track revisions (moved backward to an earlier stage in the pipeline)
+const priorStage=(_data$posts$find$stag=(_data$posts$find=data.posts.find(p=>p.id===post.id))===null||_data$posts$find===void 0?void 0:_data$posts$find.stage)!==null&&_data$posts$find$stag!==void 0?_data$posts$find$stag:post.stage;// A task in the Design phase can't move on to review (or anywhere further ahead) without at least one uploaded media file.
+if(priorStage==="design"&&["design_review","client_approval","approved","scheduled","published"].includes(newStage)&&!overrides.skipMediaCheck){const _live=data.posts.find(p=>p.id===post.id)||post;const _urls=Array.isArray(_live.design_urls)?_live.design_urls:parseJ(_live.design_urls||"[]");const _assets=Array.isArray(_live.design_assets)?_live.design_assets:parseJ(_live.design_assets||"[]");if(!_urls.length&&!_assets.length){setToast(" Upload at least one file (image, video or design) to this task before moving it to review.");return;}}// Track revisions (moved backward to an earlier stage in the pipeline)
 // and any rejection ever hit, so a real PerformanceLog can be written once
 // the task actually completes — Performance/My Performance's Review Score
 // was reading only seeded demo rows until this, since nothing ever wrote
