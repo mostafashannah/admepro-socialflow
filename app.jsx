@@ -767,9 +767,11 @@ function generateDailySchedule(posts, userEmail, date, userRole, includeGhosts=f
       let _h = [];
       try { const raw = _fd ? p[_fd] : null; _h = raw ? (Array.isArray(raw) ? raw : JSON.parse(raw)) : []; } catch(e) { _h = []; }
       // A task shows only on its own due day — finishing it on a later day does NOT carry it onto that day.
-      if ((!p.due_date || p.due_date===date) && _h.some(h=>h && typeof h==="object" && h.date===date && h.by && h.by===userEmail)) return true;
+      // (Entries with a due_date snapshot are drawn separately as "done" blocks — see the snapshot pass at the end of this function.)
+      const _hOld = _h.filter(h=>h && typeof h==="object" && !h.due_date);
+      if ((!p.due_date || p.due_date===date) && _hOld.some(h=>h.date===date && h.by && h.by===userEmail)) return true;
       // On its due day, work this person finished (even if they clicked finish later) stays visible as done.
-      if (p.due_date && p.due_date===date && _h.some(h=>h && typeof h==="object" && h.by && h.by===userEmail)) return true;
+      if (p.due_date && p.due_date===date && _hOld.some(h=>h.by && h.by===userEmail)) return true;
     }
     if (!wasOwnerOf(p, userEmail, userRole)) return false;
     // A Calendar Plan parent card isn't a single time-boxed piece of work —
@@ -806,9 +808,9 @@ function generateDailySchedule(posts, userEmail, date, userRole, includeGhosts=f
     let completedHistory = [];
     try { const raw = completedDatesField ? p[completedDatesField] : null; completedHistory = raw ? (Array.isArray(raw) ? raw : JSON.parse(raw)) : []; } catch(e) { completedHistory = []; }
     // A completion stamped with someone else's name isn't this person's finished work.
-    const completedOnViewedDay = completedHistory.some(h=>h.date===date && (!h.by || h.by===userEmail)) || !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
+    const completedOnViewedDay = completedHistory.some(h=>!h.due_date && h.date===date && (!h.by || h.by===userEmail)) || !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
     if (completedOnViewedDay && (!p.due_date || p.due_date===date)) return true;
-    if (p.due_date && p.due_date===date && (completedHistory.some(h=>!h.by||h.by===userEmail) || completedAt)) return true;
+    if (p.due_date && p.due_date===date && (completedHistory.some(h=>!h.due_date && (!h.by||h.by===userEmail)) || completedAt)) return true;
     if (ownedStage && p.stage !== ownedStage) return false;
     // Sent back for another round and now owned by SOMEONE ELSE — only the
     // current owner of this stage has it as active work; the earlier person
@@ -920,8 +922,10 @@ function generateDailySchedule(posts, userEmail, date, userRole, includeGhosts=f
     let completedHistoryLocal = [];
     try { const raw = completedDatesField ? post[completedDatesField] : null; completedHistoryLocal = raw ? (Array.isArray(raw) ? raw : JSON.parse(raw)) : []; } catch(e) { completedHistoryLocal = []; }
     // A task finished later than its due day still reads as DONE on its own due day (never on the later day).
-    const finishedLater = !!(post.due_date && post.due_date===date && (completedHistoryLocal.some(h=>!h.by||h.by===userEmail) || completedAt));
-    const historyEntry = completedHistoryLocal.find(h=>h.date===date) || (finishedLater ? [...completedHistoryLocal].reverse().find(h=>!h.by||h.by===userEmail) : null);
+    const legacyHist = completedHistoryLocal.filter(h=>!h.due_date);
+    const openWithOwner = !!(ownedStage && post.stage === ownedStage); // sent back / still being worked on — must read as open, not done
+    const finishedLater = !openWithOwner && !!(post.due_date && post.due_date===date && (legacyHist.some(h=>!h.by||h.by===userEmail) || completedAt));
+    const historyEntry = openWithOwner ? null : (legacyHist.find(h=>h.date===date) || (finishedLater ? [...legacyHist].reverse().find(h=>!h.by||h.by===userEmail) : null));
     const completedToday = !!historyEntry || finishedLater || (post.is_routine && post.routine_status==="done") || !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
     // The real-elapsed-time override only kicks in when the move actually
     // just happened (within the last 2 hours) — a fresh completion is
@@ -970,6 +974,21 @@ function generateDailySchedule(posts, userEmail, date, userRole, includeGhosts=f
   // otherwise a real "what did they actually get done today" glance meant
   // scanning the whole list for the DESIGN badge vs not.
   slots.sort((a,b) => (b.completed_today - a.completed_today) || (a.start_mins - b.start_mins));
+  // Done snapshots: work this person finished stays on the timeline as a green block at the exact spot it occupied on its due day —
+  // even if the task was later sent back, reassigned (to them or someone else) or moved to a new date.
+  {
+    const _field = isDesignerRole(userRole) ? "design_completed_dates" : userRole==="content_creator" ? "content_completed_dates" : null;
+    if(_field) posts.forEach(p=>{
+      if(p.is_routine || p.is_plan_parent || !p[_field]) return;
+      let hist = []; try { hist = Array.isArray(p[_field]) ? p[_field] : JSON.parse(p[_field]); } catch(e) { hist = []; }
+      hist.forEach(h=>{
+        if(!h || typeof h!=="object" || !h.due_date || String(h.due_date).slice(0,10)!==date || h.by!==userEmail) return;
+        let st = h.start_mins, en = h.end_mins;
+        if(st==null || en==null) { const dur = Number(h.duration_mins)>0 ? Number(h.duration_mins) : 60; const dm = timeToMins(p.due_time); st = Math.max(WORKING_START*60, Math.min((dm==null?WORKING_START*60+dur:dm)-dur, WORKING_END*60-dur)); en = st+dur; }
+        slots.push({post_id:p.id, start_mins:st, end_mins:en, start_time:minsToAmPm(st), end_time:minsToAmPm(en), duration_mins:en-st, completed_today:true, overdue:false, snapshot:true});
+      });
+    });
+  }
   // Ghost slots (timeline rows only): a task that was LATE on this day and then moved to a later day stays on this day as a red, frozen-delay block,
   // while its new slot appears on the new day. History comes from posts.due_history (filled by a database trigger on every due-date change).
   if(includeGhosts) {
@@ -39734,7 +39753,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                   <p style={{fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.name}</p>
                 </div>
                 <div style={{position:"relative",flex:1,height:10,background:"var(--surface2)",borderRadius:5}}>
-                  {lanedSlots.map(slot=>{ const l=Math.max(0,(slot.start_mins-WORKING_START*60)/WORKING_MINS*100), w=Math.max(0.8,(slot.end_mins-slot.start_mins)/WORKING_MINS*100); const pp=posts.find(x=>x.id===slot.post_id); return <div key={slot.post_id} style={{position:"absolute",left:`${l}%`,width:`${w}%`,top:1,bottom:1,borderRadius:4,background:slot.overdue?"#ef4444":slot.completed_today?"#22c55e":((pp&&STAGE_MAP[pp.stage]?.color)||"var(--accent)"),opacity:0.85}}/>; })}
+                  {lanedSlots.map(slot=>{ const l=Math.max(0,(slot.start_mins-WORKING_START*60)/WORKING_MINS*100), w=Math.max(0.8,(slot.end_mins-slot.start_mins)/WORKING_MINS*100); const pp=posts.find(x=>x.id===slot.post_id); return <div key={`${slot.post_id}-${slot.snapshot?"done":slot.ghost?"ghost":"live"}-${slot.start_mins}`} style={{position:"absolute",left:`${l}%`,width:`${w}%`,top:1,bottom:1,borderRadius:4,background:slot.overdue?"#ef4444":slot.completed_today?"#22c55e":((pp&&STAGE_MAP[pp.stage]?.color)||"var(--accent)"),opacity:0.85}}/>; })}
                 </div>
                 <span style={{fontSize:11,color:"var(--text3)",fontWeight:700,flexShrink:0,minWidth:54,textAlign:"right"}}>{lanedSlots.length} task{lanedSlots.length!==1?"s":""}</span>
               </div>
@@ -39850,7 +39869,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     // one day's view surprise-relocate it on another.
                     const canMove = !!(isAM&&onMoveTask&&post&&!slot.completed_today&&!slot.ghost);
                     return (
-                      <div key={slot.post_id} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})${slot.overdue?" — OVERDUE":""}${slot.completed_today?" — Done, moved to review":""}${canMove?" — drag, or right-click to move (works across days too)":""}`}
+                      <div key={`${slot.post_id}-${slot.snapshot?"done":slot.ghost?"ghost":"live"}-${slot.start_mins}`} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})${slot.overdue?" — OVERDUE":""}${slot.completed_today?" — Done, moved to review":""}${canMove?" — drag, or right-click to move (works across days too)":""}`}
                         onClick={(e)=>{e.stopPropagation();onPostClick&&post&&onPostClick(post);}}
                         draggable={canMove}
                         onDragStart={canMove?(e)=>{e.stopPropagation();dragTaskRef.current={postId:post.id,durationMins:slot.end_mins-slot.start_mins};e.dataTransfer.effectAllowed="move";e.currentTarget.style.opacity="0.4";}:undefined}
@@ -40040,7 +40059,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     const durMins = slot.end_mins - slot.start_mins;
                     const durLabel = durMins >= 60 ? `${Math.floor(durMins/60)}h${durMins%60?` ${durMins%60}m`:""}` : `${durMins}m`;
                     return (
-                      <div key={slot.post_id} onClick={()=>onPostClick&&onPostClick(post)} style={{
+                      <div key={`${slot.post_id}-${slot.snapshot?"done":slot.ghost?"ghost":"live"}-${slot.start_mins}`} onClick={()=>onPostClick&&onPostClick(post)} style={{
                         padding:"8px 12px",borderRadius:"var(--rs)",
                         background:stageColor+"22",border:`1px solid ${stageColor}55`,
                         borderLeft:`3px solid ${stageColor}`,
@@ -40112,7 +40131,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                 if(!post) return null;
                 const stage = STAGE_MAP[post.stage]||STAGES[0];
                 return (
-                  <div key={slot.post_id} onClick={()=>onPostClick&&onPostClick(post)} style={{padding:"6px 10px",borderRadius:"var(--rs)",background:"var(--surface2)",border:`1px solid ${slot.overdue?"#ef444455":"var(--border)"}`,cursor:"pointer",display:"flex",flexDirection:"column",gap:2}}>
+                  <div key={`${slot.post_id}-${slot.snapshot?"done":slot.ghost?"ghost":"live"}-${slot.start_mins}`} onClick={()=>onPostClick&&onPostClick(post)} style={{padding:"6px 10px",borderRadius:"var(--rs)",background:"var(--surface2)",border:`1px solid ${slot.overdue?"#ef444455":"var(--border)"}`,cursor:"pointer",display:"flex",flexDirection:"column",gap:2}}>
                     <div style={{display:"flex",alignItems:"center",minWidth:0}}><TaskThumb post={post} team={team} size={16}/><p style={{fontSize:11,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",margin:0}}>{post.title}</p></div>
                     <div style={{display:"flex",gap:6,alignItems:"center"}}>
                       <span style={{fontSize:9,color:"var(--text3)"}}>{slot.start_time}–{slot.end_time}</span>
@@ -51744,9 +51763,19 @@ Return ONLY valid JSON (no markdown, no explanation):
     // `by` = who actually did the work, so a task handed to a DIFFERENT person
     // afterwards never shows up as that new person's (or re-appears on the
     // first person's) timeline — each completion belongs to whoever finished it.
-    const idx = entries.findIndex(e=>e.date===today && (e.by||"")===(by||""));
-    if (idx >= 0) entries[idx] = {date:today, duration_mins, by};
-    else entries = [...entries, {date:today, duration_mins, by}];
+    // Snapshot of the exact timeline spot this work occupied (its due day + start/end), so the finisher keeps a green "done" block on
+    // that spot even after the task is sent back, reassigned or given a new date.
+    let snap = {};
+    try {
+      const m = (data.team||[]).find(t=>t.email===by);
+      if(post.due_date) {
+        snap = {due_date:String(post.due_date).slice(0,10)};
+        if(m) { const sl = generateDailySchedule(data.posts||[], by, snap.due_date, m.role).find(x=>x.post_id===post.id); if(sl) snap = {...snap, start_mins:sl.start_mins, end_mins:sl.end_mins}; }
+      }
+    } catch(e) { snap = {}; }
+    const idx = entries.findIndex(e=>e.date===today && (e.by||"")===(by||"") && (e.due_date||"")===(snap.due_date||""));
+    if (idx >= 0) entries[idx] = {date:today, duration_mins, by, ...snap};
+    else entries = [...entries, {date:today, duration_mins, by, ...snap}];
     return JSON.stringify(entries);
   };
   const handleStageChange = async (post,newStage,overrides={}) => {
