@@ -40347,7 +40347,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
         {[
           {label:"Total Tasks",value:summaryTotalTasks,color:"var(--accent)"},
           {label:"Active Now",value:summaryActiveNow,color:"#10b981",split:activeBreakdown},
-          {label:"Time Tracked",value:fmtSecs(summaryTrackedSecs),color:"#3b82f6",note:combinedView?`Team: ${fmtSecs(workingTrackedSecs)} · avg ${fmtSecs(avgTrackedSecs)} (${workingMembers.map(m=>(m.name||"").split(" ")[0]).join(", ")})`:null,note2:combinedView?`Without account team: ${fmtSecs(prodTrackedSecs)} · avg ${fmtSecs(prodAvgSecs)} (${prodWorking.map(m=>(m.name||"").split(" ")[0]).join(", ")})`:null},
+          {label:"Time Tracked",value:fmtSecs(summaryTrackedSecs),color:"#3b82f6",note:combinedView&&currentUser?.role==="admin"?`Team: ${fmtSecs(workingTrackedSecs)} · avg ${fmtSecs(avgTrackedSecs)} (${workingMembers.map(m=>(m.name||"").split(" ")[0]).join(", ")})`:null,note2:combinedView&&currentUser?.role==="admin"?`Without account team: ${fmtSecs(prodTrackedSecs)} · avg ${fmtSecs(prodAvgSecs)} (${prodWorking.map(m=>(m.name||"").split(" ")[0]).join(", ")})`:null},
           {label:"Completion",value:`${summaryCompletionPct}%`,color:"#f59e0b"},
         ].map(stat=>(
           <div key={stat.label} style={{padding:14,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",display:"flex",flexDirection:"column",gap:4}}>
