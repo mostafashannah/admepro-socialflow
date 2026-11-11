@@ -88,6 +88,20 @@ function authFindSession($token) {
         $st->execute([hash('sha256', $token), authNow()]);
         $s = $st->fetch(PDO::FETCH_ASSOC);
         if (!$s) return null;
+        // Use the person's CURRENT role and status, not what they had at login: a role change applies
+        // straight away, and a blocked/deactivated person loses access immediately.
+        if ($s['user_type'] === 'team') {
+            $u = $pdo->prepare("SELECT role, status FROM team_members WHERE id = ? LIMIT 1");
+            $u->execute([$s['user_id']]);
+            $cur = $u->fetch(PDO::FETCH_ASSOC);
+            if (!$cur || in_array($cur['status'], ['blocked', 'inactive'], true)) return null;
+            $s['role'] = $cur['role'];
+        } elseif ($s['user_type'] === 'client' && $s['user_id'] !== $s['client_id']) {
+            $u = $pdo->prepare("SELECT status FROM client_users WHERE id = ? LIMIT 1");
+            $u->execute([$s['user_id']]);
+            $cur = $u->fetch(PDO::FETCH_ASSOC);
+            if ($cur && $cur['status'] === 'blocked') return null;
+        }
         // Slide the expiry / last-seen at most once every 10 minutes.
         if (($s['user_type'] ?? '') !== 'guest' && strtotime($s['last_seen_at'] . ' UTC') < time() - 600) {
             $pdo->prepare("UPDATE auth_sessions SET last_seen_at = ?, expires_at = ? WHERE token_hash = ?")

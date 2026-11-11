@@ -38,6 +38,10 @@ if (!$AUTH) {
 // Guest pass (public link pages): may only touch the one record its link opens — see guest-policy.php.
 $GUEST = ($AUTH['kind'] === 'session' && ($AUTH['session']['user_type'] ?? '') === 'guest') ? $AUTH['session'] : null;
 if ($GUEST) require_once __DIR__ . '/guest-policy.php';
+// Logged-in team member / client: what their role allows — see role-policy.php.
+$TEAM = ($AUTH['kind'] === 'session' && ($AUTH['session']['user_type'] ?? '') === 'team') ? $AUTH['session'] : null;
+$CLIENT = ($AUTH['kind'] === 'session' && ($AUTH['session']['user_type'] ?? '') === 'client') ? $AUTH['session'] : null;
+if ($TEAM || $CLIENT) require_once __DIR__ . '/role-policy.php';
 
 $ALLOWED_TABLES = [
     'posts','projects','clients','team_members','comments','assets','time_logs',
@@ -214,11 +218,19 @@ try {
         $order = buildOrder($_GET['order'] ?? null);
         $limit = isset($_GET['limit']) ? max(1, min(5000, (int)$_GET['limit'])) : 500;
 
+        if ($CLIENT) {
+            $cw = rpClientWhere($pdo, $CLIENT, $table, $bindings);
+            if ($cw === null) { echo json_encode([]); exit; }   // nothing in this table belongs to a client
+            $where = $where ? ($where . " AND ($cw)") : "WHERE $cw";
+        }
+        if ($TEAM && !rpTeamTableAllowed($pdo, $TEAM, $table) && $table !== 'payroll_runs') { echo json_encode([]); exit; }
         $sql = "SELECT * FROM " . ident($table) . " $where $order LIMIT $limit";
         $stmt = $pdo->prepare($sql);
         $stmt->execute($bindings);
         $rawRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         if ($GUEST) $rawRows = guestFilterRows($pdo, $GUEST, $table, $rawRows, $_GET);
+        if ($TEAM) $rawRows = rpTeamFilterRows($pdo, $TEAM, $table, $rawRows);
+        if ($CLIENT) $rawRows = rpClientFilterRows($rawRows, $table);
         $rows = array_map(fn($r) => castRow($r, $table), $rawRows);
         echo json_encode($rows);
         exit;
@@ -233,6 +245,9 @@ try {
             $record = normalizeNumericEmptyStrings($record, $table);
             unset($record['password_hash']);
             if ($GUEST) $record = guestCheckWrite($pdo, $GUEST, $table, 'POST', null, $record);
+            if ($TEAM) $record = rpTeamCheckWrite($pdo, $TEAM, $table, 'POST', null, $record);
+            if ($CLIENT) $record = rpClientCheckWrite($pdo, $CLIENT, $table, 'POST', null, $record);
+            if (!$record) continue;
             if (empty($record['id'])) $record['id'] = generateUuid();
             $cols = array_keys($record);
             $colSql = implode(',', array_map('ident', $cols));
@@ -265,6 +280,8 @@ try {
             $stmt->execute($bindings);
             $out = $stmt->fetchAll(PDO::FETCH_ASSOC);
             if ($GUEST && $table === 'job_applications') $out = array_map('guestHideInternal', $out);
+            if ($TEAM) $out = rpTeamFilterRows($pdo, $TEAM, $table, $out);
+            if ($CLIENT) $out = rpClientFilterRows($out, $table);
             echo json_encode(array_map(fn($r) => castRow($r, $table), $out));
         } else {
             echo json_encode([]);
@@ -288,6 +305,8 @@ try {
         $body = normalizeNumericEmptyStrings($body, $table);
         unset($body['password_hash']);
         if ($GUEST) $body = guestCheckWrite($pdo, $GUEST, $table, 'PATCH', $id, $body);
+        if ($TEAM) $body = rpTeamCheckWrite($pdo, $TEAM, $table, 'PATCH', $id, $body);
+        if ($CLIENT) $body = rpClientCheckWrite($pdo, $CLIENT, $table, 'PATCH', $id, $body);
         if (!$body) { echo json_encode([]); exit; }
         $sets = [];
         $bind = [':id' => $id];
@@ -304,6 +323,8 @@ try {
             $stmt->execute([':id' => $id]);
             $out = $stmt->fetchAll(PDO::FETCH_ASSOC);
             if ($GUEST) $out = array_map(fn($r) => guestHideInternal(guestSafeSettingsRow($r)), $out);
+            if ($TEAM) $out = rpTeamFilterRows($pdo, $TEAM, $table, $out);
+            if ($CLIENT) $out = rpClientFilterRows($out, $table);
             echo json_encode(array_map(fn($r) => castRow($r, $table), $out));
         } else {
             echo json_encode([]);
@@ -312,6 +333,11 @@ try {
     }
 
     if ($method === 'DELETE' && $GUEST) guestDeny();
+    if ($method === 'DELETE' && ($TEAM || $CLIENT)) {
+        $delId = (isset($_GET['id']) && preg_match('/^eq\.(.+)$/', $_GET['id'], $dm)) ? $dm[1] : null;
+        if ($TEAM) rpTeamCheckWrite($pdo, $TEAM, $table, 'DELETE', $delId, []);
+        if ($CLIENT) rpClientCheckWrite($pdo, $CLIENT, $table, 'DELETE', $delId, []);
+    }
     if ($method === 'DELETE') {
         $id = null;
         if (isset($_GET['id']) && preg_match('/^eq\.(.+)$/', $_GET['id'], $m)) $id = $m[1];
