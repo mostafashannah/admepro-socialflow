@@ -6771,7 +6771,7 @@ function TaskLogView({postId, team=[]}) {
 
 // POST DETAIL MODAL
 // ════════════════════════════════════════════════════════════════
-function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onAddComment,onDeleteComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[],allPosts=[],contactReports=[],onUpdatePlanItem,onSplitPlanItem}) {
+function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onUndoPush,onAddComment,onDeleteComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[],allPosts=[],contactReports=[],onUpdatePlanItem,onSplitPlanItem}) {
   if(post?.is_plan_parent) {
     return (
       <Modal open onClose={onClose} title={post.title} subtitle={`${client?.name||post.client_name||""} · Calendar plan`} width={640}>
@@ -7932,6 +7932,16 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
               if(wasContentStage) { onStageChange({...post,...updatedPost}, "internal_review"); onClose(); }
             }}
           />
+        )}
+
+        {/* Pushed to review before it was really finished → put it back (admin / account team only) */}
+        {onUndoPush && ["admin","account_manager","account_director","account_executive"].includes(currentUser?.role) && ["internal_review","design_review"].includes(post.stage) && (
+          <div style={{padding:"10px 12px",background:"#f59e0b14",border:"1px solid #f59e0b55",borderRadius:"var(--rs)",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+            <Ico d={Icons.alert} size={16} stroke="#f59e0b"/>
+            <p style={{flex:1,minWidth:200,fontSize:12,color:"var(--text2)",lineHeight:1.5}}>Not actually finished? Send it back to <b>{post.stage==="internal_review"?"Content":"Design"}</b> as if it was never pushed — same person, same time slot, no done credit, no revision counted.</p>
+            <button onClick={async()=>{ if(!window.confirm(`Move "${post.title}" back to ${post.stage==="internal_review"?"Content":"Design"} as not completed?`)) return; await onUndoPush(post); onClose&&onClose(); }}
+              style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#f59e0b",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>↩ Not completed</button>
+          </div>
         )}
 
         {/* Rejection */}
@@ -53444,6 +53454,40 @@ Return ONLY valid JSON (no markdown, no explanation):
     else entries = [...entries, {date:today, duration_mins, by, at:deliveredAt, ...snap}];
     return JSON.stringify(entries);
   };
+  // Admin / account team: a task was pushed to Review / Design Review before the
+  // work was actually finished. Put it straight back where it was, as if it was
+  // never pushed: same owner, same due date/time/duration, no "done" credit for
+  // that push, no revision/rejection counted, nobody notified.
+  const undoPushToReview = async (post) => {
+    const back = post.stage==="internal_review" ? "content_creation" : post.stage==="design_review" ? "design" : null;
+    if(!back) return;
+    const isContent = back==="content_creation";
+    const owner = (isContent ? post.content_assigned_to : post.design_assigned_to) || post.assigned_to;
+    const histField = isContent ? "content_completed_dates" : "design_completed_dates";
+    let hist = [];
+    try { const raw = post[histField]; hist = raw ? (Array.isArray(raw) ? raw : JSON.parse(raw)) : []; } catch(e) { hist = []; }
+    // Drop the "done" entry that push added (the most recent one by that person).
+    let drop = -1, best = "";
+    hist.forEach((h,i)=>{ if(h && typeof h==="object" && (h.by||"")===(owner||"") && String(h.at||h.date||"")>=best){ best=String(h.at||h.date||""); drop=i; } });
+    if(drop>=0) hist = hist.filter((_,i)=>i!==drop);
+    const patch = {
+      stage: back,
+      assigned_to: owner,
+      [isContent?"content_completed_at":"design_completed_at"]: null,
+      [histField]: JSON.stringify(hist),
+    };
+    setData(d=>({...d, posts:d.posts.map(p=>p.id===post.id?{...p,...patch}:p)}));
+    setSelectedPost(sp=>sp&&sp.id===post.id?{...sp,...patch}:sp);
+    try { await ue("Post", post.id, patch); } catch(e) { alert("Couldn't move it back — please try again."); return; }
+    // Remove the performance credit that push created.
+    const credit = (data.perfLogs||[]).filter(l=>l.post_id===post.id && l.user_email===owner && l.stage_from===back && !String(l.stage_from||"").startsWith("returned_"))
+      .sort((x,y)=>String(y.completed_at||y.created_at||"").localeCompare(String(x.completed_at||x.created_at||"")))[0];
+    if(credit?.id) {
+      de("PerformanceLog", credit.id).catch(()=>{});
+      setData(d=>({...d, perfLogs:(d.perfLogs||[]).filter(l=>l.id!==credit.id)}));
+    }
+  };
+
   const handleStageChange = async (post,newStage,overrides={}) => {
     // Block transition if no assignee for stages that require one, unless the
     // caller (the assign+schedule modal) is supplying one right now via overrides.
@@ -55193,6 +55237,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         currentUser={currentUser}
         onClose={()=>setSelectedPost(null)}
         onStageChange={handleStageChange}
+        onUndoPush={undoPushToReview}
         onAddComment={handleAddComment}
         onDeleteComment={handleDeleteComment}
         onEdit={handleEditPost}
