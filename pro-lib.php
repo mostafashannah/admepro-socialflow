@@ -1566,6 +1566,78 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
     $isAdmin = $senderRole === 'team:admin';
     $isAM    = in_array($senderRole, ['team:account_manager','team:account_director','team:account_executive'], true);
 
+    if ($name === 'update_task' || $name === 'delete_task') {
+        if (!$isAdmin) return ['error' => 'Only an admin can edit or delete tasks from WhatsApp.'];
+        // Find the task: exact id, else title match (newest first; must be unambiguous).
+        $task = null;
+        if (!empty($input['task_id'])) {
+            $st = $pdo->prepare("SELECT * FROM posts WHERE id = ? LIMIT 1"); $st->execute([$input['task_id']]); $task = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+        if (!$task && !empty($input['title_match'])) {
+            $sql = "SELECT * FROM posts WHERE title LIKE :t AND stage NOT IN ('published','cancelled')";
+            $bind = [':t' => '%' . $input['title_match'] . '%'];
+            if (!empty($input['current_assignee'])) {
+                $sql .= " AND assigned_to IN (SELECT email FROM team_members WHERE name LIKE :a OR email = :a2)";
+                $bind[':a'] = '%' . $input['current_assignee'] . '%'; $bind[':a2'] = $input['current_assignee'];
+            }
+            $sql .= " ORDER BY created_at DESC LIMIT 5";
+            $st = $pdo->prepare($sql); $st->execute($bind); $hits = $st->fetchAll(PDO::FETCH_ASSOC);
+            if (count($hits) > 1) {
+                return ['error' => 'More than one task matches — ask which one, or pass task_id.', 'matches' => array_map(fn($h) => ['task_id' => $h['id'], 'title' => $h['title'], 'assigned_to' => $h['assigned_to'], 'due' => trim(substr((string)$h['due_date'], 0, 10) . ' ' . ($h['due_time'] ?? '')), 'stage' => $h['stage']], $hits)];
+            }
+            $task = $hits[0] ?? null;
+        }
+        if (!$task) return ['error' => 'Task not found. Use search_tasks to find it, then pass its task_id.'];
+        if ($name === 'delete_task') {
+            if (empty($input['confirm'])) return ['error' => 'Deleting is permanent. Ask the admin to confirm, then call again with confirm=true.', 'task' => $task['title']];
+            $pdo->prepare("DELETE FROM posts WHERE id = ?")->execute([$task['id']]);
+            return ['ok' => true, 'deleted' => $task['title']];
+        }
+        $set = []; $vals = []; $changes = [];
+        if (isset($input['new_title']) && trim($input['new_title']) !== '') { $set[] = 'title = ?'; $vals[] = trim($input['new_title']); $changes[] = 'title'; }
+        if (isset($input['description'])) { $set[] = 'description = ?'; $vals[] = (string)$input['description']; $changes[] = 'description'; }
+        if (!empty($input['due_date'])) {
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $input['due_date'])) return ['error' => 'due_date must be YYYY-MM-DD.'];
+            $set[] = 'due_date = ?'; $vals[] = $input['due_date']; $changes[] = 'due date';
+        }
+        if (array_key_exists('due_time', $input)) {
+            $t = (string)$input['due_time'];
+            if ($t !== '' && !preg_match('/^\d{1,2}:\d{2}$/', $t)) return ['error' => 'due_time must be HH:MM (24h), or empty to clear.'];
+            $set[] = 'due_time = ?'; $vals[] = $t === '' ? null : $t; $changes[] = 'due time';
+        }
+        if (!empty($input['priority']) && in_array($input['priority'], ['low', 'medium', 'high', 'urgent'], true)) { $set[] = 'priority = ?'; $vals[] = $input['priority']; $changes[] = 'priority'; }
+        if (!empty($input['estimated_minutes'])) { $set[] = 'estimated_minutes = ?'; $vals[] = max(5, min(600, (int)$input['estimated_minutes'])); $changes[] = 'duration'; }
+        if (!empty($input['client_name'])) {
+            $st = $pdo->prepare("SELECT id, name FROM clients WHERE name LIKE :n ORDER BY LENGTH(name) ASC LIMIT 1"); $st->execute([':n' => '%' . $input['client_name'] . '%']);
+            $c = $st->fetch(PDO::FETCH_ASSOC); if (!$c) return ['error' => 'No client matches "' . $input['client_name'] . '".'];
+            $set[] = 'client_id = ?'; $vals[] = $c['id']; $set[] = 'client_name = ?'; $vals[] = $c['name']; $changes[] = 'client';
+        }
+        $newAssignee = null;
+        if (!empty($input['assigned_to'])) {
+            $st = $pdo->prepare("SELECT name, email, role FROM team_members WHERE status = 'active' AND (email = :e OR name LIKE :n) ORDER BY (email = :e2) DESC, LENGTH(name) ASC LIMIT 3");
+            $st->execute([':e' => $input['assigned_to'], ':e2' => $input['assigned_to'], ':n' => '%' . $input['assigned_to'] . '%']);
+            $hits = $st->fetchAll(PDO::FETCH_ASSOC);
+            if (!$hits) return ['error' => 'No active team member matches "' . $input['assigned_to'] . '".'];
+            $newAssignee = $hits[0];
+            $set[] = 'assigned_to = ?'; $vals[] = $newAssignee['email'];
+            if ($task['stage'] === 'design') { $set[] = 'design_assigned_to = ?'; $vals[] = $newAssignee['email']; }
+            if ($task['stage'] === 'content_creation') { $set[] = 'content_assigned_to = ?'; $vals[] = $newAssignee['email']; }
+            $changes[] = 'assignee';
+        }
+        if (!$set) return ['error' => 'Nothing to change — say what to update (date, time, assignee, title, priority, duration, client, description).'];
+        $vals[] = $task['id'];
+        $pdo->prepare("UPDATE posts SET " . implode(', ', $set) . " WHERE id = ?")->execute($vals);
+        $st = $pdo->prepare("SELECT title, assigned_to, client_name, due_date, due_time, priority, estimated_minutes, stage FROM posts WHERE id = ?"); $st->execute([$task['id']]);
+        $now = $st->fetch(PDO::FETCH_ASSOC);
+        $notify = $newAssignee ? $newAssignee['email'] : $task['assigned_to'];
+        if ($notify) {
+            try {
+                $pdo->prepare("INSERT INTO notifications (id, recipient_email, title, message, type, is_read, link_type, link_id) VALUES (UUID(), ?, ?, ?, 'task_assigned', 0, 'post', ?)")
+                    ->execute([$notify, 'Task updated: ' . $now['title'], ($senderName ?: 'Admin') . ' changed ' . implode(', ', $changes) . '. Due ' . substr((string)$now['due_date'], 0, 10) . ($now['due_time'] ? ' ' . $now['due_time'] : ''), $task['id']]);
+            } catch (Throwable $e) {}
+        }
+        return ['ok' => true, 'task_id' => $task['id'], 'changed' => $changes, 'now' => $now];
+    }
     if ($name === 'create_task') {
         if (!$isAdmin) return ['error' => 'Only an admin can create tasks from WhatsApp.'];
         $title = trim((string)($input['title'] ?? ''));
@@ -1612,7 +1684,7 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
                     ->execute([$assignee['email'], 'New task: ' . $title, ($senderName ?: 'Admin') . ' assigned you a task due ' . $due . ($time ? " $time" : ''), $id]);
             } catch (Throwable $e) { /* notification is best-effort */ }
         }
-        return ['ok' => true, 'title' => $title, 'assigned_to' => $assignee['name'] ?? 'nobody (unassigned)', 'client' => $clientName ?: null, 'due' => $due . ($time ? " $time" : ''), 'stage' => $stage, 'priority' => $prio];
+        return ['ok' => true, 'task_id' => $id, 'title' => $title, 'assigned_to' => $assignee['name'] ?? 'nobody (unassigned)', 'client' => $clientName ?: null, 'due' => $due . ($time ? " $time" : ''), 'stage' => $stage, 'priority' => $prio];
     }
     if ($name === 'ask_ai_teammate') {
         return askAiTeammate($pdo, $input['agent'] ?? '', $input['question'] ?? '', $input['client_name'] ?? null);
@@ -1661,7 +1733,7 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
             $senderEmail = $em->fetchColumn() ?: null;
         }
 
-        $sql = "SELECT title, stage, scheduled_date, client_name, assigned_to, due_date, priority FROM posts WHERE 1=1";
+        $sql = "SELECT id, title, stage, scheduled_date, client_name, assigned_to, due_date, due_time, priority FROM posts WHERE 1=1";
         $params = [];
         if (!empty($input['query']))       { $sql .= " AND title LIKE :q";       $params[':q'] = '%' . $input['query'] . '%'; }
         if (!empty($input['stage']))       { $sql .= " AND stage = :s";          $params[':s'] = $input['stage']; }
@@ -2175,10 +2247,43 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                     ],
                     'required' => ['title'],
                 ],
+            ], [
+                'name' => 'update_task',
+                'description' => 'Edit an existing task (admin only): due date/time, assignee, title, description, priority, duration or client. Identify it by task_id (from create_task or search_tasks — preferred) or by title_match (+ current_assignee to narrow). Resolve "tomorrow" etc. to YYYY-MM-DD yourself (today is ' . date('Y-m-d l') . '). If it says several match, show them and ask which. Confirm the result in one short line.',
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'task_id'           => ['type' => 'string'],
+                        'title_match'       => ['type' => 'string', 'description' => 'Part of the task title, when no task_id'],
+                        'current_assignee'  => ['type' => 'string', 'description' => 'Who it is assigned to now, to narrow title_match'],
+                        'new_title'         => ['type' => 'string'],
+                        'description'       => ['type' => 'string'],
+                        'due_date'          => ['type' => 'string', 'description' => 'YYYY-MM-DD'],
+                        'due_time'          => ['type' => 'string', 'description' => 'HH:MM 24h, or empty string to clear'],
+                        'assigned_to'       => ['type' => 'string', 'description' => 'New assignee name or email'],
+                        'client_name'       => ['type' => 'string'],
+                        'priority'          => ['type' => 'string', 'enum' => ['low', 'medium', 'high', 'urgent']],
+                        'estimated_minutes' => ['type' => 'integer'],
+                    ],
+                    'required' => [],
+                ],
+            ], [
+                'name' => 'delete_task',
+                'description' => 'Permanently delete a task (admin only). Always ask the admin to confirm first, then call with confirm=true. Identify by task_id or title_match.',
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'task_id'          => ['type' => 'string'],
+                        'title_match'      => ['type' => 'string'],
+                        'current_assignee' => ['type' => 'string'],
+                        'confirm'          => ['type' => 'boolean'],
+                    ],
+                    'required' => [],
+                ],
             ]]);
             $system .= "\n\nAs admin, you have full tools to look up any client and search any task across the "
                      . "whole agency — use them whenever the question needs current data instead of guessing. "
-                     . "You can also create and assign tasks with create_task.";
+                     . "You can also create, edit (update_task) and delete (delete_task) tasks — never tell the admin you cannot edit a task.";
         } elseif ($isAM) {
             $tools = array_merge(proTools(), hrTools());
             $system .= "\n\nYou have tools to look up clients and tasks, but only for the clients you personally "
