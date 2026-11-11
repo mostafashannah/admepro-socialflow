@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // One-time cleanup for attendance_records rows that ended up duplicated
 // under the SAME team_member_id + work_date — caused by the old remap
 // logic in attendance-import.php (fixed alongside this script) blindly

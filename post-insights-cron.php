@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 /**
  * post-insights-cron.php — refreshes per-post engagement (likes/comments/
  * shares/reach) for recently published posts, so a "Best Performing Posts"

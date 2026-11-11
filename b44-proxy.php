@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // SocialFlow Base44 Proxy — routes Base44 API calls server-side to avoid CORS
 // Supports GET, POST, PUT, DELETE — proxies all to app.base44.com
 

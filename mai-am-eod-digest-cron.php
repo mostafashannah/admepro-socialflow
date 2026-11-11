@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 /**
  * mai-am-eod-digest-cron.php — sends admins one short WhatsApp summary of
  * that day's end-of-day account-manager check-ins. Run ~1hr after

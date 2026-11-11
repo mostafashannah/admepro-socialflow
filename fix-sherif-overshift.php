@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // One-off correction — the capacity-overflow rollover cascaded across
 // multiple re-renders (see debug-sherif-overflow.php output) and pushed 6
 // of Sherif's "Aug Calendar" tasks to 2026-08-10 when only ~3 genuinely

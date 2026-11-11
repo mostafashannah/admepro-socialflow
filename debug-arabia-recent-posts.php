@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // READ-ONLY diagnostic — every post for ARABIA Uniform created in the last
 // 3 hours, regardless of stage, to see what actually happened to the
 // Ready Content post the user just created (never saved? already

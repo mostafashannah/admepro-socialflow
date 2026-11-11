@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // One-off manual test — sends a sample "Pick an interview time" email with a
 // MIX of a real ISO datetime slot and a free-text flexible-window slot (the
 // exact combination that used to render "Invalid Date"), so you can confirm

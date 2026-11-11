@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // One-off correction — v1125 briefly rewrote a genuinely-overdue task's
 // due_date to "today" (a design mistake, since reverted in the app code:
 // the OVERDUE flag is meant to stay purely a live comparison against the

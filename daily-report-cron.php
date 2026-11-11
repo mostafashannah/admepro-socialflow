@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 /**
  * daily-report-cron.php — sends the WhatsApp Daily Report at the time, on the
  * days and with the sections chosen in Settings > Daily Report.

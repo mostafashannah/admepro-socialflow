@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // READ-ONLY diagnostic — the Timer display shows a permanently frozen
 // 00:00:00 for an active entry, which is the exact symptom you'd get if
 // `new Date(started_at)` fails to parse in the browser (elapsed becomes

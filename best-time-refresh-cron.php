@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 /**
  * best-time-refresh-cron.php — weekly cron that recomputes the AI-predicted
  * "best posting time" for every client×platform currently set to Auto mode

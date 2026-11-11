@@ -25,6 +25,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
 ini_set('memory_limit', '512M');
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/auth-lib.php';
+if (!authResolve()) { http_response_code(401); header('Content-Type: application/json'); echo json_encode(['error' => 'Not signed in']); exit; } // needs a login session (or the app key until stage 3)
 $autoload = __DIR__ . '/vendor/autoload.php';
 if (file_exists($autoload)) require_once $autoload;
 

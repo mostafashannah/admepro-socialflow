@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 /**
  * trello-lib.php — shared Trello REST helpers used by trello-lists.php
  * (setup-time board/list lookup), trello-sync.php (push SocialFlow stage

@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // READ-ONLY diagnostic — the daily WhatsApp report told Menna "Bino hasn't
 // posted in 20-25 days" but the user says Bino actually posted yesterday.
 // The cadence check in mai-daily-report-cron.php reads MAX(published_at)

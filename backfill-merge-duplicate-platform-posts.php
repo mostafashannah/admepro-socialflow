@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // One-off: merges posts that got split into one row per platform by the
 // old "Ready Content" flow (see AddPostModal's ready branch / addReadyContent
 // in app.jsx) back into a single row with a combined platforms array —

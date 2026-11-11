@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // One-off: copies each user_profiles.bio into the matching team_members.title
 // wherever the team member's title is still blank. Needed because Bio/Title
 // on the Account page used to only save to user_profiles, never to

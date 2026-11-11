@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 /**
  * tiktok-refresh-cron.php — keeps connected TikTok integrations' access
  * tokens alive. TikTok access tokens expire in ~24h (vs Meta/LinkedIn's

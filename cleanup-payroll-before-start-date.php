@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // One-off: deletes any still-PENDING payroll_runs row generated for a
 // month before the team member's real start_date — the payroll cron used
 // to have no start_date field at all, so it generated a full month's pay

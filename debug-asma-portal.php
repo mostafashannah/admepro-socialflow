@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // READ-ONLY diagnostic — checks Asma's client_users row against the real
 // SLVR client record and contact_reports, to see why her portal shows no
 // contact reports (the portal filters purely by client_id + client_visible_at,

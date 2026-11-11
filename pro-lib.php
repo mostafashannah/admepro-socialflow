@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // Shared "Pro" assistant logic used by wa-webhook.php and CLI test scripts.
 require_once __DIR__ . '/recruitment-mail-lib.php';
 require_once __DIR__ . '/ai-outage-notify.php';

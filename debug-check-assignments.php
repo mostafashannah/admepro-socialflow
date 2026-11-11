@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // READ-ONLY diagnostic — run once, then delete. Shows the raw
 // assigned_to_extra value for a post matching the given title, plus the
 // exact team_members rows it resolves against, to see why an assignee's

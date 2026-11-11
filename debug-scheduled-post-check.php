@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // READ-ONLY diagnostic — shows every 'scheduled' stage post for Arabia
 // Uniform (or all clients if none matches), plus that client's
 // auto_publish_enabled setting, to see why auto-publish.php found 0

@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // ================================================================
 // WhatsApp Daily Report — settings + report builder.
 // Settings live in daily_report_settings (edited in Settings > Daily Report).

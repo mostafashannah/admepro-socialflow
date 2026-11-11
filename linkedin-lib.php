@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // ================================================================
 // SocialFlow — shared LinkedIn API publish logic.
 // Used by both social-publish.php (manual "Publish Now" button) and

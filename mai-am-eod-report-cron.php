@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 /**
  * mai-am-eod-report-cron.php — kicks off Mai's end-of-day WhatsApp
  * check-in with every active account manager. Run once around 19:00.

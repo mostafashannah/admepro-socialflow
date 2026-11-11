@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // Read-only — checks what the daily-report cron's cadence query actually
 // sees for SLVR Communities and Bino, since both were reported as flagged
 // "behind schedule" in Mai's daily WhatsApp report despite the user saying

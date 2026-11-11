@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // READ-ONLY diagnostic — same as debug-sherif-today.php but re-run now to
 // see current stage/due_date/completed_at state, specifically checking
 // whether anything is actually in design_review and whether due_date lines

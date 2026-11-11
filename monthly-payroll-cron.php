@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // ================================================================
 // Runs once, scheduled for the 5th of every month (server crontab —
 // see crontab -e: `5 6 5 * * php /var/www/socialflow/monthly-payroll-cron.php`).

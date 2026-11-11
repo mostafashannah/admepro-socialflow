@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // READ-ONLY diagnostic — any integration row created in the last few
 // hours, regardless of client_id/app_key, to find where the new SLVR
 // Instagram link attempt actually landed (wrong client_id? wrong app_key?

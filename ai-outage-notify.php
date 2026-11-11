@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // Shared by pro-lib.php, ai-proxy.php, and openai-proxy.php — WhatsApps
 // every active admin the moment an AI provider call fails for a billing/
 // quota reason ("credit balance too low", "insufficient_quota", etc.), and

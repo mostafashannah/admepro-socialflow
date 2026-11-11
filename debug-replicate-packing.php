@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // READ-ONLY diagnostic — replicates generateDailySchedule's packing logic
 // in PHP using the EXACT order posts come back in from the same query the
 // app uses on load (qe("Post",{},"-created_at")), to see whether the

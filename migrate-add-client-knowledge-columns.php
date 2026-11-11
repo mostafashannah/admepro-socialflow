@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // Migration — client_knowledge is missing 4 columns the app has always
 // tried to write to (context_file, dos, donts, target_audience): the
 // running "deep notes" log from every doc upload, and the ChatGPT-import-

@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // Read-only — checks whether the Freepik (750 EGP) / Claude (1200 EGP)
 // WhatsApp expenses reported today actually landed twice in the DB, or
 // whether the add_transaction dedup guard (same type+amount+created_by

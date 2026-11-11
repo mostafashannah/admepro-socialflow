@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // One-off — re-runs AI analysis for any client_documents row still marked
 // analyzed=0, now that max_tokens is raised (the same truncation bug that
 // hit the manual Generate button and daily cron also silently broke the

@@ -17,6 +17,8 @@ if($_SERVER['REQUEST_METHOD']==='OPTIONS'){http_response_code(200);exit;}
 if($_SERVER['REQUEST_METHOD']!=='POST'){http_response_code(405);echo json_encode(["error"=>"Method not allowed"]);exit;}
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/auth-lib.php';
+if (!authResolve()) { http_response_code(401); header('Content-Type: application/json'); echo json_encode(['error' => 'Not signed in']); exit; } // needs a login session (or the app key until stage 3)
 require_once __DIR__ . '/ai-outage-notify.php';
 $OPENAI_KEY = defined('OPENAI_API_KEY') ? OPENAI_API_KEY : '';
 if(!$OPENAI_KEY){ http_response_code(500); echo json_encode(["error"=>"OPENAI_API_KEY is not configured"]); exit; }

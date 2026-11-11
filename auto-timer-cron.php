@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 /**
  * auto-timer-cron.php — starts each person's task timer by itself when the task's timeline slot begins,
  * and pauses it when the slot ends (or the task moves on). Nobody has to press Start or even have the app open.

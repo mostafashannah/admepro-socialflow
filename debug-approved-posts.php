@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // READ-ONLY diagnostic — lists every post currently sitting in "approved"
 // stage, showing whether it has a platform set (real Post, should move on
 // to Scheduled) or not (Task, correctly stops here). Helps confirm whether

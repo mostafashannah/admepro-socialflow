@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 /**
  * monthly-leave-reset-cron.php — WFH days (2/month) and Personal Leave
  * hours (4/month) are both non-shiftable: whatever's unused at month-end

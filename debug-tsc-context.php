@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // READ-ONLY diagnostic — confirming TSC's client_knowledge.context_file
 // actually contains the uploaded ChatGPT chat's extracted summary, and
 // that the client_documents row is correctly linked, before telling the

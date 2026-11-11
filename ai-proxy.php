@@ -17,6 +17,8 @@ if($_SERVER['REQUEST_METHOD']!=='POST'){http_response_code(405);echo json_encode
 set_time_limit(300);
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/auth-lib.php';
+if (!authResolve()) { http_response_code(401); header('Content-Type: application/json'); echo json_encode(['error' => 'Not signed in']); exit; } // needs a login session (or the app key until stage 3)
 require_once __DIR__ . '/ai-outage-notify.php';
 $ANTHROPIC_KEY = ANTHROPIC_API_KEY;
 

@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // One-off — re-runs TSC's Knowledge Profile analysis using the new, richer
 // tone-of-voice prompt (formality, sentence rhythm, language mix, emoji
 // habits, phrases used/avoided, real example lines) instead of the old

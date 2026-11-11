@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // One-off — removes the confirmed duplicate expense row created by the
 // force=true loophole (see pro-lib.php add_transaction fix): two identical
 // "750 EGP out — Freepik subscription" rows 32 seconds apart

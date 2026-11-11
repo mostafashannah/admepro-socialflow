@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // One-off correction — client_documents.analyzed was only ever set to true
 // in local browser state (never persisted, due to the id-mismatch bug just
 // fixed in code), so every already-uploaded doc still shows analyzed=0 in

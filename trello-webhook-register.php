@@ -9,6 +9,9 @@
  */
 
 require_once __DIR__ . '/trello-lib.php';
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/auth-lib.php';
+if (!authResolve()) { http_response_code(401); header('Content-Type: application/json'); echo json_encode(['error' => 'Not signed in']); exit; } // needs a login session (or the app key until stage 3)
 header("Content-Type: application/json");
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST, OPTIONS");

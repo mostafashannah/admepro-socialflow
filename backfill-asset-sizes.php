@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // One-off CLI: fills assets.file_size for older uploads that never recorded
 // it (they counted as 0 bytes toward the Client Assets storage bar).
 // Usage: php backfill-asset-sizes.php

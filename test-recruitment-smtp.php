@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // One-off diagnostic — run via `php test-recruitment-smtp.php you@example.com`
 // then delete this file. Prints the SMTP settings being used (password
 // masked) and the exact PHPMailer error if the send fails.

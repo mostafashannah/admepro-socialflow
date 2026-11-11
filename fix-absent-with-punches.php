@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // Finds attendance rows marked 'absent' that nevertheless have a clock-in, and (with --apply)
 // corrects them to 'present' and refunds any vacation days that were deducted for them as
 // an "unapproved absence". Dry run by default — prints what it WOULD change.

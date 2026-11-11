@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // READ-ONLY diagnostic — the general_info extraction only reads the first
 // 100,000 characters of the 682,288-character "Chatgpt 1" document. The
 // user says a full itemized branch list exists somewhere in the chat.

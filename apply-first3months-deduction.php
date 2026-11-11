@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // Usage: php apply-first3months-deduction.php "Malak" [apply]
 // Adds the first-3-months absence + approved-leave deduction (no leave credit
 // in the first 3 months) to that member's PENDING payroll run(s). Dry run

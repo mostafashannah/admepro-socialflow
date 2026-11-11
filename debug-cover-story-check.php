@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // READ-ONLY diagnostic — lists Instagram reels missing a carousel_cover,
 // and any post with design_assets that should carry a story-tagged item
 // but doesn't, to figure out what (if anything) actually needs backfilling

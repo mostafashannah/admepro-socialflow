@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // One-off correction — posts genuinely in stage='published' but with a
 // NULL published_at (found via debug-bino-cadence.php: "Spider Man Trend",
 // "Gamma Innovation Post", "brand" for Bino, likely others across other

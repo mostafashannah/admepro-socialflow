@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 /**
  * mai-director-report-cron.php — Mai's ONE daily check-in with the Account Director(s),
  * at 19:30 Cairo time. Different from the account managers' morning/end-of-day

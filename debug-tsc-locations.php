@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // READ-ONLY diagnostic — checking whether "branch"/"location"/city names
 // actually appear anywhere in TSC's stored document content, to determine
 // whether Pro's search_client_document tool has real data to find (a

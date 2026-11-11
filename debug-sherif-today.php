@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // READ-ONLY diagnostic — everything assigned to Sherif due/scheduled today,
 // with real completion timestamps (content_completed_at/design_completed_at)
 // so we can see what's actually finished vs still pending before writing

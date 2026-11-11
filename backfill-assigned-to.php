@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // One-off: design_assigned_to was missing from SB_SCHEMA.posts (the
 // client-side field whitelist ue() sanitizes every save against), so it
 // was silently stripped on every save and never actually reached the

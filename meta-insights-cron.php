@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 /**
  * meta-insights-cron.php — daily cron that snapshots Page/IG/Ads metrics
  * for every active Facebook/Instagram integration, so the "Meta Insights"

@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // READ-ONLY diagnostic — checking whether the capacity-overflow rollover
 // (tasks that don't fit in today's working hours get pushed to the next
 // working day) over-shifted some tasks that should have still fit today,

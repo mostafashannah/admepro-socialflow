@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // One-off: recalculates base_salary/vacation_overage_days/net_amount on
 // already-generated PENDING payroll_runs rows using the same day-by-day
 // proration the cron now uses (mid-month salary raises, start_date,

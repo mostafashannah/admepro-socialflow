@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // One-off cleanup: "vacation days must count from the joined date" — before
 // the start/termination-date guards existed in attendance-import.php, the
 // company-wide reconciliation pass created real 'absent' rows for EVERY

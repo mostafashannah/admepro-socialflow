@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // Backfill — same fix as reanalyze-tsc-doc.php, generalized to every
 // client that has ever uploaded a document. Re-runs the AI analysis on
 // each client's most recent document (or up to 3, matching the app's own

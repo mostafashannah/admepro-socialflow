@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // ================================================================
 // Runs once daily (server crontab — e.g. `10 0 * * * php
 // /var/www/socialflow/terminate-members-cron.php`).

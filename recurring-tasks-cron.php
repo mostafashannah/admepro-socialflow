@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 /**
  * recurring-tasks-cron.php — creates today's task for every active repeating task (Timeline > Repeated Task).
  * Idempotent: each template is generated at most once per day (last_generated_date). Run every 10 minutes:

@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 /**
  * wa-reminders-cron.php — sends any due WhatsApp reminders set via Pro's
  * set_reminder tool (e.g. someone replies "remind me to call her at 12pm"

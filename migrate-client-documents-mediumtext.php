@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // Migration — client_documents.content is a plain TEXT column (64KB cap),
 // which can't hold a real 500K+ character ChatGPT export. Upgrading to
 // MEDIUMTEXT (16MB cap) so the upcoming fix to stop truncating uploads at

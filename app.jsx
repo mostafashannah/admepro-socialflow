@@ -160,6 +160,7 @@ const uploadToStorage = async (rawFile, folder="uploads") => {
         xhr.open("POST", `${SB_STORAGE_URL}/object/${SB_BUCKET}/${path}`);
         arm();
         xhr.setRequestHeader("apikey", SB_KEY);
+        { const tok = window.__sfGuestToken || sfSession.get(); if(tok) xhr.setRequestHeader("X-SF-Session", tok); }
         xhr.setRequestHeader("Authorization", `Bearer ${SB_KEY}`);
         xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
         xhr.setRequestHeader("x-upsert", "true");
@@ -1341,6 +1342,28 @@ const sfSession = {
   get(){ try{ return localStorage.getItem("sf_session")||""; }catch(e){ return ""; } },
   set(t){ try{ t ? localStorage.setItem("sf_session", t) : localStorage.removeItem("sf_session"); }catch(e){} },
 };
+// Every call this app makes to its own server (.php endpoints, /api, /storage) carries the signed-in
+// session (and, until stage 3, the app key) automatically — so no individual fetch can forget it.
+(function(){
+  if (typeof window === "undefined" || !window.fetch || window.__sfFetchWrapped) return;
+  window.__sfFetchWrapped = true;
+  const orig = window.fetch.bind(window);
+  window.fetch = function(input, init) {
+    try {
+      const url = typeof input === "string" ? input : (input && input.url) || "";
+      const u = new URL(url, window.location.href);
+      if (u.origin === window.location.origin && (/\.php$/.test(u.pathname) || u.pathname.startsWith("/api/") || u.pathname.startsWith("/storage/"))) {
+        init = Object.assign({}, init || {});
+        const h = new Headers(init.headers || (typeof input !== "string" && input.headers) || {});
+        const tok = (window.__sfGuestToken || sfSession.get());
+        if (tok && !h.has("X-SF-Session")) h.set("X-SF-Session", tok);
+        if (!h.has("apikey")) h.set("apikey", SB_KEY);
+        init.headers = h;
+      }
+    } catch(e) {}
+    return orig(input, init);
+  };
+})();
 // Signs in on the server. Returns {ok:true,user} | {ok:false,error} | {unavailable:true} when the
 // sign-in service can't be reached (older server) so the caller can fall back to the legacy check.
 async function serverLogin(email, password, mode) {

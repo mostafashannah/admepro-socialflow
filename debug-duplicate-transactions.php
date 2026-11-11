@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // READ-ONLY diagnostic — lists today's expenses grouped by (type, amount)
 // where more than one row exists, to find the real duplicates created by
 // the false-success-claim bug in askPro (see pro-lib.php's $asksQuestion

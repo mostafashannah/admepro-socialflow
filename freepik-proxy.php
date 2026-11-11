@@ -14,6 +14,8 @@ header("Content-Type: application/json");
 if($_SERVER['REQUEST_METHOD']==='OPTIONS'){http_response_code(200);exit;}
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/auth-lib.php';
+if (!authResolve()) { http_response_code(401); header('Content-Type: application/json'); echo json_encode(['error' => 'Not signed in']); exit; } // needs a login session (or the app key until stage 3)
 $FREEPIK_KEY = defined('FREEPIK_API_KEY') ? FREEPIK_API_KEY : '';
 if(!$FREEPIK_KEY){ http_response_code(500); echo json_encode(["error"=>"FREEPIK_API_KEY is not configured"]); exit; }
 

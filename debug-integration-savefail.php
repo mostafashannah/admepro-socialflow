@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; } // server-only script: never runnable from a browser
 // READ-ONLY diagnostic — ce() (the generic Supabase-style insert helper)
 // logs an ActivityLog row named "Save Failed: <Entity>" whenever a POST
 // comes back non-2xx, with the real HTTP status + response body in the
