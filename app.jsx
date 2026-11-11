@@ -7574,10 +7574,9 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
           )}
           <DelayBadge post={post} big/>
           <LiveTimerBadge post={post} big/>
-          {currentUser?.email===post.assigned_to ? (
+          {/* Stage history strip removed — it only repeated the "Moved to …" entries already in the comments log. */}
+          {currentUser?.email===post.assigned_to && (
             <TimeTracker postId={post.id} userEmail={currentUser?.email} timeEntries={timeEntries||[]} onStart={onStartTimer} onPause={onPauseTimer} onResume={onResumeTimer}/>
-          ) : (
-            <StageTimeline post={post} comments={comments}/>
           )}
         </div>
 
