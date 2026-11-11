@@ -22280,13 +22280,85 @@ function AccountManagerMaiReportsTab({member, onUpdateTeamMember}) {
   );
 }
 
-function PwResetBox({member}) {
+function ChangePasswordHost() {
+  const [open,setOpen]=useState(()=>{try{return new URLSearchParams(location.search).has("change_password");}catch(e){return false;}});
+  const [cur,setCur]=useState(""); const [nw,setNw]=useState(""); const [nw2,setNw2]=useState("");
+  const [busy,setBusy]=useState(false); const [err,setErr]=useState(""); const [done,setDone]=useState(false);
+  useEffect(()=>{const fn=()=>{setOpen(true);setDone(false);setErr("");};window.addEventListener("sf-change-password",fn);return()=>window.removeEventListener("sf-change-password",fn);},[]);
+  const close=()=>{setOpen(false);setCur("");setNw("");setNw2("");setErr("");
+    try{const u=new URL(location.href);if(u.searchParams.has("change_password")){u.searchParams.delete("change_password");history.replaceState(null,"",u.pathname+u.search+u.hash);}}catch(e){}};
+  const save=async()=>{
+    if(nw.length<8){setErr("New password must be at least 8 characters.");return;}
+    if(nw!==nw2){setErr("The two new passwords don't match.");return;}
+    setBusy(true);setErr("");
+    try{
+      const r=await fetch(window.location.origin+"/auth.php?action=change_password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({current:cur,new:nw})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok) setErr(d.error||"Couldn't change it, try again."); else setDone(true);
+    }catch(e){setErr("Couldn't reach the server, try again.");}
+    setBusy(false);
+  };
+  if(!open) return null;
+  const inp={width:"100%",padding:"10px 12px",borderRadius:9,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:14,boxSizing:"border-box"};
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:100000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:"var(--surface)",borderRadius:16,padding:24,width:"100%",maxWidth:400,border:"1px solid var(--border)"}}>
+        <h3 style={{fontWeight:800,fontSize:17,color:"var(--text)",marginBottom:14}}>Change your password</h3>
+        {done ? (<>
+          <p style={{fontSize:14,color:"#16a34a",marginBottom:18}}>Done — your new password is saved. Use it next time you sign in.</p>
+          <div style={{textAlign:"right"}}><button onClick={close} style={{background:"var(--accent)",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",fontWeight:700,cursor:"pointer"}}>Close</button></div>
+        </>) : (<>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <input type="password" autoComplete="current-password" placeholder="Current password (the one you received)" value={cur} onChange={e=>setCur(e.target.value)} style={inp}/>
+            <input type="password" autoComplete="new-password" placeholder="New password (8+ characters)" value={nw} onChange={e=>setNw(e.target.value)} style={inp}/>
+            <input type="password" autoComplete="new-password" placeholder="Repeat new password" value={nw2} onChange={e=>setNw2(e.target.value)} style={inp}/>
+          </div>
+          {err&&<p style={{fontSize:12,color:"#dc2626",marginTop:10}}>{err}</p>}
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:18}}>
+            <button onClick={close} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"9px 16px",cursor:"pointer",color:"var(--text)",fontWeight:600}}>Cancel</button>
+            <button onClick={save} disabled={busy||!cur||!nw} style={{background:"var(--accent)",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",fontWeight:700,cursor:"pointer",opacity:busy||!cur||!nw?0.6:1}}>{busy?"Saving…":"Save"}</button>
+          </div>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
+function PwResetBox({member, onClose}) {
   const [pw,setPw]=useState(""); const [busy,setBusy]=useState(false); const [msg,setMsg]=useState(null);
+  useEffect(()=>{
+    const fn=e=>{ if(!(e.target.closest&&e.target.closest('[data-pwwrap]'))) onClose&&onClose(); };
+    const key=e=>{ if(e.key==="Escape") onClose&&onClose(); };
+    document.addEventListener("mousedown",fn); document.addEventListener("touchstart",fn); document.addEventListener("keydown",key);
+    return ()=>{document.removeEventListener("mousedown",fn);document.removeEventListener("touchstart",fn);document.removeEventListener("keydown",key);};
+  },[]); // eslint-disable-line react-hooks/exhaustive-deps
   const gen=()=>{const c="ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";let s="";const a=new Uint32Array(10);crypto.getRandomValues(a);a.forEach(n=>s+=c[n%c.length]);setPw(s);setMsg(null);};
   const save=async()=>{
     if(pw.length<6){setMsg({e:true,t:"At least 6 characters"});return;}
     setBusy(true);setMsg(null);
-    try{await ue("TeamMember",member.id,{password:pw});setMsg({e:false,t:"Saved — share it with "+(member.name||"them").split(" ")[0]});}
+    try{
+      await ue("TeamMember",member.id,{password:pw});
+      let mailed=false;
+      if(member.email){
+        const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+        const link=window.location.origin+"/?change_password=1";
+        const first=esc((member.name||"").split(" ")[0]||"there");
+        const html=`<div style="font-family:'Montserrat',Arial,sans-serif;max-width:500px;margin:0 auto;padding:32px;background:#fff;border-radius:12px">
+          <img src="${window.location.origin}/favicon.svg" width="44" height="44" style="border-radius:10px;display:block;margin:0 auto 20px"/>
+          <h2 style="text-align:center;font-size:20px;font-weight:800;color:#111827;margin-bottom:8px">Your new SocialFlow password</h2>
+          <p style="color:#4b5563;font-size:14px;line-height:1.6;text-align:center">Hi ${first}, your SocialFlow password has been reset. Sign in with your email and this password:</p>
+          <div style="margin:24px auto;text-align:center;background:#f9fafb;border:2px dashed #d1d5db;border-radius:10px;padding:18px 24px">
+            <span style="font-size:24px;font-weight:800;letter-spacing:2px;color:#d90b2c;font-family:monospace">${esc(pw)}</span>
+          </div>
+          <p style="color:#4b5563;font-size:14px;line-height:1.6;text-align:center">We recommend choosing your own password right away:</p>
+          <div style="text-align:center;margin:18px 0 8px"><a href="${link}" style="display:inline-block;background:#d90b2c;color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 26px;border-radius:9px">Sign in &amp; change password</a></div>
+          <p style="color:#9ca3af;font-size:12px;text-align:center;line-height:1.6;margin-top:18px">You can also change it anytime from your name menu → Change Password. If you didn't expect this, tell your manager.</p>
+        </div>`;
+        try{await sendEmail(member.email,"Your new SocialFlow password",html,"SocialFlow");mailed=true;}catch(e){}
+      }
+      const first=(member.name||"them").split(" ")[0];
+      setMsg({e:!mailed&&!!member.email,t:mailed?"Saved & emailed to "+member.email:"Saved — email failed, share it with "+first+" directly"});
+    }
     catch(e){setMsg({e:true,t:"Couldn't save, try again"});}
     setBusy(false);
   };
@@ -22889,7 +22961,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
             </button>
           )}
           {canEdit&&(
-            <div style={{position:"relative"}}>
+            <div data-pwwrap="1" style={{position:"relative"}}>
               <button onClick={()=>setShowPassword(p=>!p)} title="Reset password" style={{width:32,height:32,borderRadius:8,border:"1px solid var(--border2)",background:showPassword?"var(--accent)":"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
                 <Ico d={Icons.key} size={14} stroke={showPassword?"#fff":"var(--text2)"}/>
               </button>
@@ -22901,7 +22973,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                       <button onClick={()=>{try{navigator.clipboard.writeText(member.password);}catch(e){}}} title="Copy" style={{padding:4}}><Ico d={Icons.copy2} size={13} stroke="var(--text3)"/></button>
                     </>
                   ) : (
-                    <PwResetBox member={member}/>
+                    <PwResetBox member={member} onClose={()=>setShowPassword(false)}/>
                   )}
                 </div>
               )}
@@ -34598,6 +34670,7 @@ function UserMenu({currentUser, userProfile, dark, setDark, onNavigate, onLogout
 
   const menuItems = [
     {label:"My Account", ico:Icons.person, action:()=>{ setOpen(false); onNavigate("account"); }},
+    {label:"Change Password", ico:Icons.key, action:()=>{ setOpen(false); window.dispatchEvent(new Event("sf-change-password")); }},
     ...(isAdmin?[{label:"Settings", ico:Icons.settings, action:()=>{ setOpen(false); onNavigate("settings"); }}]:[]),
     {divider:true},
     {label:isDarkMode?" Light Mode":" Dark Mode", ico:isDarkMode?Icons.sun:Icons.moon, action:handleToggleDark},
@@ -54383,6 +54456,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
 
   return (
     <><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/>
+    {!impersonatorUser&&<ChangePasswordHost/>}
     {impersonatorUser&&(
       <div style={{position:"fixed",top:0,left:0,right:0,zIndex:99999,background:"#111827",color:"#fff",padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontSize:13,fontWeight:600,minHeight:44,boxSizing:"border-box"}}>
         <span>Viewing as <strong>{currentUser?.name}</strong> ({ROLES[currentUser?.role]?.label||currentUser?.role})</span>

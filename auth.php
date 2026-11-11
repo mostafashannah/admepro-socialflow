@@ -32,6 +32,24 @@ try {
         authOut(200, ['user_type' => $s['user_type'], 'user_id' => $s['user_id'], 'email' => $s['email'], 'role' => $s['role'], 'client_id' => $s['client_id']]);
     }
 
+    if ($action === 'change_password' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        // A signed-in team member / client user changes their own password (needs the current one).
+        [$tok] = authCredentials();
+        $s = $tok ? authFindSession($tok) : null;
+        if (!$s || !in_array($s['user_type'], ['team', 'client'], true)) authOut(401, ['error' => 'Not signed in']);
+        $in = json_decode(file_get_contents('php://input'), true) ?: [];
+        $cur = (string)($in['current'] ?? ''); $new = (string)($in['new'] ?? '');
+        if (strlen($new) < 8) authOut(400, ['error' => 'New password must be at least 8 characters.']);
+        $table = $s['user_type'] === 'team' ? 'team_members' : 'client_users';
+        if ($table === 'client_users' && $s['user_id'] === $s['client_id']) authOut(400, ['error' => 'Ask your account manager to change this password.']);
+        $st = $pdo->prepare("SELECT * FROM `$table` WHERE id = ? LIMIT 1");
+        $st->execute([$s['user_id']]);
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$row || !authPasswordOk($row, $cur)) authOut(403, ['error' => 'Current password is incorrect.']);
+        authStoreHash($pdo, $table, $s['user_id'], $new);
+        authOut(200, ['ok' => true]);
+    }
+
     if ($action === 'logout') {
         [$tok] = authCredentials();
         if ($tok) authRevokeSession($tok);
