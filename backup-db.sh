@@ -43,13 +43,20 @@ mv "$DB_FILE.part" "$DB_FILE"; chmod 600 "$DB_FILE"
 
 # Uploaded files (STORAGE_ROOT from config.php).
 STORE="$(read_const STORAGE_ROOT)"
+# ONE mirror copy, updated nightly with only new/changed files (a full archive
+# every night would use the size of all uploads x 14). Files deleted in the app
+# are kept in the mirror, so an accidental delete can still be recovered.
 if [ -n "$STORE" ] && [ -d "$STORE" ]; then
-  tar -czf "$DEST/files-$STAMP.tar.gz.part" -C "$(dirname "$STORE")" "$(basename "$STORE")" && mv "$DEST/files-$STAMP.tar.gz.part" "$DEST/files-$STAMP.tar.gz"
-  chmod 600 "$DEST/files-$STAMP.tar.gz"
+  mkdir -p "$DEST/files"; chmod 700 "$DEST/files"
+  if command -v rsync >/dev/null; then
+    rsync -a "$STORE/" "$DEST/files/"
+  else
+    cp -a -u "$STORE/." "$DEST/files/"
+  fi
 fi
 
 # Keep the last N days.
 find "$DEST" -maxdepth 1 -type f \( -name 'db-*.sql.gz' -o -name 'files-*.tar.gz' \) -mtime +"$KEEP_DAYS" -delete
 find "$DEST" -maxdepth 1 -name '*.part' -mmin +120 -delete
 
-echo "$(date) OK: $(du -h "$DB_FILE" | cut -f1) database backup -> $DB_FILE"
+echo "$(date) OK: $(du -h "$DB_FILE" | cut -f1) database backup -> $DB_FILE; files mirror -> $DEST/files"
