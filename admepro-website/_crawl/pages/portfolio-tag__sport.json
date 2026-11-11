@@ -1,0 +1,85 @@
+{
+ "title": "Sport - admepro",
+ "desc": "",
+ "lang": "en-US",
+ "nav": [
+  [
+   "",
+   "https://admepro.com/"
+  ],
+  [
+   "Home",
+   "https://admepro.com/"
+  ],
+  [
+   "About",
+   "https://admepro.com/about/"
+  ],
+  [
+   "Portfolio",
+   "https://admepro.com/portfolio/"
+  ],
+  [
+   "Contact",
+   "https://admepro.com/contact-us/"
+  ],
+  [
+   "admepro",
+   "http://admepro.com"
+  ],
+  [
+   "Vm.",
+   "https://vimeo.com/admepro"
+  ],
+  [
+   "Ig.",
+   "https://www.instagram.com/admeproagency"
+  ],
+  [
+   "Fb.",
+   "https://facebook.com/admepro"
+  ]
+ ],
+ "footer": [
+  [
+   "",
+   "https://admepro.com/"
+  ],
+  [
+   "hello@admepro.com",
+   "mailto:hello@admepro.com"
+  ],
+  [
+   "See open positions",
+   "https://socialflow.admepro.com/careers"
+  ],
+  [
+   "Facebook",
+   "https://facebook.com/admepro"
+  ],
+  [
+   "Instagram",
+   "https://instagram.com/admeproagency"
+  ],
+  [
+   "Vimeo",
+   "https://vimeo.com/admepro"
+  ],
+  [
+   "Scroll to top",
+   "#"
+  ],
+  [
+   "admepro",
+   "http://admepro.com"
+  ]
+ ],
+ "content": [
+  "[IMG https://admepro.com/wp-content/uploads/2024/11/2J9A5352-768x1090.jpg alt='Golds Gym']",
+  "[BTN  -> None]",
+  "H4: Golds Gym",
+  "P: Gold’s Gym Elite stands as a premium fitness destination in Sheikh Zayed, offering state-of-the-art facilities and expert training programs that embody the legendary Gold’s…",
+  "LI: 1",
+  "[BTN 1 -> https://admepro.com/portfolio-tag/sport/]"
+ ]
+}

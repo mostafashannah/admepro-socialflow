@@ -1,0 +1,1099 @@
+{
+ "home": {
+  "body": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16.4px",
+   "weight": "400",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgb(255, 255, 255)",
+   "lh": "26.24px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "h1": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "68.8px",
+   "weight": "600",
+   "color": "rgb(17, 16, 19)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "68.8px",
+   "ls": "-3.096px",
+   "tt": "none"
+  },
+  "h2": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "14px",
+   "weight": "600",
+   "color": "rgba(2, 1, 1, 0.48)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "14px",
+   "ls": "-0.56px",
+   "tt": "none"
+  },
+  "h3": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "14px",
+   "weight": "600",
+   "color": "rgba(2, 1, 1, 0.47)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "14px",
+   "ls": "-0.49px",
+   "tt": "none"
+  },
+  "h6": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "25px",
+   "weight": "900",
+   "color": "rgb(17, 16, 19)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "35px",
+   "ls": "-0.5px",
+   "tt": "none"
+  },
+  "p": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16px",
+   "weight": "500",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "25.6px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "btn": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "15.58px",
+   "weight": "600",
+   "color": "rgb(255, 255, 255)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "24.928px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "header": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16.4px",
+   "weight": "400",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "26.24px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "colors": [
+   [
+    "color(srgb 0.0853333 0.0814902 0.0930196)",
+    850
+   ],
+   [
+    "rgb(255, 255, 255)",
+    191
+   ],
+   [
+    "rgb(125, 124, 128)",
+    27
+   ],
+   [
+    "rgb(17, 16, 19)",
+    23
+   ],
+   [
+    "rgba(244, 243, 241, 0.85)",
+    19
+   ],
+   [
+    "rgba(255, 255, 255, 0.75)",
+    16
+   ],
+   [
+    "bg color(srgb 0.533333 0.531373 0.537255 / 0.12)",
+    10
+   ],
+   [
+    "rgb(242, 239, 228)",
+    9
+   ],
+   [
+    "bg color(srgb 0.533333 0.531373 0.537255 / 0.08)",
+    7
+   ],
+   [
+    "rgba(242, 239, 228, 0.65)",
+    7
+   ],
+   [
+    "rgba(16, 16, 20, 0.65)",
+    6
+   ],
+   [
+    "bg color(srgb 0.533333 0.531373 0.537255 / 0.1)",
+    6
+   ]
+  ],
+  "fonts": [
+   [
+    "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+    990
+   ],
+   [
+    "\"DM Sans\", sans-serif",
+    155
+   ],
+   [
+    "Arial",
+    30
+   ],
+   [
+    "\"Font Awesome 6 Brands\"",
+    3
+   ],
+   [
+    "Ionicons",
+    2
+   ]
+  ],
+  "height": 9068,
+  "anim": [
+   "icon-buttons-animation",
+   "elementor-widget-ohio_marquee",
+   "marquee-line",
+   "marquee-line-stage",
+   "marquee-line-el",
+   "animated",
+   "slider-holder",
+   "slider ohio-slider clb-slider",
+   "clb-slider-outer-stage",
+   "clb-slider-stage",
+   "slider-wrap clb-slider-item",
+   "clb-slider-nav-btn",
+   "clb-slider-count",
+   "clb-slider-count-current",
+   "clb-slider-count-number",
+   "clb-slider-pagination-index",
+   "clb-slider-count-total",
+   "-animation"
+  ]
+ },
+ "about": {
+  "body": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16.4px",
+   "weight": "400",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgb(255, 255, 255)",
+   "lh": "26.24px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "h1": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "200px",
+   "weight": "600",
+   "color": "rgb(17, 16, 19)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "100px",
+   "ls": "-5px",
+   "tt": "none"
+  },
+  "h2": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "48.96px",
+   "weight": "600",
+   "color": "rgb(17, 16, 19)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "51.408px",
+   "ls": "-1.9584px",
+   "tt": "none"
+  },
+  "h3": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "16.4px",
+   "weight": "600",
+   "color": "rgb(17, 16, 19)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "22.96px",
+   "ls": "-0.328px",
+   "tt": "none"
+  },
+  "h6": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "18px",
+   "weight": "600",
+   "color": "rgb(17, 16, 19)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "25.2px",
+   "ls": "-0.25px",
+   "tt": "none"
+  },
+  "p": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16px",
+   "weight": "500",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "25.6px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "btn": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "15.58px",
+   "weight": "600",
+   "color": "rgb(255, 255, 255)",
+   "bg": "rgb(217, 10, 44)",
+   "lh": "24.928px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "header": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16.4px",
+   "weight": "400",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "26.24px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "colors": [
+   [
+    "color(srgb 0.0853333 0.0814902 0.0930196)",
+    604
+   ],
+   [
+    "rgb(255, 255, 255)",
+    37
+   ],
+   [
+    "rgb(17, 16, 19)",
+    31
+   ],
+   [
+    "bg color(srgb 0.533333 0.531373 0.537255 / 0.08)",
+    5
+   ],
+   [
+    "bg rgb(255, 255, 255)",
+    4
+   ],
+   [
+    "color(srgb 0.34144 0.338673 0.346974)",
+    4
+   ],
+   [
+    "bg color(srgb 0.0666667 0.0627451 0.0745098 / 0.99)",
+    3
+   ],
+   [
+    "bg rgba(150, 144, 162, 0.06)",
+    3
+   ],
+   [
+    "bg rgb(217, 10, 44)",
+    2
+   ],
+   [
+    "bg color(srgb 0.533333 0.531373 0.537255 / 0.12)",
+    1
+   ],
+   [
+    "bg color(srgb 0.533333 0.531373 0.537255 / 0.16)",
+    1
+   ],
+   [
+    "bg color(srgb 0.533333 0.531373 0.537255 / 0.068)",
+    1
+   ]
+  ],
+  "fonts": [
+   [
+    "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+    587
+   ],
+   [
+    "\"DM Sans\", sans-serif",
+    68
+   ],
+   [
+    "Arial",
+    18
+   ],
+   [
+    "\"Font Awesome 6 Brands\"",
+    3
+   ]
+  ],
+  "height": 4851,
+  "anim": [
+   "icon-buttons-animation",
+   "animated"
+  ]
+ },
+ "portfolio": {
+  "body": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16.4px",
+   "weight": "400",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgb(255, 255, 255)",
+   "lh": "26.24px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "h1": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "68.8px",
+   "weight": "600",
+   "color": "rgb(17, 16, 19)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "68.8px",
+   "ls": "-3.096px",
+   "tt": "none"
+  },
+  "h2": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "48.96px",
+   "weight": "600",
+   "color": "rgb(17, 16, 19)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "48.96px",
+   "ls": "-1.9584px",
+   "tt": "none"
+  },
+  "h3": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "16.4px",
+   "weight": "600",
+   "color": "rgb(17, 16, 19)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "22.96px",
+   "ls": "-0.328px",
+   "tt": "none"
+  },
+  "h6": null,
+  "p": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16px",
+   "weight": "500",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "25.6px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "btn": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "15.58px",
+   "weight": "600",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "color(srgb 0.533333 0.531373 0.537255 / 0.08)",
+   "lh": "24.928px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "header": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16.4px",
+   "weight": "400",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "26.24px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "colors": [
+   [
+    "color(srgb 0.0853333 0.0814902 0.0930196)",
+    305
+   ],
+   [
+    "rgb(255, 255, 255)",
+    41
+   ],
+   [
+    "rgb(17, 16, 19)",
+    16
+   ],
+   [
+    "bg color(srgb 0.533333 0.531373 0.537255 / 0.12)",
+    5
+   ],
+   [
+    "bg color(srgb 0.533333 0.531373 0.537255 / 0.08)",
+    4
+   ],
+   [
+    "color(srgb 0.34144 0.338673 0.346974)",
+    4
+   ],
+   [
+    "bg rgb(255, 255, 255)",
+    3
+   ],
+   [
+    "bg color(srgb 0.0666667 0.0627451 0.0745098 / 0.99)",
+    3
+   ],
+   [
+    "bg rgb(217, 10, 44)",
+    2
+   ],
+   [
+    "bg color(srgb 0.0853333 0.0814902 0.0930196)",
+    2
+   ],
+   [
+    "bg rgb(17, 16, 19)",
+    1
+   ],
+   [
+    "rgb(130, 131, 140)",
+    1
+   ]
+  ],
+  "fonts": [
+   [
+    "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+    303
+   ],
+   [
+    "\"DM Sans\", sans-serif",
+    46
+   ],
+   [
+    "Arial",
+    15
+   ],
+   [
+    "\"Font Awesome 6 Brands\"",
+    3
+   ]
+  ],
+  "height": 1829,
+  "anim": [
+   "icon-buttons-animation",
+   "animated"
+  ]
+ },
+ "contact-us": {
+  "body": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16.4px",
+   "weight": "400",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgb(255, 255, 255)",
+   "lh": "26.24px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "h1": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "68.8px",
+   "weight": "600",
+   "color": "rgb(17, 16, 19)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "68.8px",
+   "ls": "-3.096px",
+   "tt": "none"
+  },
+  "h2": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "48.96px",
+   "weight": "600",
+   "color": "rgb(255, 255, 255)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "51.408px",
+   "ls": "-1.9584px",
+   "tt": "none"
+  },
+  "h3": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "16.4px",
+   "weight": "600",
+   "color": "rgb(17, 16, 19)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "22.96px",
+   "ls": "-0.328px",
+   "tt": "none"
+  },
+  "h6": null,
+  "p": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16px",
+   "weight": "500",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "25.6px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "btn": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "15.58px",
+   "weight": "600",
+   "color": "rgb(255, 255, 255)",
+   "bg": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "lh": "normal",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "header": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16.4px",
+   "weight": "400",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "26.24px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "colors": [
+   [
+    "color(srgb 0.0853333 0.0814902 0.0930196)",
+    543
+   ],
+   [
+    "rgb(255, 255, 255)",
+    39
+   ],
+   [
+    "rgb(17, 16, 19)",
+    20
+   ],
+   [
+    "bg color(srgb 0.533333 0.531373 0.537255 / 0.1)",
+    8
+   ],
+   [
+    "color(srgb 0.34144 0.338673 0.346974)",
+    5
+   ],
+   [
+    "bg rgb(255, 255, 255)",
+    3
+   ],
+   [
+    "bg color(srgb 0.533333 0.531373 0.537255 / 0.08)",
+    3
+   ],
+   [
+    "bg color(srgb 0.0666667 0.0627451 0.0745098 / 0.99)",
+    3
+   ],
+   [
+    "bg rgb(249, 249, 249)",
+    3
+   ],
+   [
+    "bg rgb(229, 227, 223)",
+    3
+   ],
+   [
+    "bg rgb(217, 10, 44)",
+    2
+   ],
+   [
+    "rgb(130, 128, 132)",
+    2
+   ]
+  ],
+  "fonts": [
+   [
+    "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+    498
+   ],
+   [
+    "Roboto, Arial, sans-serif",
+    48
+   ],
+   [
+    "\"DM Sans\", sans-serif",
+    47
+   ],
+   [
+    "Arial",
+    16
+   ],
+   [
+    "\"Font Awesome 6 Brands\"",
+    3
+   ]
+  ],
+  "height": 3343,
+  "anim": [
+   "icon-buttons-animation",
+   "animated"
+  ]
+ },
+ "branding": {
+  "body": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16.4px",
+   "weight": "400",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgb(255, 255, 255)",
+   "lh": "26.24px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "h1": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "68.8px",
+   "weight": "600",
+   "color": "rgb(17, 16, 19)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "68.8px",
+   "ls": "-3.096px",
+   "tt": "none"
+  },
+  "h2": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "16.4px",
+   "weight": "600",
+   "color": "rgb(17, 16, 19)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "22.96px",
+   "ls": "-0.328px",
+   "tt": "none"
+  },
+  "h3": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "33.2928px",
+   "weight": "600",
+   "color": "rgb(17, 16, 19)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "38.2867px",
+   "ls": "-1.16525px",
+   "tt": "none"
+  },
+  "h6": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "40px",
+   "weight": "900",
+   "color": "rgb(17, 16, 19)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "56px",
+   "ls": "-0.8px",
+   "tt": "none"
+  },
+  "p": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16px",
+   "weight": "500",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "25.6px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "btn": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "13.243px",
+   "weight": "600",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "21.1888px",
+   "ls": "normal",
+   "tt": "uppercase"
+  },
+  "header": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16.4px",
+   "weight": "400",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "26.24px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "colors": [
+   [
+    "color(srgb 0.0853333 0.0814902 0.0930196)",
+    812
+   ],
+   [
+    "rgb(255, 255, 255)",
+    74
+   ],
+   [
+    "rgb(125, 124, 128)",
+    27
+   ],
+   [
+    "rgb(17, 16, 19)",
+    26
+   ],
+   [
+    "bg color(srgb 0.533333 0.531373 0.537255 / 0.12)",
+    10
+   ],
+   [
+    "rgb(217, 10, 44)",
+    8
+   ],
+   [
+    "bg rgb(255, 255, 255)",
+    6
+   ],
+   [
+    "bg color(srgb 0.533333 0.531373 0.537255 / 0.08)",
+    4
+   ],
+   [
+    "color(srgb 0.34144 0.338673 0.346974)",
+    4
+   ],
+   [
+    "bg color(srgb 0.0666667 0.0627451 0.0745098 / 0.99)",
+    3
+   ],
+   [
+    "bg rgb(217, 10, 44)",
+    2
+   ],
+   [
+    "bg rgba(150, 144, 162, 0.06)",
+    2
+   ]
+  ],
+  "fonts": [
+   [
+    "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+    817
+   ],
+   [
+    "\"DM Sans\", sans-serif",
+    99
+   ],
+   [
+    "Arial",
+    28
+   ],
+   [
+    "Candal, sans-serif",
+    4
+   ],
+   [
+    "\"Font Awesome 6 Brands\"",
+    3
+   ]
+  ],
+  "height": 5813,
+  "anim": [
+   "icon-buttons-animation",
+   "animated",
+   "slider-holder",
+   "slider ohio-slider clb-slider",
+   "clb-slider-outer-stage",
+   "clb-slider-stage",
+   "slider-wrap clb-slider-item",
+   "clb-slider-nav-btn",
+   "clb-slider-count",
+   "clb-slider-count-current",
+   "clb-slider-count-number",
+   "clb-slider-pagination-index",
+   "clb-slider-count-total"
+  ]
+ },
+ "project__asus-zenfone": {
+  "body": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16.4px",
+   "weight": "400",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgb(255, 255, 255)",
+   "lh": "26.24px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "h1": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "68.8px",
+   "weight": "600",
+   "color": "rgb(255, 255, 255)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "68.8px",
+   "ls": "-3.096px",
+   "tt": "none"
+  },
+  "h2": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "48.96px",
+   "weight": "600",
+   "color": "rgb(17, 16, 19)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "51.408px",
+   "ls": "-1.9584px",
+   "tt": "uppercase"
+  },
+  "h3": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "33.2928px",
+   "weight": "600",
+   "color": "rgb(255, 255, 255)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "38.2867px",
+   "ls": "-1.16525px",
+   "tt": "uppercase"
+  },
+  "h6": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "16.4px",
+   "weight": "600",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "22.96px",
+   "ls": "-0.328px",
+   "tt": "none"
+  },
+  "p": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16px",
+   "weight": "500",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "25.6px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "btn": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "15.58px",
+   "weight": "600",
+   "color": "rgb(255, 255, 255)",
+   "bg": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "lh": "24.928px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "header": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16.4px",
+   "weight": "400",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "26.24px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "colors": [
+   [
+    "color(srgb 0.0853333 0.0814902 0.0930196)",
+    411
+   ],
+   [
+    "rgb(255, 255, 255)",
+    87
+   ],
+   [
+    "rgb(130, 131, 140)",
+    25
+   ],
+   [
+    "rgb(17, 16, 19)",
+    7
+   ],
+   [
+    "bg rgb(255, 255, 255)",
+    6
+   ],
+   [
+    "rgb(220, 64, 90)",
+    5
+   ],
+   [
+    "color(srgb 0.34144 0.338673 0.346974)",
+    4
+   ],
+   [
+    "bg color(srgb 0.533333 0.531373 0.537255 / 0.08)",
+    3
+   ],
+   [
+    "bg color(srgb 0.0666667 0.0627451 0.0745098 / 0.99)",
+    3
+   ],
+   [
+    "bg color(srgb 0.0853333 0.0814902 0.0930196 / 0.9)",
+    2
+   ],
+   [
+    "bg color(srgb 0.0853333 0.0814902 0.0930196)",
+    2
+   ],
+   [
+    "bg color(srgb 0.533333 0.531373 0.537255 / 0.12)",
+    1
+   ]
+  ],
+  "fonts": [
+   [
+    "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+    470
+   ],
+   [
+    "\"DM Sans\", sans-serif",
+    44
+   ],
+   [
+    "Arial",
+    19
+   ],
+   [
+    "\"Font Awesome 6 Brands\"",
+    6
+   ],
+   [
+    "Ionicons",
+    1
+   ]
+  ],
+  "height": 4833,
+  "anim": [
+   "icon-buttons-animation",
+   "-with-slider",
+   "project-slider -slider-fs",
+   "parallax",
+   "parallax-bg",
+   "animated-holder",
+   "animated",
+   "-animation"
+  ]
+ },
+ "blog-page": {
+  "body": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16.4px",
+   "weight": "400",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgb(255, 255, 255)",
+   "lh": "26.24px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "h1": null,
+  "h2": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "48.96px",
+   "weight": "600",
+   "color": "rgb(17, 16, 19)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "51.408px",
+   "ls": "-1.9584px",
+   "tt": "none"
+  },
+  "h3": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "16.4px",
+   "weight": "600",
+   "color": "rgb(17, 16, 19)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "22.96px",
+   "ls": "-0.328px",
+   "tt": "none"
+  },
+  "h6": null,
+  "p": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16px",
+   "weight": "500",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "25.6px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "btn": {
+   "font": "\"DM Sans\", sans-serif",
+   "size": "15.58px",
+   "weight": "600",
+   "color": "rgb(255, 255, 255)",
+   "bg": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "lh": "24.928px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "header": {
+   "font": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+   "size": "16.4px",
+   "weight": "400",
+   "color": "color(srgb 0.0853333 0.0814902 0.0930196)",
+   "bg": "rgba(0, 0, 0, 0)",
+   "lh": "26.24px",
+   "ls": "normal",
+   "tt": "none"
+  },
+  "colors": [
+   [
+    "color(srgb 0.0853333 0.0814902 0.0930196)",
+    186
+   ],
+   [
+    "rgb(255, 255, 255)",
+    103
+   ],
+   [
+    "bg color(srgb 0.533333 0.531373 0.537255 / 0.45)",
+    12
+   ],
+   [
+    "bg color(srgb 0.533333 0.531373 0.537255 / 0.4)",
+    6
+   ],
+   [
+    "color(srgb 0.34144 0.338673 0.346974)",
+    4
+   ],
+   [
+    "rgb(17, 16, 19)",
+    4
+   ],
+   [
+    "bg rgb(255, 255, 255)",
+    3
+   ],
+   [
+    "bg color(srgb 0.533333 0.531373 0.537255 / 0.08)",
+    3
+   ],
+   [
+    "bg color(srgb 0.0666667 0.0627451 0.0745098 / 0.99)",
+    3
+   ],
+   [
+    "bg color(srgb 0.0853333 0.0814902 0.0930196)",
+    2
+   ],
+   [
+    "bg color(srgb 0.533333 0.531373 0.537255 / 0.12)",
+    1
+   ],
+   [
+    "bg rgb(217, 10, 44)",
+    1
+   ]
+  ],
+  "fonts": [
+   [
+    "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+    235
+   ],
+   [
+    "\"DM Sans\", sans-serif",
+    44
+   ],
+   [
+    "Arial",
+    15
+   ],
+   [
+    "\"Font Awesome 6 Brands\"",
+    3
+   ]
+  ],
+  "height": 1750,
+  "anim": [
+   "icon-buttons-animation"
+  ]
+ }
+}
