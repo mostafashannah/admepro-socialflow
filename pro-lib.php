@@ -323,7 +323,7 @@ function proTools() {
         ],
         [
             'name' => 'get_member_timeline',
-            'description' => 'Get a team member\'s schedule/timeline — what tasks they have open and when, around a given date (defaults to today). Use this whenever asked "what does X have on their plate", "what is X working on today/this week", "is X free/busy", or anything about a specific person\'s workload or schedule. Only shows tasks currently sitting in the stage that person actually owns (e.g. a designer only sees Design-stage tasks, not ones already handed off to review/approval) — same rule the in-app My Timeline page uses.',
+            'description' => 'Get a team member\'s schedule/timeline — what tasks they have open and when, around a given date (defaults to today). Use this whenever asked "what does X have on their plate", "what is X working on today/this week", "is X free/busy", "first free slot for X", or anything about a specific person\'s workload or schedule. Only shows tasks currently sitting in the stage that person actually owns (e.g. a designer only sees Design-stage tasks, not ones already handed off to review/approval) — same rule the in-app My Timeline page uses. Returns each task\'s real start_time/end_time block and the free_slots between them.',
             'input_schema' => [
                 'type' => 'object',
                 'properties' => [
@@ -1566,6 +1566,54 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
     $isAdmin = $senderRole === 'team:admin';
     $isAM    = in_array($senderRole, ['team:account_manager','team:account_director','team:account_executive'], true);
 
+    if ($name === 'create_task') {
+        if (!$isAdmin) return ['error' => 'Only an admin can create tasks from WhatsApp.'];
+        $title = trim((string)($input['title'] ?? ''));
+        if ($title === '') return ['error' => 'A task title is required.'];
+        // Assignee: match an active team member by (partial) name or exact email.
+        $who = trim((string)($input['assigned_to'] ?? ''));
+        $assignee = null;
+        if ($who !== '') {
+            $st = $pdo->prepare("SELECT name, email, role FROM team_members WHERE status = 'active' AND (email = :e OR name LIKE :n) ORDER BY (email = :e2) DESC, LENGTH(name) ASC LIMIT 3");
+            $st->execute([':e' => $who, ':e2' => $who, ':n' => '%' . $who . '%']);
+            $hits = $st->fetchAll(PDO::FETCH_ASSOC);
+            if (!$hits) return ['error' => "No active team member matches \"$who\". Ask the admin who it should go to."];
+            if (count($hits) > 1 && strcasecmp($hits[0]['email'], $who) !== 0 && stripos($hits[0]['name'], $who) !== 0) {
+                return ['error' => 'More than one person matches "' . $who . '": ' . implode(', ', array_column($hits, 'name')) . '. Ask which one.'];
+            }
+            $assignee = $hits[0];
+        }
+        // Client (optional).
+        $clientId = null; $clientName = '';
+        if (!empty($input['client_name'])) {
+            $st = $pdo->prepare("SELECT id, name FROM clients WHERE name LIKE :n ORDER BY LENGTH(name) ASC LIMIT 1");
+            $st->execute([':n' => '%' . $input['client_name'] . '%']);
+            if ($c = $st->fetch(PDO::FETCH_ASSOC)) { $clientId = $c['id']; $clientName = $c['name']; }
+            else return ['error' => 'No client matches "' . $input['client_name'] . '".'];
+        }
+        $due = !empty($input['due_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $input['due_date']) ? $input['due_date'] : date('Y-m-d');
+        $time = !empty($input['due_time']) && preg_match('/^\d{1,2}:\d{2}$/', $input['due_time']) ? $input['due_time'] : null;
+        $prio = in_array($input['priority'] ?? '', ['low', 'medium', 'high', 'urgent'], true) ? $input['priority'] : 'medium';
+        $mins = max(5, min(600, (int)($input['estimated_minutes'] ?? 60)));
+        // Stage follows the assignee's role so it lands on their timeline.
+        $role = $assignee['role'] ?? '';
+        $stage = !empty($input['stage']) ? (string)$input['stage']
+               : ($role === 'graphic_designer' || $role === 'video_editor' ? 'design'
+               : ($role === 'content_creator' ? 'content_creation' : 'planning'));
+        $creatorEmail = null;
+        if ($senderId) { $em = $pdo->prepare("SELECT email FROM team_members WHERE id = :id LIMIT 1"); $em->execute([':id' => $senderId]); $creatorEmail = $em->fetchColumn() ?: null; }
+        $id = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x', random_int(0, 0xffff), random_int(0, 0xffff), random_int(0, 0xffff), random_int(0, 0x0fff) | 0x4000, random_int(0, 0x3fff) | 0x8000, random_int(0, 0xffff), random_int(0, 0xffff), random_int(0, 0xffff));
+        $ins = $pdo->prepare("INSERT INTO posts (id, title, description, client_id, client_name, assigned_to, due_date, due_time, estimated_minutes, priority, stage, platform, post_type, created_by_email)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', 'general', ?)");
+        $ins->execute([$id, $title, (string)($input['description'] ?? ''), $clientId, $clientName, $assignee['email'] ?? null, $due, $time, $mins, $prio, $stage, $creatorEmail]);
+        if ($assignee) {
+            try {
+                $pdo->prepare("INSERT INTO notifications (id, recipient_email, title, message, type, is_read, link_type, link_id) VALUES (UUID(), ?, ?, ?, 'task_assigned', 0, 'post', ?)")
+                    ->execute([$assignee['email'], 'New task: ' . $title, ($senderName ?: 'Admin') . ' assigned you a task due ' . $due . ($time ? " $time" : ''), $id]);
+            } catch (Throwable $e) { /* notification is best-effort */ }
+        }
+        return ['ok' => true, 'title' => $title, 'assigned_to' => $assignee['name'] ?? 'nobody (unassigned)', 'client' => $clientName ?: null, 'due' => $due . ($time ? " $time" : ''), 'stage' => $stage, 'priority' => $prio];
+    }
     if ($name === 'ask_ai_teammate') {
         return askAiTeammate($pdo, $input['agent'] ?? '', $input['question'] ?? '', $input['client_name'] ?? null);
     }
@@ -1663,7 +1711,7 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
         $ownedStage = ['content_creator' => 'content_creation', 'graphic_designer' => 'design'][$member['role']] ?? null;
 
         $sql = "SELECT id, title, stage, post_type, priority, client_name,
-                       due_date, due_time, scheduled_date, scheduled_time
+                       due_date, due_time, scheduled_date, scheduled_time, estimated_minutes, is_routine
                 FROM posts
                 WHERE (assigned_to = :e1 OR content_assigned_to = :e2 OR design_assigned_to = :e3
                        OR JSON_CONTAINS(COALESCE(assigned_to_extra, '[]'), JSON_QUOTE(:e4)))
@@ -1678,12 +1726,45 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
         $stmt->execute($params);
         $tasks = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // Same rule as the app's timeline: due_time is the DEADLINE, the block starts
+        // estimated_minutes before it (default 60); working day is 11:00–23:00.
+        $WS = 11 * 60; $WE = 23 * 60;
+        $fmt = fn($m) => sprintf('%02d:%02d', intdiv($m, 60), $m % 60);
+        $blocks = [];
+        foreach ($tasks as &$t) {
+            $dur = (int)($t['estimated_minutes'] ?? 0) > 0 ? (int)$t['estimated_minutes'] : 60;
+            $t['duration_minutes'] = $dur;
+            if (!empty($t['due_time']) && preg_match('/^(\d{1,2}):(\d{2})/', $t['due_time'], $mm)) {
+                $end = min($WE, max($WS + $dur, (int)$mm[1] * 60 + (int)$mm[2]));
+                $start = max($WS, $end - $dur);
+                $t['start_time'] = $fmt($start); $t['end_time'] = $fmt($end);
+                $blocks[] = [$start, $end];
+            }
+            unset($t['estimated_minutes']);
+        }
+        unset($t);
+        // Free gaps between the timed blocks (from now if the date is today).
+        usort($blocks, fn($x, $y) => $x[0] <=> $y[0]);
+        $cursor = $WS;
+        if ($date === date('Y-m-d')) { $now = (int)date('G') * 60 + (int)date('i'); $cursor = max($cursor, min($WE, $now)); }
+        $free = [];
+        foreach ($blocks as [$st, $en]) {
+            if ($st - $cursor >= 15) $free[] = ['from' => $fmt($cursor), 'to' => $fmt($st), 'minutes' => $st - $cursor];
+            $cursor = max($cursor, $en);
+        }
+        if ($WE - $cursor >= 15) $free[] = ['from' => $fmt($cursor), 'to' => $fmt($WE), 'minutes' => $WE - $cursor];
+        $untimed = count(array_filter($tasks, fn($t) => empty($t['start_time'])));
+
         return [
             'member' => $member['name'],
             'role' => $member['role'],
             'date' => $date,
+            'working_hours' => '11:00-23:00',
+            'note' => 'start_time/end_time are the real booked blocks (due_time is the deadline; the block runs duration_minutes before it). free_slots are the open gaps — use them to answer availability questions.'
+                . ($untimed ? " $untimed task(s) have no due time and will be packed into free time by the app." : ''),
             'task_count' => count($tasks),
             'tasks' => $tasks,
+            'free_slots' => $free,
         ];
     }
     return ['error' => 'Unknown tool: ' . $name];
@@ -2076,9 +2157,28 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
         $canRecruit = $isTeam && hasRecruitmentPermission($pdo, $senderRole);
 
         if ($isAdmin) {
-            $tools = array_merge(proTools(), hrTools(), financeTools(), recruitmentTools());
+            $tools = array_merge(proTools(), hrTools(), financeTools(), recruitmentTools(), [[
+                'name' => 'create_task',
+                'description' => 'Create a new task in SocialFlow and assign it to a team member (admin only). Use when the admin asks to add/create/assign a task. Needs at least a title; resolve dates like "tomorrow" or "Sunday" to YYYY-MM-DD yourself (today is ' . date('Y-m-d l') . '). If the assignee is unclear, ask before calling. After it succeeds, confirm back in one short line: title, who, client, due.',
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'title'             => ['type' => 'string', 'description' => 'Short task title'],
+                        'description'       => ['type' => 'string', 'description' => 'Details / brief, optional'],
+                        'assigned_to'       => ['type' => 'string', 'description' => 'Team member name (partial ok) or email'],
+                        'client_name'       => ['type' => 'string', 'description' => 'Client the task is for, optional'],
+                        'due_date'          => ['type' => 'string', 'description' => 'YYYY-MM-DD, defaults to today'],
+                        'due_time'          => ['type' => 'string', 'description' => 'HH:MM 24h, optional'],
+                        'priority'          => ['type' => 'string', 'enum' => ['low', 'medium', 'high', 'urgent']],
+                        'estimated_minutes' => ['type' => 'integer', 'description' => 'Expected effort in minutes, default 60'],
+                        'stage'             => ['type' => 'string', 'description' => 'Optional pipeline stage override (planning, content_creation, design, internal_review...). Normally leave empty — it is picked from the assignee\'s role.'],
+                    ],
+                    'required' => ['title'],
+                ],
+            ]]);
             $system .= "\n\nAs admin, you have full tools to look up any client and search any task across the "
-                     . "whole agency — use them whenever the question needs current data instead of guessing.";
+                     . "whole agency — use them whenever the question needs current data instead of guessing. "
+                     . "You can also create and assign tasks with create_task.";
         } elseif ($isAM) {
             $tools = array_merge(proTools(), hrTools());
             $system .= "\n\nYou have tools to look up clients and tasks, but only for the clients you personally "

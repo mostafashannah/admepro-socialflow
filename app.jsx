@@ -11291,14 +11291,50 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
   const approvals = posts.filter(p=>["internal_review","design_review"].includes(p.stage));
   const overdueInv = invoices.filter(i=>num(i.balance_due ?? (num(i.total)-num(i.amount_paid)))>0.5 && i.status!=="cancelled" && i.status!=="draft" && i.due_date && i.due_date<todayStr);
   const overdueSubs = subs.filter(s=>s.status!=="cancelled" && s.status!=="paused" && (s.status==="overdue" || (s.next_payment_date && s.next_payment_date<todayStr)));
+  const owedSubsPre = overdueSubs.reduce((a,s)=>a+(Number(s.amount)||0),0);
   const missedMai = (data.maiReportSessions||[]).filter(s=>s.status==="missed" && String(s.report_date||"").slice(0,10)>=new Date(Date.now()-2*864e5).toISOString().slice(0,10));
+  // New job applications nobody has looked at yet (admin / Account Director).
+  const [newApps, setNewApps] = useState([]);
+  useEffect(()=>{ qe("JobApplication",{status:"new"},"-created_date",500).then(r=>setNewApps(r.entities||[])).catch(()=>{}); },[]);
+  const [openAct, setOpenAct] = useState(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const daysAgo = v => { const t = tms(v); return isNaN(t) ? null : Math.max(0, Math.floor((Date.now()-t)/864e5)); };
+  const nameOfEmail = em => team.find(m=>m.email===em)?.name || em || "Unassigned";
+  const goTasksReview = () => { try{ localStorage.setItem("sf_tasks_stage","__review"); }catch(e){} setPage("tasks"); };
+  const goNewApps = () => { try{ localStorage.setItem("sf_recruitment_status","new"); }catch(e){} setPage("recruitment"); };
+  const approveAllLeaves = async () => {
+    if(!onDecideLeaveRequest || !window.confirm(`Approve all ${leaves.length} pending request(s)?`)) return;
+    setBulkBusy(true); for(const r of leaves){ try{ await onDecideLeaveRequest(r,"approve"); }catch(e){} } setBulkBusy(false);
+  };
+  const oldestApproval = approvals.reduce((m,p)=>{ const d=daysAgo(p.updated_date||p.updated_at||p.created_date); return d!=null&&d>m?d:m; },0);
+  const byReviewer = Object.entries(approvals.reduce((a,p)=>{ const k=p.client_name||"No client"; a[k]=(a[k]||0)+1; return a; },{})).sort((x,y)=>y[1]-x[1]).slice(0,4);
   const actions = [
-    leaves.length && {n:leaves.length, l:"leave / WFH request"+(leaves.length>1?"s":""), c:"#3b82f6", ico:Icons.calendar, go:()=>setPage("users")},
-    !isDirector && prizeReq.length && {n:prizeReq.length, l:"prize request"+(prizeReq.length>1?"s":""), c:"#8b5cf6", ico:Icons.award, go:()=>setPage("performance")},
-    approvals.length && {n:approvals.length, l:"post"+(approvals.length>1?"s":"")+" waiting internal review", c:"#f59e0b", ico:Icons.eye, go:()=>setPage("tasks")},
-    !isDirector && overdueInv.length && {n:overdueInv.length, l:"overdue invoice"+(overdueInv.length>1?"s":""), c:"#ef4444", ico:Icons.invoice, go:()=>setPage("invoices")},
-    !isDirector && overdueSubs.length && {n:overdueSubs.length, l:"overdue subscription"+(overdueSubs.length>1?"s":""), c:"#ef4444", ico:Icons.repeat, go:()=>setPage("subscriptions")},
-    missedMai.length && {n:missedMai.length, l:"missed Mai check-in"+(missedMai.length>1?"s":""), c:"#f97316", ico:Icons.chat, go:()=>setPage("users")},
+    leaves.length && {k:"leaves", n:leaves.length, l:"leave / WFH request"+(leaves.length>1?"s":""), c:"#3b82f6", ico:Icons.calendar,
+      tip:"Decide these first — the team is waiting to plan around them.",
+      buttons:[{l:bulkBusy?"Approving…":"Approve all", primary:true, fn:approveAllLeaves}, {l:"Open team", fn:()=>setPage("users")}]},
+    newApps.length && {k:"apps", n:newApps.length, l:"new job application"+(newApps.length>1?"s":"")+" to review", c:"#0ea5e9", ico:Icons.briefcase,
+      tip:`Oldest has waited ${daysAgo(newApps[newApps.length-1]?.created_date)??0} day(s). Shortlist or reject so candidates aren't left hanging.`,
+      list:newApps.slice(0,5).map(a=>({id:a.id, t:a.full_name||a.name||a.email||"Candidate", s:[a.position||a.job_title, a.created_date&&`${daysAgo(a.created_date)}d ago`].filter(Boolean).join(" · "),
+        fn:()=>{ try{ localStorage.setItem("sf_recruitment_open_app",a.id); }catch(e){} goNewApps(); }})),
+      buttons:[{l:`Review all ${newApps.length} new`, primary:true, fn:goNewApps}]},
+    !isDirector && prizeReq.length && {k:"prize", n:prizeReq.length, l:"prize request"+(prizeReq.length>1?"s":""), c:"#8b5cf6", ico:Icons.award,
+      tip:"Approve or decline so points stay motivating.", buttons:[{l:"Open rewards", primary:true, fn:()=>setPage("performance")}]},
+    approvals.length && {k:"posts", n:approvals.length, l:"post"+(approvals.length>1?"s":"")+" waiting internal review", c:"#f59e0b", ico:Icons.eye,
+      tip:`${oldestApproval?`Oldest waiting ${oldestApproval} day(s). `:""}Most are for ${byReviewer.map(([k,n])=>`${k} (${n})`).join(", ")}. Clear the oldest first so designs can move to clients.`,
+      list:[...approvals].sort((x,y)=>tms(x.updated_date||x.created_date)-tms(y.updated_date||y.created_date)).slice(0,5).map(p=>({id:p.id, t:p.title||"Untitled", s:[p.client_name, STAGES.find(x=>x.key===p.stage)?.label, nameOfEmail(p.assigned_to)].filter(Boolean).join(" · "), fn:()=>onOpenPost&&onOpenPost(p)})),
+      buttons:[{l:`Open review queue (${approvals.length})`, primary:true, fn:goTasksReview}]},
+    !isDirector && overdueInv.length && {k:"inv", n:overdueInv.length, l:"overdue invoice"+(overdueInv.length>1?"s":""), c:"#ef4444", ico:Icons.invoice,
+      tip:`${fmt(overdueInv.reduce((a,i)=>a+num(i.balance_due ?? (num(i.total)-num(i.amount_paid))),0))} outstanding. Send reminders to the biggest first.`,
+      list:[...overdueInv].sort((x,y)=>num(y.balance_due ?? (num(y.total)-num(y.amount_paid)))-num(x.balance_due ?? (num(x.total)-num(x.amount_paid)))).slice(0,5).map(i=>({id:i.id, t:`${i.client_name||"Client"} — ${fmt(num(i.balance_due ?? (num(i.total)-num(i.amount_paid))))}`, s:`due ${i.due_date}`, fn:()=>setPage("invoices")})),
+      buttons:[{l:"Open invoices", primary:true, fn:()=>setPage("invoices")}]},
+    !isDirector && overdueSubs.length && {k:"subs", n:overdueSubs.length, l:"overdue subscription"+(overdueSubs.length>1?"s":""), c:"#ef4444", ico:Icons.repeat,
+      tip:`${fmt(owedSubsPre)} due. Follow up or pause the ones that stopped.`,
+      list:overdueSubs.slice(0,5).map(x=>({id:x.id, t:`${x.client_name||x.name||"Subscription"} — ${fmt(num(x.amount))}`, s:x.next_payment_date?`was due ${x.next_payment_date}`:"", fn:()=>setPage("subscriptions")})),
+      buttons:[{l:"Open subscriptions", primary:true, fn:()=>setPage("subscriptions")}]},
+    missedMai.length && {k:"mai", n:missedMai.length, l:"missed Mai check-in"+(missedMai.length>1?"s":""), c:"#f97316", ico:Icons.chat,
+      tip:"These people skipped their daily check-in — a quick message usually fixes it.",
+      list:missedMai.slice(0,6).map(x=>({id:x.id, t:nameOfEmail(x.member_email||x.user_email||x.email)||x.member_name||"Team member", s:String(x.report_date||"").slice(0,10), fn:()=>setPage("users")})),
+      buttons:[{l:"Open team", primary:true, fn:()=>setPage("users")}]},
   ].filter(Boolean);
   // ── Today
   const work = posts.filter(p=>!p.is_plan_parent);
@@ -11394,11 +11430,31 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
           {head("Needs your action", `${actions.reduce((a,x)=>a+x.n,0)} things waiting for you`, Icons.alert, "linear-gradient(135deg,#ef4444,#f59e0b)")}
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             {actions.map((a,i)=>(
-              <button key={i} onClick={a.go} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:10,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",cursor:"pointer",fontSize:13,fontWeight:600}}>
+              <button key={i} onClick={()=>setOpenAct(o=>o===a.k?null:a.k)} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:10,border:`1px solid ${openAct===a.k?a.c:"var(--border2)"}`,background:openAct===a.k?a.c+"14":"var(--surface2)",color:"var(--text)",cursor:"pointer",fontSize:13,fontWeight:600}}>
                 <Ico d={a.ico} size={15} stroke={a.c}/>
                 <b style={{color:a.c,fontSize:16}}>{a.n}</b>{a.l}
+                <span style={{fontSize:10,color:"var(--text3)",marginLeft:2}}>{openAct===a.k?"▲":"▼"}</span>
               </button>))}
           </div>
+          {(()=>{ const a = actions.find(x=>x.k===openAct); if(!a) return null; return (
+            <div style={{marginTop:12,padding:14,borderRadius:12,background:"var(--surface2)",border:`1px solid ${a.c}33`}}>
+              <div style={{display:"flex",gap:8,alignItems:"flex-start",marginBottom:a.list?.length?10:12}}>
+                <Ico d={Icons.zap||Icons.alert} size={14} stroke={a.c}/>
+                <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.5}}><b style={{color:"var(--text)"}}>Suggested: </b>{a.tip}</p>
+              </div>
+              {a.list?.length>0&&<div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:12}}>
+                {a.list.map(it=>(
+                  <button key={it.id} onClick={it.fn} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border)",cursor:"pointer",textAlign:"left",color:"var(--text)"}}>
+                    <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.t}</span>
+                    <span style={{fontSize:11,color:"var(--text3)",flexShrink:0,maxWidth:"50%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.s}</span>
+                    <span style={{fontSize:12,color:a.c,fontWeight:700}}>→</span>
+                  </button>))}
+              </div>}
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {a.buttons.map((b,j)=>(
+                  <button key={j} onClick={b.fn} disabled={bulkBusy} style={{padding:"8px 14px",borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",border:b.primary?"none":"1px solid var(--border2)",background:b.primary?a.c:"var(--surface)",color:b.primary?"#fff":"var(--text)"}}>{b.l}</button>))}
+              </div>
+            </div>); })()}
           {leaves.length>0&&<div style={{display:"flex",flexDirection:"column",gap:6,marginTop:12}}>
             {leaves.slice(0,4).map(r=>(
               <div key={r.id} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",padding:"8px 12px",borderRadius:10,background:"var(--surface2)"}}>
@@ -11803,8 +11859,20 @@ No markdown, no explanation.`;
           <FAB currentUser={currentUser} onAddClient={onAddClient} onAddCalendar={onAddCalendar} onAddTask={onAddTask} onCreateInvoice={onCreateInvoice} onAddProject={onAddProject}/>
         </div>
         <PointsDashboardHero setPage={setPage}/>
-        {(isAdmin||currentUser?.role==="account_director")&&(
-          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+      </div>
+
+      {/* ── TAB NAV ── */}
+      {(isAdmin||currentUser?.role==="account_director")&&(
+        <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexShrink:0,minHeight:38,width:"100%"}}>
+          {dashTabs.map(t=>(
+            <button key={t.k} onClick={()=>setTab(t.k)} style={{padding:isMobile?"9px 10px":"9px 18px",fontSize:isMobile?12:13,fontWeight:600,flex:isMobile?"1 1 0":"none",flexShrink:0,whiteSpace:"nowrap",textAlign:"center",borderBottom:`2px solid ${tab===t.k?"var(--accent)":"transparent"}`,color:tab===t.k?"var(--accent)":"var(--text2)",transition:"all 0.15s"}}>{isMobile?t.ml:t.l}</button>
+          ))}
+        </div>
+      )}
+      <div style={{display:"contents"}}>
+        {(isAdmin||currentUser?.role==="account_director")&&tab==="insights"&&(
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+            <span style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Filter insights:</span>
             <select value={dateRange} onChange={e=>setDateRange(e.target.value)} style={{...inputSt,width:"auto",height:38,minHeight:38,flex:1,minWidth:100,padding:"0 14px",fontSize:12,borderRadius:99}}>
               <option value="all">All Time</option>
               <option value="week">This Week</option>
@@ -11821,15 +11889,6 @@ No markdown, no explanation.`;
           </div>
         )}
       </div>
-
-      {/* ── TAB NAV ── */}
-      {(isAdmin||currentUser?.role==="account_director")&&(
-        <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexShrink:0,minHeight:38,width:"100%"}}>
-          {dashTabs.map(t=>(
-            <button key={t.k} onClick={()=>setTab(t.k)} style={{padding:isMobile?"9px 10px":"9px 18px",fontSize:isMobile?12:13,fontWeight:600,flex:isMobile?"1 1 0":"none",flexShrink:0,whiteSpace:"nowrap",textAlign:"center",borderBottom:`2px solid ${tab===t.k?"var(--accent)":"transparent"}`,color:tab===t.k?"var(--accent)":"var(--text2)",transition:"all 0.15s"}}>{isMobile?t.ml:t.l}</button>
-          ))}
-        </div>
-      )}
 
       {/* ════ OVERVIEW TAB ════ */}
       {tab==="overview"&&(isAdmin||currentUser?.role==="account_director")&&<AdminControlCenter viewer={currentUser} data={{...data, appSettings}} setPage={setPage} onDecideLeaveRequest={onDecideLeaveRequest} onOpenPost={onOpenPost} onlineEmails={liveMemberEmails} onlineClients={liveClients}/>}
@@ -15442,7 +15501,7 @@ function ProjectsPage({projects, posts, comments, clients, team, assets, clientI
 // ════════════════════════════════════════════════════════════════
 function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdateTask,onAddReady,onAddAsset,onUpdateAsset,currentUser,clients=[],clientIntelligenceList=[],onStageChange}) {
   const [view,setView] = usePersistentState("sf_tasks_view","kanban");
-  const [stageF,setStageF] = useState("all");
+  const [stageF,setStageF] = useState(()=>{ try{ const v=localStorage.getItem("sf_tasks_stage"); if(v){ localStorage.removeItem("sf_tasks_stage"); return v; } }catch(e){} return "all"; });
   const [platF,setPlatF] = useState("all");
   const [clientF,setClientF] = useState("all");
   const [assigneeF,setAssigneeF] = useState("all");
@@ -15470,7 +15529,8 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
 
   const filtered = posts.filter(p=>{
     if(!canSeeClientRequest(p)) return false;
-    if(stageF!=="all"&&p.stage!==stageF) return false;
+    if(stageF==="__review"){ if(!["internal_review","design_review"].includes(p.stage)) return false; }
+    else if(stageF!=="all"&&p.stage!==stageF) return false;
     if(platF!=="all"&&p.platform!==platF) return false;
     if(assigneeF!=="all"&&p.assigned_to!==assigneeF) return false;
     if(clientF!=="all"){
@@ -15510,6 +15570,7 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
         {/* Stage — always visible, highest-value filter */}
         <select value={stageF} onChange={e=>setStageF(e.target.value)} style={{...inputSt,width:"auto",height:38,minHeight:38,padding:"0 14px",fontSize:12,borderRadius:99}}>
           <option value="all">All Stages</option>
+          <option value="__review">Waiting internal review (all)</option>
           {STAGES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
         {/* "More Filters" pill — collapses Client, Assignee, Platform */}
@@ -43744,7 +43805,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
   const [selectedApp, setSelectedApp] = useState(null);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [openingFilter, setOpeningFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  // Dashboard "N applications to review" lands here pre-filtered (one-shot).
+  const [statusFilter, setStatusFilter] = useState(()=>{ try{ const v=localStorage.getItem("sf_recruitment_status"); if(v){ localStorage.removeItem("sf_recruitment_status"); return v; } }catch(e){} return "all"; });
   const [sortBy, setSortBy] = useState("recent");
   const [searchQuery, setSearchQuery] = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
