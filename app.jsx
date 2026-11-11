@@ -1362,22 +1362,47 @@ const sfSession = {
         init.headers = h;
       }
     } catch(e) {}
-    return orig(input, init);
+    const p = orig(input, init);
+    // Logged in but the server says "not signed in" (expired / old login from before sessions): back to login, once.
+    p.then(res=>{
+      try {
+        if (res.status !== 401 || window.__sfGuestToken) return;
+        const path = new URL(res.url).pathname;
+        if (!path.startsWith("/api/")) return;
+        if (!localStorage.getItem("sf_user")) return;
+        if (sessionStorage.getItem("sf_reauth")) return;
+        sessionStorage.setItem("sf_reauth", "1");
+        localStorage.removeItem("sf_user"); localStorage.removeItem("sf_session");
+        window.location.reload();
+      } catch(e) {}
+    }).catch(()=>{});
+    return p;
   };
 })();
 // Signs in on the server. Returns {ok:true,user} | {ok:false,error} | {unavailable:true} when the
 // sign-in service can't be reached (older server) so the caller can fall back to the legacy check.
 async function serverLogin(email, password, mode) {
   try {
-    const r = await fetch(window.location.origin+"/auth.php?action=login", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({email, password, mode})});
+    let device=""; try{ device=localStorage.getItem("sf_device")||""; }catch(e){}
+    const r = await fetch(window.location.origin+"/auth.php?action=login", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({email, password, mode, device})});
     const ct = r.headers.get("content-type")||"";
     if(!ct.includes("json")) return {unavailable:true};
     const d = await r.json().catch(()=>null);
     if(!d) return {unavailable:true};
+    if(r.ok && d.need_code) return {needCode:true, challenge:d.challenge, hint:d.email_hint};
     if(r.ok && d.token && d.user) { sfSession.set(d.token); return {ok:true, user:d.user}; }
     if(r.status===401 || r.status===403 || r.status===429 || r.status===400) return {ok:false, error:d.error||"Sign-in failed."};
     return {unavailable:true};
   } catch(e) { return {unavailable:true}; }
+}
+// Second step for admin / accountant / Account Director: the 6-digit code emailed to them.
+async function serverVerifyCode(challenge, code, remember) {
+  try {
+    const r = await fetch(window.location.origin+"/auth.php?action=verify", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({challenge, code, remember})});
+    const d = await r.json().catch(()=>({}));
+    if(r.ok && d.token && d.user) { sfSession.set(d.token); if(d.device) { try{ localStorage.setItem("sf_device", d.device); }catch(e){} } return {ok:true, user:d.user}; }
+    return {ok:false, error:d.error||"Wrong code."};
+  } catch(e) { return {ok:false, error:"Couldn't reach the server. Try again."}; }
 }
 function serverLogout() {
   const t = sfSession.get(); sfSession.set("");
@@ -22849,7 +22874,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                       <button onClick={()=>{try{navigator.clipboard.writeText(member.password);}catch(e){}}} title="Copy" style={{padding:4}}><Ico d={Icons.copy2} size={13} stroke="var(--text3)"/></button>
                     </>
                   ) : (
-                    <span style={{fontSize:12,color:"var(--text3)"}}>No password set yet — set one via Edit</span>
+                    <span style={{fontSize:12,color:"var(--text3)"}}>Passwords are stored securely and can't be shown. To change it, set a new one via Edit.</span>
                   )}
                 </div>
               )}
@@ -27731,6 +27756,17 @@ function LoginScreen({onLogin,clients}) {
   const [forgotSending, setForgotSending] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
   const [forgotErr, setForgotErr] = useState("");
+  const [codeStep, setCodeStep] = useState(null); // {challenge, hint} after a correct password for a 2-step role
+  const [code, setCode] = useState("");
+  const [remember, setRemember] = useState(true);
+  const submitCode = async () => {
+    if(!codeStep) return;
+    setErr(""); setLoading(true);
+    const v = await serverVerifyCode(codeStep.challenge, code.trim(), remember);
+    setLoading(false);
+    if(v.ok) { onLogin(v.user); return; }
+    setErr(v.error);
+  };
 
   const handleForgot = async () => {
     if(!forgotEmail.trim()) { setForgotErr("Enter your email address."); return; }
@@ -27750,6 +27786,8 @@ function LoginScreen({onLogin,clients}) {
     // Sign in on the server first (password checked there, real session issued). Only if that
     // service can't be reached at all does it fall back to the legacy in-browser check below.
     const sv = await serverLogin(email.trim(), password, mode);
+    if(sv.needCode) { setCodeStep({challenge:sv.challenge, hint:sv.hint}); setCode(""); setLoading(false); return; }
+    if(sv.unavailable) { setErr("The sign-in service isn't responding. Please try again in a minute."); setLoading(false); return; }
     if(sv.ok) {
       const u = sv.user;
       if(u.isClient && !u.clientOrg && u.client_id) u.clientOrg = clients.find(c=>c.id===u.client_id)||{name:u.client_name,id:u.client_id};
@@ -27806,6 +27844,26 @@ function LoginScreen({onLogin,clients}) {
   const handleKey = e => { if(e.key==="Enter") handleLogin(); };
 
   if(showRequestAccess) return <RequestAccessPage onBack={()=>setShowRequestAccess(false)}/>;
+
+  if(codeStep) return (
+    <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{width:"100%",maxWidth:420}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <img src="/favicon.svg" width={52} height={52} style={{borderRadius:14,display:"block",margin:"0 auto 16px"}} alt="logo"/>
+          <h2 style={{fontSize:22,fontWeight:800}}>Check your email</h2>
+          <p style={{fontSize:13,color:"var(--text2)",marginTop:6}}>We sent a 6-digit sign-in code to <b>{codeStep.hint}</b></p>
+        </div>
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:28,display:"flex",flexDirection:"column",gap:14}}>
+          <input value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,"").slice(0,6))} onKeyDown={e=>e.key==="Enter"&&code.length===6&&submitCode()} inputMode="numeric" autoComplete="one-time-code" placeholder="123456" autoFocus
+            style={{...inputSt,textAlign:"center",fontSize:26,letterSpacing:8,fontWeight:800,fontFamily:"monospace"}}/>
+          <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text2)",cursor:"pointer"}}><input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)}/>Remember this device for 30 days</label>
+          {err&&<div style={{padding:"10px 12px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:"var(--rxs)",fontSize:13,color:"#ef4444",fontWeight:500}}>{err}</div>}
+          <Btn onClick={submitCode} disabled={code.length!==6||loading} style={{opacity:(code.length!==6||loading)?0.6:1}}>{loading?"Checking…":"Verify & Sign In"}</Btn>
+          <button onClick={()=>{setCodeStep(null);setErr("");}} style={{background:"none",border:"none",color:"var(--text3)",fontSize:13,cursor:"pointer"}}>← Back (send a new code)</button>
+        </div>
+      </div>
+    </div>
+  );
 
   if(showForgot) return (
     <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
@@ -54270,7 +54328,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
 
   // Login screen
   if(!currentUser) {
-    return (<><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/><LoginScreen onLogin={u=>{
+    return (<><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/><LoginScreen onLogin={u=>{ try{ sessionStorage.removeItem("sf_reauth"); }catch(e){}
       try{localStorage.setItem("sf_user",JSON.stringify(u));}catch(e){}
       setCurrentUser(u);
       // Capture session info asynchronously — don't block login

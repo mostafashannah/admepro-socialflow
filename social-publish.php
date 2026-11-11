@@ -1,5 +1,6 @@
 <?php
 require_once 'config.php';
+require_once __DIR__ . '/auth-lib.php';
 require_once 'meta-lib.php';
 require_once 'linkedin-lib.php';
 require_once 'tiktok-lib.php';
@@ -17,7 +18,7 @@ $providedKey = $_SERVER['HTTP_APIKEY'] ?? '';
 if (!$providedKey && !empty($_SERVER['HTTP_AUTHORIZATION'])) {
     $providedKey = preg_replace('/^Bearer\s+/i', '', $_SERVER['HTTP_AUTHORIZATION']);
 }
-if (!hash_equals(API_KEY, (string)$providedKey)) {
+if (!authTeamOk(false)) {
     http_response_code(401);
     echo json_encode(['error' => 'Invalid or missing API key']);
     exit;

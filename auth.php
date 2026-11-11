@@ -63,6 +63,22 @@ try {
         authOut(200, ['token' => $token]);
     }
 
+    if ($action === 'verify' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $in = json_decode(file_get_contents('php://input'), true) ?: [];
+        $r = authCheckChallenge($pdo, (string)($in['challenge'] ?? ''), (string)($in['code'] ?? ''));
+        if (is_string($r)) authOut(401, ['error' => $r]);
+        [$ut, $uid] = $r;
+        $st = $pdo->prepare("SELECT * FROM team_members WHERE id = ? LIMIT 1");
+        $st->execute([$uid]);
+        $u = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$u || in_array($u['status'] ?? '', ['blocked', 'inactive'], true)) authOut(403, ['error' => 'This account is not active.']);
+        $token = authCreateSession($pdo, 'team', $u, $u['role'] ?? null);
+        $device = !empty($in['remember']) ? authRememberDevice($pdo, 'team', $u['id']) : null;
+        $u2 = $u; unset($u2['password_hash'], $u2['password']);
+        foreach ($u2 as $k => $v) { if (is_string($v) && $v !== '' && ($v[0] === '[' || $v[0] === '{')) { $d = json_decode($v, true); if (json_last_error() === JSON_ERROR_NONE) $u2[$k] = $d; } }
+        authOut(200, ['token' => $token, 'device' => $device, 'user' => array_merge($u2, ['isClient' => false])]);
+    }
+
     if ($action === 'forgot' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $in = json_decode(file_get_contents('php://input'), true) ?: [];
         $email = trim((string)($in['email'] ?? ''));
@@ -78,8 +94,7 @@ try {
         }
         if ($found) {
             $temp = strtoupper(substr(bin2hex(random_bytes(6)), 0, 10));
-            $pdo->prepare("UPDATE {$table} SET password = ? WHERE id = ?")->execute([$temp, $found['id']]);
-            authStoreHash($pdo, $table, $found['id'], $temp);
+            authStoreHash($pdo, $table, $found['id'], $temp); // stored scrambled only
             $name = htmlspecialchars($found['name'] ?: explode('@', $email)[0]);
             $html = '<div style="font-family:Montserrat,Arial,sans-serif;max-width:500px;margin:0 auto;padding:32px;background:#fff;border-radius:12px">'
                 . '<h2 style="text-align:center;font-size:20px;font-weight:800;color:#111827;margin-bottom:8px">Password Reset</h2>'
@@ -126,7 +141,7 @@ try {
 
     if (authTooManyFails($pdo, $email)) authOut(429, ['error' => 'Too many failed attempts. Please wait 15 minutes and try again.']);
 
-    $strip = function (array $row) { unset($row['password_hash']); return $row; };
+    $strip = function (array $row) { unset($row['password_hash'], $row['password']); return $row; };
     $decode = function (array $row) {
         // Same JSON decoding api.php applies, so the user object has the shape the app expects.
         foreach ($row as $k => $v) {
@@ -145,10 +160,17 @@ try {
             if ($status === 'inactive') authOut(403, ['error' => 'This account is inactive. Contact your admin if you believe this is a mistake.']);
             if ($status === 'invited' || $status === 'pending') authOut(403, ['error' => 'Your account is pending setup. Check your invitation email.']);
             $ok = authPasswordOk($u, $password);
+            if ($ok === null) { authLogAttempt($pdo, $email, false); authOut(401, ['error' => 'No password is set for this account. Use "Forgot password?" to get one.']); }
             if ($ok === false) { authLogAttempt($pdo, $email, false); authOut(401, ['error' => 'Incorrect password.']); }
-            // $ok === null: no password on file — allowed, exactly as before (stage 1 changes no behaviour).
-            if ($ok === true) authStoreHash($pdo, 'team_members', $u['id'], $password);
+            if (empty($u['password_hash']) || !password_verify($password, (string)$u['password_hash'])) authStoreHash($pdo, 'team_members', $u['id'], $password);
             authLogAttempt($pdo, $email, true);
+            // Roles that see money/salaries confirm with an emailed code (unless this device is remembered).
+            // Emergency switch (config.php): define('DISABLE_2FA', true); — only if code emails stop arriving.
+            if (!(defined('DISABLE_2FA') && DISABLE_2FA) && in_array($u['role'] ?? '', AUTH_2FA_ROLES, true) && !authDeviceTrusted($pdo, 'team', $u['id'], $in['device'] ?? '')) {
+                $ch = authStartChallenge($pdo, 'team', $u);
+                $em = (string)$u['email']; $at = strpos($em, '@');
+                authOut(200, ['need_code' => true, 'challenge' => $ch, 'email_hint' => substr($em, 0, 2) . str_repeat('•', max(1, $at - 2)) . substr($em, $at)]);
+            }
             $token = authCreateSession($pdo, 'team', $u, $u['role'] ?? null);
             authOut(200, ['token' => $token, 'user' => array_merge($decode($strip($u)), ['isClient' => false])]);
         }
@@ -171,8 +193,9 @@ try {
     if ($cu) {
         if (($cu['status'] ?? '') === 'blocked') authOut(403, ['error' => 'Your account has been blocked.']);
         $ok = authPasswordOk($cu, $password);
+        if ($ok === null) { authLogAttempt($pdo, $email, false); authOut(401, ['error' => 'No password is set for this account. Use "Forgot password?" to get one.']); }
         if ($ok === false) { authLogAttempt($pdo, $email, false); authOut(401, ['error' => 'Invalid credentials. Check your email and password.']); }
-        if ($ok === true) authStoreHash($pdo, 'client_users', $cu['id'], $password);
+        if (empty($cu['password_hash']) || !password_verify($password, (string)$cu['password_hash'])) authStoreHash($pdo, 'client_users', $cu['id'], $password);
         $org = null;
         if (!empty($cu['client_id'])) {
             $c = $pdo->prepare("SELECT * FROM clients WHERE id = ? LIMIT 1");

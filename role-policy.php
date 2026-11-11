@@ -28,7 +28,7 @@ const RP_DEFAULTS = [
 
 const RP_SALARY_COLS = ['salary','probation_salary','bank_account','bank_name','iban','national_id','national_id_number'];
 const RP_SECRET_TEAM_COLS = ['password','password_hash'];
-const RP_PROTECTED_TEAM_COLS = ['role','status','email','password','salary','probation_salary','probation_months','manager_id',
+const RP_PROTECTED_TEAM_COLS = ['role','status','email','password','password_hash','salary','probation_salary','probation_months','manager_id',
     'employment_type','attendance_policy_exempt','termination_date','termination_reason','start_date'];
 
 /** Same rule as hasPerm() in app.jsx. */
@@ -129,7 +129,7 @@ function rpTeamCheckWrite(PDO $pdo, array $s, $table, $method, $id, array $rec) 
         $canSal = rpHas($pdo, $s, 'hr.edit_salary');
         foreach (RP_PROTECTED_TEAM_COLS as $c) {
             if (!array_key_exists($c, $rec)) continue;
-            if ($c === 'password' && $own) continue;                                   // change your own password
+            if (($c === 'password' || $c === 'password_hash') && $own) continue;         // change your own password
             if (in_array($c, ['salary','probation_salary','probation_months'], true) ? $canSal : $canTeam) continue;
             unset($rec[$c]);
         }

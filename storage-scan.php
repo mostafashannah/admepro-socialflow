@@ -25,6 +25,7 @@
 //                      re-verified as still-orphaned right before removal
 // ================================================================
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/auth-lib.php';
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Headers: Content-Type, apikey, Authorization');
@@ -35,7 +36,7 @@ $providedKey = $_SERVER['HTTP_APIKEY'] ?? '';
 if (!$providedKey && !empty($_SERVER['HTTP_AUTHORIZATION'])) {
     $providedKey = preg_replace('/^Bearer\s+/i', '', $_SERVER['HTTP_AUTHORIZATION']);
 }
-if (!hash_equals(API_KEY, (string) $providedKey)) {
+if (!authTeamOk(false)) {
     http_response_code(401);
     echo json_encode(['error' => 'Invalid or missing API key']);
     exit;

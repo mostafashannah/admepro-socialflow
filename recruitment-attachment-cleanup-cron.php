@@ -25,6 +25,7 @@
 // Suggested cron: 0 4 * * * php /var/www/socialflow/recruitment-attachment-cleanup-cron.php >> /var/www/socialflow/recruitment-cleanup.log 2>&1
 // ================================================================
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/auth-lib.php';
 
 $isHttp = php_sapi_name() !== 'cli';
 if ($isHttp) {
@@ -37,7 +38,7 @@ if ($isHttp) {
     if (!$providedKey && !empty($_SERVER['HTTP_AUTHORIZATION'])) {
         $providedKey = preg_replace('/^Bearer\s+/i', '', $_SERVER['HTTP_AUTHORIZATION']);
     }
-    if (!hash_equals(API_KEY, (string) $providedKey)) {
+    if (!authTeamOk(false)) {
         http_response_code(401);
         echo json_encode(['error' => 'Invalid or missing API key']);
         exit;

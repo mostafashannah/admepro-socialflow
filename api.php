@@ -30,6 +30,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 // the legacy shared key. $AUTH says which; stage 1 grants both the same access.
 require_once __DIR__ . '/auth-lib.php';
 $AUTH = authResolve();
+// Not signed in: only the look of the app (colours/logo/name) may be read, with anything secret removed.
+$ANON = !$AUTH && $_SERVER['REQUEST_METHOD'] === 'GET' && in_array($_GET['table'] ?? '', ['app_settings', 'branding_assets'], true);
+if ($ANON) { require_once __DIR__ . '/guest-policy.php'; $AUTH = ['kind' => 'anon']; }
 if (!$AUTH) {
     http_response_code(401);
     echo json_encode(['error' => 'Invalid or missing API key']);
@@ -229,6 +232,7 @@ try {
         $stmt->execute($bindings);
         $rawRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         if ($GUEST) $rawRows = guestFilterRows($pdo, $GUEST, $table, $rawRows, $_GET);
+        if ($ANON) $rawRows = array_map('guestSafeSettingsRow', $rawRows);
         if ($TEAM) $rawRows = rpTeamFilterRows($pdo, $TEAM, $table, $rawRows);
         if ($CLIENT) $rawRows = rpClientFilterRows($rawRows, $table);
         $rows = array_map(fn($r) => castRow($r, $table), $rawRows);
@@ -245,6 +249,7 @@ try {
             $record = normalizeNumericEmptyStrings($record, $table);
             unset($record['password_hash']);
             if ($GUEST) $record = guestCheckWrite($pdo, $GUEST, $table, 'POST', null, $record);
+            $record = sfHashPasswordField($table, $record);
             if ($TEAM) $record = rpTeamCheckWrite($pdo, $TEAM, $table, 'POST', null, $record);
             if ($CLIENT) $record = rpClientCheckWrite($pdo, $CLIENT, $table, 'POST', null, $record);
             if (!$record) continue;
@@ -305,6 +310,7 @@ try {
         $body = normalizeNumericEmptyStrings($body, $table);
         unset($body['password_hash']);
         if ($GUEST) $body = guestCheckWrite($pdo, $GUEST, $table, 'PATCH', $id, $body);
+        $body = sfHashPasswordField($table, $body);
         if ($TEAM) $body = rpTeamCheckWrite($pdo, $TEAM, $table, 'PATCH', $id, $body);
         if ($CLIENT) $body = rpClientCheckWrite($pdo, $CLIENT, $table, 'PATCH', $id, $body);
         if (!$body) { echo json_encode([]); exit; }
@@ -357,6 +363,20 @@ try {
 } catch (Throwable $e) {
     http_response_code(500);
     echo json_encode(['error' => $e->getMessage()]);
+}
+
+// A password typed in the app (new member, invitation accepted, reset, "change password") is stored
+// only as a scrambled hash — the readable column is left empty.
+function sfHashPasswordField($table, array $rec) {
+    if (!in_array($table, ['team_members', 'client_users'], true) || !array_key_exists('password', $rec)) return $rec;
+    $pw = (string)$rec['password'];
+    if ($pw === '') { unset($rec['password']); return $rec; } // empty = "leave unchanged"
+    global $pdo;
+    try { $pdo->query("SELECT password_hash FROM `$table` LIMIT 0"); }
+    catch (Throwable $e) { try { $pdo->exec("ALTER TABLE `$table` ADD COLUMN password_hash VARCHAR(255) NULL"); } catch (Throwable $e2) {} }
+    $rec['password_hash'] = password_hash($pw, PASSWORD_DEFAULT);
+    $rec['password'] = '';
+    return $rec;
 }
 
 function generateUuid() {

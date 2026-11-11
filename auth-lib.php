@@ -127,7 +127,9 @@ function authResolve() {
         $s = authFindSession($session);
         if ($s) return ['kind' => 'session', 'session' => $s];
     }
-    if ($key && hash_equals(API_KEY, (string)$key)) return ['kind' => 'key'];
+    // The shared key used to ship inside app.js, so it is public. It is switched OFF unless config.php
+    // sets ALLOW_LEGACY_KEY to true (emergency rollback only).
+    if ($key && defined('ALLOW_LEGACY_KEY') && ALLOW_LEGACY_KEY && hash_equals(API_KEY, (string)$key)) return ['kind' => 'key'];
     return null;
 }
 
@@ -182,9 +184,7 @@ function authPasswordOk(array $row, $typed, $legacyField = 'password') {
     $plain = (string)($row[$legacyField] ?? '');
     if ($hash) {
         if (password_verify((string)$typed, $hash)) return true;
-        // The readable password was changed since the hash was taken (e.g. an
-        // admin reset it in the app, which still writes the old column).
-        return $plain !== '' && hash_equals($plain, (string)$typed);
+        return $plain !== '' && hash_equals($plain, (string)$typed); // an older readable one not converted yet
     }
     if ($plain === '') return null;
     return hash_equals($plain, (string)$typed);
@@ -194,7 +194,7 @@ function authPasswordOk(array $row, $typed, $legacyField = 'password') {
 function authStoreHash(PDO $pdo, $table, $id, $typed) {
     if (!in_array($table, ['team_members', 'client_users'], true) || (string)$typed === '') return;
     $hash = password_hash((string)$typed, PASSWORD_DEFAULT);
-    $sql = "UPDATE {$table} SET password_hash = ? WHERE id = ?";
+    $sql = "UPDATE {$table} SET password_hash = ?, password = '' WHERE id = ?"; // the readable copy is cleared
     try {
         $pdo->prepare($sql)->execute([$hash, $id]);
     } catch (Throwable $e) {
@@ -218,4 +218,77 @@ function authSendMail($to, $subject, $html, $fromName = 'SocialFlow') {
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
     return $code >= 200 && $code < 300;
+}
+
+/**
+ * For endpoints only the team uses (publishing, WhatsApp, attendance import…):
+ * a team login session, or the legacy key while it is still enabled.
+ * $allowClient lets a client portal session through as well.
+ */
+function authTeamOk($allowClient = false) {
+    $a = authResolve();
+    if (!$a) return false;
+    if ($a['kind'] === 'key') return true;
+    $t = $a['session']['user_type'] ?? '';
+    return $t === 'team' || ($allowClient && $t === 'client');
+}
+
+/* ───────────── Email sign-in code (two-step) ─────────────
+ * Required for the roles that see money and salaries. A device can be
+ * remembered for 30 days so the code is not asked every time. */
+const AUTH_2FA_ROLES = ['admin', 'accountant', 'account_director'];
+
+function auth2faSchema(PDO $pdo) {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS auth_codes (
+        id CHAR(32) NOT NULL PRIMARY KEY, user_type VARCHAR(20) NOT NULL, user_id VARCHAR(64) NOT NULL,
+        code_hash CHAR(64) NOT NULL, expires_at DATETIME NOT NULL, attempts INT NOT NULL DEFAULT 0, used TINYINT NOT NULL DEFAULT 0)");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS auth_devices (
+        token_hash CHAR(64) NOT NULL PRIMARY KEY, user_type VARCHAR(20) NOT NULL, user_id VARCHAR(64) NOT NULL, expires_at DATETIME NOT NULL)");
+}
+
+function authDeviceTrusted(PDO $pdo, $userType, $userId, $deviceToken) {
+    if (!is_string($deviceToken) || !preg_match('/^[a-f0-9]{64}$/', $deviceToken)) return false;
+    auth2faSchema($pdo);
+    $st = $pdo->prepare("SELECT COUNT(*) FROM auth_devices WHERE token_hash = ? AND user_type = ? AND user_id = ? AND expires_at > ?");
+    $st->execute([hash('sha256', $deviceToken), $userType, (string)$userId, authNow()]);
+    return (int)$st->fetchColumn() > 0;
+}
+
+/** Emails a 6-digit code and returns the challenge id. */
+function authStartChallenge(PDO $pdo, $userType, array $user) {
+    auth2faSchema($pdo);
+    $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    $id = bin2hex(random_bytes(16));
+    $pdo->prepare("INSERT INTO auth_codes (id, user_type, user_id, code_hash, expires_at) VALUES (?, ?, ?, ?, ?)")
+        ->execute([$id, $userType, (string)$user['id'], hash('sha256', $id . $code), authNow(600)]);
+    $name = htmlspecialchars(explode(' ', trim((string)($user['name'] ?? '')))[0] ?: 'there');
+    $html = '<div style="font-family:Montserrat,Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#fff;border-radius:12px;text-align:center">'
+        . '<h2 style="font-size:20px;font-weight:800;color:#111827;margin:0 0 8px">Your sign-in code</h2>'
+        . '<p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0">Hi ' . $name . ', use this code to finish signing in to SocialFlow:</p>'
+        . '<div style="margin:22px auto;font-size:32px;font-weight:800;letter-spacing:8px;color:#d90b2c;font-family:monospace">' . $code . '</div>'
+        . '<p style="color:#6b7280;font-size:12px;line-height:1.6;margin:0">It expires in 10 minutes. If you didn\'t try to sign in, change your password — someone knows it.</p></div>';
+    authSendMail($user['email'], 'SocialFlow sign-in code: ' . $code, $html);
+    return $id;
+}
+
+/** Checks a code. Returns [userType, userId] or an error string. */
+function authCheckChallenge(PDO $pdo, $id, $code) {
+    auth2faSchema($pdo);
+    $st = $pdo->prepare("SELECT * FROM auth_codes WHERE id = ? LIMIT 1");
+    $st->execute([(string)$id]);
+    $c = $st->fetch(PDO::FETCH_ASSOC);
+    if (!$c || $c['used'] || $c['expires_at'] < authNow()) return 'This code has expired. Sign in again to get a new one.';
+    if ((int)$c['attempts'] >= 5) return 'Too many wrong codes. Sign in again to get a new one.';
+    $pdo->prepare("UPDATE auth_codes SET attempts = attempts + 1 WHERE id = ?")->execute([$id]);
+    if (!hash_equals($c['code_hash'], hash('sha256', $id . preg_replace('/\D/', '', (string)$code)))) return 'Wrong code. Check the email and try again.';
+    $pdo->prepare("UPDATE auth_codes SET used = 1 WHERE id = ?")->execute([$id]);
+    return [$c['user_type'], $c['user_id']];
+}
+
+function authRememberDevice(PDO $pdo, $userType, $userId) {
+    auth2faSchema($pdo);
+    $t = bin2hex(random_bytes(32));
+    $pdo->prepare("INSERT INTO auth_devices (token_hash, user_type, user_id, expires_at) VALUES (?, ?, ?, ?)")
+        ->execute([hash('sha256', $t), $userType, (string)$userId, authNow(30 * 86400)]);
+    return $t;
 }
