@@ -323,6 +323,11 @@ try {
         $sql = "UPDATE " . ident($table) . " SET " . implode(',', $sets) . " WHERE id = :id";
         $stmt = $pdo->prepare($sql);
         $stmt->execute($bind);
+        // A new password signs that person out of every device (the admin who reset it stays signed in).
+        if (!empty($body['password_hash']) && in_array($table, ['team_members', 'client_users'], true)) {
+            [$myTok] = authCredentials();
+            authRevokeUserSessions($pdo, $table === 'team_members' ? 'team' : 'client', $id, $myTok ?: null);
+        }
 
         if (wantsRepresentation()) {
             $stmt = $pdo->prepare("SELECT * FROM " . ident($table) . " WHERE id = :id");

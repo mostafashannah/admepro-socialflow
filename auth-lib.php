@@ -147,6 +147,15 @@ function authCreateSession(PDO $pdo, $userType, array $user, $role, $clientId = 
     return $token;
 }
 
+// Sign a person out everywhere (e.g. after their password changes). $keepToken stays signed in.
+function authRevokeUserSessions(PDO $pdo, $userType, $userId, $keepToken = null) {
+    try {
+        $keep = $keepToken ? hash('sha256', $keepToken) : '';
+        $pdo->prepare("UPDATE auth_sessions SET revoked = 1 WHERE user_type = ? AND user_id = ? AND token_hash <> ?")->execute([$userType, (string)$userId, $keep]);
+        $pdo->prepare("DELETE FROM auth_devices WHERE user_type = ? AND user_id = ?")->execute([$userType, (string)$userId]);
+    } catch (Throwable $e) { /* best-effort */ }
+}
+
 function authRevokeSession($token) {
     if (!is_string($token) || !preg_match('/^[a-f0-9]{64}$/', $token)) return;
     try {

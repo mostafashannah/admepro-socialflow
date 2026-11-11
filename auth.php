@@ -32,6 +32,17 @@ try {
         authOut(200, ['user_type' => $s['user_type'], 'user_id' => $s['user_id'], 'email' => $s['email'], 'role' => $s['role'], 'client_id' => $s['client_id']]);
     }
 
+    if ($action === 'history') {
+        // Admin only: last 7 days of sign-in attempts + who is signed in right now.
+        [$tok] = authCredentials();
+        $s = $tok ? authFindSession($tok) : null;
+        if (!$s || $s['user_type'] !== 'team' || $s['role'] !== 'admin') authOut(403, ['error' => 'Admins only']);
+        $att = $pdo->query("SELECT email, ip, ok, at FROM auth_attempts ORDER BY at DESC LIMIT 200")->fetchAll(PDO::FETCH_ASSOC);
+        $st = $pdo->prepare("SELECT user_type, email, role, ip, user_agent, created_at, last_seen_at FROM auth_sessions WHERE revoked = 0 AND expires_at > ? AND user_type <> 'guest' ORDER BY last_seen_at DESC LIMIT 200");
+        $st->execute([authNow()]);
+        authOut(200, ['attempts' => $att, 'sessions' => $st->fetchAll(PDO::FETCH_ASSOC)]);
+    }
+
     if ($action === 'change_password' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         // A signed-in team member / client user changes their own password (needs the current one).
         [$tok] = authCredentials();
@@ -47,6 +58,7 @@ try {
         $row = $st->fetch(PDO::FETCH_ASSOC);
         if (!$row || !authPasswordOk($row, $cur)) authOut(403, ['error' => 'Current password is incorrect.']);
         authStoreHash($pdo, $table, $s['user_id'], $new);
+        authRevokeUserSessions($pdo, $s['user_type'], $s['user_id'], $tok); // other devices signed out
         authOut(200, ['ok' => true]);
     }
 

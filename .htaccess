@@ -1,4 +1,22 @@
 Options -MultiViews
+
+# ── Security ──
+# Never serve source control, configs, database dumps, scripts or notes.
+RedirectMatch 404 /\.git
+RedirectMatch 404 /\.(env|htpasswd)
+<FilesMatch "(^config.*\.php|\.(sql|sh|md|log|bak|old|orig|swp|dist|lock|ini)|^composer\.json|^package(-lock)?\.json|^babel\.config\.json)$">
+  Require all denied
+</FilesMatch>
+Options -Indexes
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "camera=(self), microphone=(self), geolocation=(self), payment=(), usb=()"
+  Header always set Strict-Transport-Security "max-age=31536000" "expr=%{HTTPS} == 'on'"
+  Header always set Content-Security-Policy "frame-ancestors 'self'; object-src 'none'; base-uri 'self'"
+  Header always unset X-Powered-By
+</IfModule>
 RewriteEngine On
 
 # Public marketing/SEO page — served at the clean URL /features instead of

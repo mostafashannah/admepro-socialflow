@@ -22395,7 +22395,7 @@ function PwResetBox({member, onClose}) {
   },[]); // eslint-disable-line react-hooks/exhaustive-deps
   const gen=()=>{const c="ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";let s="";const a=new Uint32Array(10);crypto.getRandomValues(a);a.forEach(n=>s+=c[n%c.length]);setPw(s);setMsg(null);};
   const save=async()=>{
-    if(pw.length<6){setMsg({e:true,t:"At least 6 characters"});return;}
+    if(pw.length<8){setMsg({e:true,t:"At least 8 characters"});return;}
     setBusy(true);setMsg(null);
     try{
       await ue("TeamMember",member.id,{password:pw});
@@ -25920,7 +25920,7 @@ function AcceptInvitationPage({token, onAccepted}) {
   };
 
   const handleSubmit = async () => {
-    if(!form.password||form.password.length<6) { alert("Password must be at least 6 characters"); return; }
+    if(!form.password||form.password.length<8) { alert("Password must be at least 8 characters"); return; }
     if(form.password!==form.confirm) { alert("Passwords don't match"); return; }
     setSubmitting(true);
     const memberPayload = {
@@ -26032,7 +26032,7 @@ function AcceptInvitationPage({token, onAccepted}) {
           </div>
           <div>
             <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Password *</label>
-            <input type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} placeholder="Min 6 characters" style={inputSt}/>
+            <input type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} placeholder="Min 8 characters" style={inputSt}/>
           </div>
           <div>
             <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Confirm Password *</label>
@@ -33165,6 +33165,40 @@ function DailyReportSettings() {
   );
 }
 
+function SignInHistory() {
+  const [d,setD]=useState(null); const [err,setErr]=useState(""); const [only,setOnly]=useState("all");
+  const load=()=>{ setErr(""); fetch(window.location.origin+"/auth.php?action=history").then(r=>r.json().then(j=>({ok:r.ok,j}))).then(({ok,j})=>{ if(!ok) setErr(j.error||"Couldn't load"); else setD(j); }).catch(()=>setErr("Couldn't load")); };
+  useEffect(load,[]);
+  const when=v=>{ const t=parseSqlUtc(v); return t&&!isNaN(t)?t.toLocaleString():v; };
+  const dev=ua=>{ ua=String(ua||""); const os=/iPhone|iPad/.test(ua)?"iPhone/iPad":/Android/.test(ua)?"Android":/Mac OS/.test(ua)?"Mac":/Windows/.test(ua)?"Windows":"Other"; const br=/Edg\//.test(ua)?"Edge":/Chrome\//.test(ua)?"Chrome":/Safari\//.test(ua)?"Safari":/Firefox\//.test(ua)?"Firefox":""; return `${os}${br?" · "+br:""}`; };
+  const card={background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:16};
+  const th={textAlign:"left",padding:"6px 8px",fontSize:11,color:"var(--text3)",fontWeight:700}; const td={padding:"6px 8px",fontSize:12,borderTop:"1px solid var(--border)",whiteSpace:"nowrap"};
+  if(err) return <div style={card}><p style={{color:"#ef4444",fontSize:13}}>{err}</p></div>;
+  if(!d) return <div style={{padding:30,display:"flex",justifyContent:"center"}}><Spinner size={18}/></div>;
+  const att=d.attempts.filter(a=>only==="all"||(only==="fail"?!Number(a.ok):Number(a.ok)));
+  const fails24=d.attempts.filter(a=>!Number(a.ok)&&Date.now()-parseSqlUtc(a.at)<864e5).length;
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={card}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,gap:8,flexWrap:"wrap"}}>
+          <p style={{fontWeight:800,fontSize:15}}>Signed in now <span style={{color:"var(--text3)",fontWeight:600,fontSize:12}}>({d.sessions.length})</span></p>
+          <button onClick={load} style={{fontSize:12,fontWeight:700,color:"var(--accent)"}}>Refresh</button>
+        </div>
+        <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr><th style={th}>Who</th><th style={th}>Type</th><th style={th}>Device</th><th style={th}>IP</th><th style={th}>Signed in</th><th style={th}>Last active</th></tr></thead>
+          <tbody>{d.sessions.map((x,i)=><tr key={i}><td style={{...td,fontWeight:700}}>{x.email}</td><td style={td}>{x.user_type==="team"?(ROLES[x.role]?.label||x.role):"Client"}</td><td style={td}>{dev(x.user_agent)}</td><td style={td}>{x.ip}</td><td style={td}>{when(x.created_at)}</td><td style={td}>{when(x.last_seen_at)}</td></tr>)}</tbody></table></div>
+      </div>
+      <div style={card}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,gap:8,flexWrap:"wrap"}}>
+          <p style={{fontWeight:800,fontSize:15}}>Sign-in attempts, last 7 days {fails24>0&&<span style={{fontSize:12,color:"#ef4444",fontWeight:700}}> · {fails24} failed in 24h</span>}</p>
+          <select value={only} onChange={e=>setOnly(e.target.value)} style={{...inputSt,width:"auto",minHeight:"auto",padding:"5px 10px",fontSize:12,borderRadius:99}}><option value="all">All</option><option value="fail">Failed only</option><option value="ok">Successful only</option></select>
+        </div>
+        <div style={{overflowX:"auto",maxHeight:480,overflowY:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr><th style={th}>When</th><th style={th}>Email</th><th style={th}>Result</th><th style={th}>IP</th></tr></thead>
+          <tbody>{att.map((a,i)=><tr key={i}><td style={td}>{when(a.at)}</td><td style={{...td,fontWeight:600}}>{a.email}</td><td style={{...td,fontWeight:700,color:Number(a.ok)?"#10b981":"#ef4444"}}>{Number(a.ok)?"OK":"Failed"}</td><td style={td}>{a.ip}</td></tr>)}</tbody></table></div>
+      </div>
+    </div>
+  );
+}
+
 function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, integrationLogs, onAddIntegration, onUpdateIntegration, onDeleteIntegration, onRetryIntegration, emailSettings, onSaveEmailSettings, team, posts, clients, timelogs, perfLogs, accentColor, brandingAssets, onSaveBrandingAssets, wallpaper, emailLogs, activityLogs, onRefreshLogs, systemSessions, onRefreshSessions, assets, onFindDuplicateAssets, onRemoveDuplicateAssets, onBackfillSaraMemory, backfillRunning}) {
   const [settingsTab, setSettingsTab] = usePersistentState("sf_tab_settings","branding");
   const [f,setF] = useState({
@@ -33238,7 +33272,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
           {k:"ai", label:"AI & Tasks", subs:[["ai_model","AI Agents"],["durations","Task Estimates"]]},
           {k:"reports", label:"Reports", subs:[["daily_report","Daily Reports"]]},
           {k:"people", label:"People & Policy", subs:[["contract","Contract & Policy"],["points","Reward Points"]]},
-          {k:"system", label:"System", subs:[["storage","Storage"],["syslog","System Log"]]},
+          {k:"system", label:"System", subs:[["storage","Storage"],["syslog","System Log"],["signins","Sign-ins"]]},
         ];
         const group = GROUPS.find(g=>g.subs.some(([k])=>k===settingsTab)) || GROUPS[0];
         const errCount = (activityLogs||[]).filter(a=>a.status==="error").length;
@@ -33403,6 +33437,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 
       {/* ── SYSTEM LOG TAB ── */}
       {settingsTab==="daily_report"&&<div style={{display:"flex",flexDirection:"column",gap:14}}><DailyReportSettings/><MaiReportSettings/></div>}
+      {settingsTab==="signins"&&<SignInHistory/>}
       {settingsTab==="syslog"&&<SystemLogPage activityLogs={activityLogs} systemSessions={systemSessions} currentUser={currentUser} team={team} onRefresh={()=>{ onRefreshLogs&&onRefreshLogs(); onRefreshSessions&&onRefreshSessions(); }}/>}
 
       {/* ── STORAGE TAB ── */}
