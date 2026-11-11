@@ -11314,7 +11314,7 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
       buttons:[{l:bulkBusy?"Approving…":"Approve all", primary:true, fn:approveAllLeaves}, {l:"Open team", fn:()=>setPage("users")}]},
     newApps.length && {k:"apps", n:newApps.length, l:"new job application"+(newApps.length>1?"s":"")+" to review", c:"#0ea5e9", ico:Icons.briefcase,
       tip:`Oldest has waited ${daysAgo(newApps[newApps.length-1]?.created_date)??0} day(s). Shortlist or reject so candidates aren't left hanging.`,
-      list:newApps.slice(0,5).map(a=>({id:a.id, t:a.full_name||a.name||a.email||"Candidate", s:[a.position||a.job_title, a.created_date&&`${daysAgo(a.created_date)}d ago`].filter(Boolean).join(" · "),
+      list:newApps.slice(0,5).map(a=>({id:a.id, t:a.candidate_name||a.full_name||a.candidate_email||"Candidate", s:[a.job_title||a.position, a.created_date&&`${daysAgo(a.created_date)}d ago`].filter(Boolean).join(" · "),
         fn:()=>{ try{ localStorage.setItem("sf_recruitment_open_app",a.id); }catch(e){} goNewApps(); }})),
       buttons:[{l:`Review all ${newApps.length} new`, primary:true, fn:goNewApps}]},
     !isDirector && prizeReq.length && {k:"prize", n:prizeReq.length, l:"prize request"+(prizeReq.length>1?"s":""), c:"#8b5cf6", ico:Icons.award,
@@ -11333,7 +11333,7 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
       buttons:[{l:"Open subscriptions", primary:true, fn:()=>setPage("subscriptions")}]},
     missedMai.length && {k:"mai", n:missedMai.length, l:"missed Mai check-in"+(missedMai.length>1?"s":""), c:"#f97316", ico:Icons.chat,
       tip:"These people skipped their daily check-in — a quick message usually fixes it.",
-      list:missedMai.slice(0,6).map(x=>({id:x.id, t:nameOfEmail(x.member_email||x.user_email||x.email)||x.member_name||"Team member", s:String(x.report_date||"").slice(0,10), fn:()=>setPage("users")})),
+      list:missedMai.slice(0,6).map(x=>({id:x.id, t:x.account_manager_name||nameOfEmail(x.account_manager_email)||"Team member", s:[x.report_type&&String(x.report_type).replace(/_/g," "), String(x.report_date||"").slice(0,10)].filter(Boolean).join(" · "), fn:()=>setPage("users")})),
       buttons:[{l:"Open team", primary:true, fn:()=>setPage("users")}]},
   ].filter(Boolean);
   // ── Today
