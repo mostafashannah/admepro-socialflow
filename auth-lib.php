@@ -190,3 +190,18 @@ function authStoreHash(PDO $pdo, $table, $id, $typed) {
         } catch (Throwable $e2) { error_log('[auth] could not store hash: ' . $e2->getMessage()); }
     }
 }
+
+/** Sends an email through Resend (same account mail.php uses). Returns true on success. */
+function authSendMail($to, $subject, $html, $fromName = 'SocialFlow') {
+    if (!defined('RESEND_API_KEY') || !RESEND_API_KEY) return false;
+    $ch = curl_init('https://api.resend.com/emails');
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20,
+        CURLOPT_POSTFIELDS => json_encode(['from' => "$fromName <noreply@admepro.com>", 'to' => is_array($to) ? $to : [$to], 'subject' => $subject, 'html' => $html]),
+        CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . RESEND_API_KEY, 'Content-Type: application/json'],
+    ]);
+    curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return $code >= 200 && $code < 300;
+}

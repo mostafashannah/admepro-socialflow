@@ -1978,7 +1978,7 @@ async function sendEmail(to, subject, html, fromName="SocialFlow") {
   const sentAt = new Date().toISOString();
   try {
     const r = await fetch(MAIL_ENDPOINT, {
-      method:"POST", headers:{"Content-Type":"application/json"},
+      method:"POST", headers:{"Content-Type":"application/json", apikey:SB_KEY, "X-SF-Session":sfSession.get()},
       body: JSON.stringify({to, subject, html, from_name:fromName}),
     });
     const d = await r.json();
@@ -27512,7 +27512,7 @@ function signInWithOAuth(provider) {
 
 // ── Signup / Request Access Page ──────────────────────────────
 function RequestAccessPage({onBack}) {
-  const [signupMethod, setSignupMethod] = useState("google");
+  const [signupMethod, setSignupMethod] = useState("email");
   const [userType, setUserType] = useState("internal"); // "internal"|"client"
   const [form, setForm] = useState({name:"",email:"",password:"",company:"",message:""});
   const [submitted, setSubmitted] = useState(false);
@@ -27523,17 +27523,12 @@ function RequestAccessPage({onBack}) {
     if(!form.name.trim()||!form.email.trim()) { alert("Name and email are required."); return; }
     setLoading(true);
     try {
-      await ce("AccessRequest",[{
-        name: form.name.trim(),
-        email: form.email.toLowerCase().trim(),
-        user_type: userType,
-        message: form.message||"",
-        status: "pending",
-      }]);
-      // Notify admin
-      sendEmail("mostafashannah@gmail.com","New Access Request on SocialFlow",
-        EMAIL_TEMPLATES.accessRequested(form.name.trim(), form.email.toLowerCase().trim(), "Email", "https://socialflow.admepro.com")
-      ).catch(()=>{});
+      const r = await fetch(window.location.origin+"/auth.php?action=request_access", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({
+        name: form.name.trim(), email: form.email.toLowerCase().trim(), user_type: userType, message: form.message||"", company: form.company||"",
+        notify_html: EMAIL_TEMPLATES.accessRequested(form.name.trim(), form.email.toLowerCase().trim(), "Email", "https://socialflow.admepro.com"),
+      })});
+      const d = await r.json().catch(()=>({}));
+      if(!r.ok) { alert(d.error||"Something went wrong. Please try again."); setLoading(false); return; }
       setSubmitted(true);
     } catch(e) {
       console.error(e);
@@ -27602,8 +27597,8 @@ function RequestAccessPage({onBack}) {
         </div>
 
         {/* Method picker */}
-        <div style={{display:"flex",gap:8,marginBottom:20}}>
-          {[["google","Google"],["email","Email"]].map(([k,l])=>(
+        <div style={{display:"none",gap:8,marginBottom:20}}>
+          {[["email","Email"]].map(([k,l])=>(
             <button key={k} onClick={()=>setSignupMethod(k)} style={{flex:1,padding:"8px 4px",borderRadius:10,
               border:`1.5px solid ${signupMethod===k?"var(--accent)":"var(--border)"}`,
               background:signupMethod===k?"var(--accent)10":"var(--surface2)",
@@ -27628,7 +27623,7 @@ function RequestAccessPage({onBack}) {
         )}
 
         {/* Google */}
-        {signupMethod==="google"&&(
+        {false&&signupMethod==="google"&&(
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             <p style={{fontSize:13,color:"var(--text2)",marginBottom:4}}>You'll be redirected to Google to authenticate. Once verified, your request will be sent to the admin for approval.</p>
             <button onClick={handleGoogleRequest} disabled={loading}
@@ -27670,34 +27665,10 @@ function LoginScreen({onLogin,clients}) {
     if(!forgotEmail.trim()) { setForgotErr("Enter your email address."); return; }
     setForgotSending(true); setForgotErr("");
     try {
-      // Look up in team members first, then client users
-      const [tmRes, cuRes] = await Promise.all([
-        qe("TeamMember",{email:forgotEmail.trim()}).catch(()=>({entities:[]})),
-        qe("ClientUser",{email:forgotEmail.trim()}).catch(()=>({entities:[]})),
-      ]);
-      const tm = tmRes.entities?.[0];
-      const cu = cuRes.entities?.[0];
-      if(!tm && !cu) { setForgotErr("No account found with that email."); setForgotSending(false); return; }
-
-      // Generate a random new temp password
-      const tempPass = Math.random().toString(36).slice(2,10).toUpperCase();
-      const name = (tm||cu)?.name || forgotEmail.trim().split("@")[0];
-
-      // Save it to the right table
-      if(tm) await ue("TeamMember", tm.id, {password: tempPass}).catch(()=>{});
-      if(cu) await ue("ClientUser", cu.id, {password: tempPass}).catch(()=>{});
-
-      // Send email
-      const html = `<div style="font-family:'Montserrat',sans-serif;max-width:500px;margin:0 auto;padding:32px;background:#fff;border-radius:12px">
-        <img src="/favicon.svg" width="44" height="44" style="border-radius:10px;display:block;margin:0 auto 20px"/>
-        <h2 style="text-align:center;font-size:20px;font-weight:800;color:#111827;margin-bottom:8px">Password Reset</h2>
-        <p style="color:#4b5563;font-size:14px;line-height:1.6;text-align:center">Hi ${name}, here is your temporary password:</p>
-        <div style="margin:24px auto;text-align:center;background:#f9fafb;border:2px dashed #d1d5db;border-radius:10px;padding:18px 24px">
-          <span style="font-size:26px;font-weight:800;letter-spacing:3px;color:#d90b2c;font-family:monospace">${tempPass}</span>
-        </div>
-        <p style="color:#6b7280;font-size:13px;text-align:center;line-height:1.6">Sign in with this temporary password, then update it in your account settings.</p>
-      </div>`;
-      await sendEmail(forgotEmail.trim(), "Your temporary SocialFlow password", html, "SocialFlow");
+      // Done on the server: it looks the account up, sets a temporary password and emails it.
+      // It answers the same way whether or not the email exists, so it can't be used to find accounts.
+      const r = await fetch(window.location.origin+"/auth.php?action=forgot", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({email:forgotEmail.trim()})});
+      if(!r.ok) { const d = await r.json().catch(()=>({})); setForgotErr(d.error||"Failed to send — try again."); setForgotSending(false); return; }
       setForgotSent(true);
     } catch(e) { setForgotErr("Failed to send — try again."); }
     setForgotSending(false);
@@ -27779,7 +27750,7 @@ function LoginScreen({onLogin,clients}) {
               <div style={{textAlign:"center",padding:"20px 0"}}>
                 <div style={{fontSize:40,marginBottom:12}}>✅</div>
                 <p style={{fontWeight:700,fontSize:15,marginBottom:8}}>Check your inbox</p>
-                <p style={{fontSize:13,color:"var(--text2)"}}>A temporary password has been sent to <strong>{forgotEmail}</strong>. Use it to sign in, then change your password in settings.</p>
+                <p style={{fontSize:13,color:"var(--text2)"}}>If an account exists for <strong>{forgotEmail}</strong>, a temporary password has been sent to it. Use it to sign in, then change your password in settings.</p>
               </div>
               <Btn onClick={()=>{setShowForgot(false);setForgotSent(false);}}>Back to Sign In</Btn>
             </>
@@ -27829,26 +27800,6 @@ function LoginScreen({onLogin,clients}) {
           <Btn onClick={handleLogin} style={{marginTop:4,opacity:loading?0.7:1}}>
             {loading?"Signing in…":"Sign In"}
           </Btn>
-
-          {/* Social login divider */}
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{flex:1,height:1,background:"var(--border)"}}/>
-            <span style={{fontSize:11,color:"var(--text3)",fontWeight:500,whiteSpace:"nowrap"}}>OR CONTINUE WITH</span>
-            <div style={{flex:1,height:1,background:"var(--border)"}}/>
-          </div>
-
-          {/* Google */}
-          <button onClick={()=>signInWithOAuth("google")} style={{
-            width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,
-            padding:"11px",borderRadius:10,border:"1.5px solid var(--border2)",
-            background:"var(--surface2)",color:"var(--text1)",
-            fontWeight:600,fontSize:13,cursor:"pointer",transition:"background 0.15s",
-          }}
-          onMouseEnter={e=>e.currentTarget.style.background="var(--border)"}
-          onMouseLeave={e=>e.currentTarget.style.background="var(--surface2)"}>
-            <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-            Continue with Google
-          </button>
 
           {/* Request Access link */}
           <div style={{textAlign:"center",paddingTop:4}}>
@@ -50238,6 +50189,8 @@ function App() {
   const [loading,setLoading] = useState(true);
   const [keyboardOpen,setKeyboardOpen] = useState(false);
   const loadAllDataRef = React.useRef(null);
+  const loadUserRef = React.useRef(null); // who the data load is for (null = signed out)
+  loadUserRef.current = currentUser;
   const mainScrollRef = React.useRef(null);
   const oauthRequestSaved = React.useRef(false);
   // Check for invite token in URL
@@ -50300,6 +50253,8 @@ function App() {
   const [oauthEmail] = useState(()=>{
     try {
       const hash = window.location.hash;
+      if(hash && hash.includes("access_token")) { try{window.history.replaceState({},"",window.location.pathname);}catch(e){} }
+      return null; // Google sign-in removed: the token was only decoded in the browser, never verified, so it could be forged
       if(!hash||!hash.includes("access_token")) return null;
       const params = new URLSearchParams(hash.replace(/^#/,""));
       const token = params.get("access_token");
@@ -50586,6 +50541,15 @@ function App() {
   useEffect(()=>{
     async function load(silent) {
       if(!silent) setLoading(true);
+      // Not signed in: load only the look of the app (colours/logo) — no team, clients, money or
+      // anything else leaves the server before someone has logged in.
+      if(!loadUserRef.current) {
+        const [settR, brandR] = (await Promise.allSettled([qe("AppSettings"), qe("BrandingAssets")])).map(r=>r.status==="fulfilled"?r.value:{entities:[]});
+        if(settR.entities.length) { const s=settR.entities[0]; setAppSettings(s); if(s.primary_color) setAccentColor(s.primary_color); }
+        if(brandR.entities.length) { const b=brandR.entities[0]; setBrandingAssets(b); if(b.primary_color) setAccentColor(b.primary_color); }
+        setLoading(false);
+        return;
+      }
       // ── Wave 1: critical data needed to show any page (all parallel) ──
       const wave1 = await Promise.allSettled([
         qe("TeamMember"), // 0
@@ -50748,9 +50712,9 @@ function App() {
     // Silent (no loading spinner), only while the tab is actually visible
     // — same pattern already used for the smaller per-page pollers
     // elsewhere in the app, just on the full dataset here.
-    const autoRefresh = setInterval(() => { if(document.visibilityState==="visible") load(true); }, 60000);
+    const autoRefresh = setInterval(() => { if(document.visibilityState==="visible" && loadUserRef.current) load(true); }, 60000);
     return () => clearInterval(autoRefresh);
-  },[]);
+  },[!!currentUser]);
 
   // ── Helpers ──────────────────────────────────────────────────
   // Creates a record optimistically, then replaces local temp ID with real Supabase UUID

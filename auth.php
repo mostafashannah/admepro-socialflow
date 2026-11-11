@@ -38,6 +38,59 @@ try {
         authOut(200, ['ok' => true]);
     }
 
+    if ($action === 'forgot' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $in = json_decode(file_get_contents('php://input'), true) ?: [];
+        $email = trim((string)($in['email'] ?? ''));
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) authOut(400, ['error' => 'Enter a valid email address.']);
+        // Same limiter as login: stops someone resetting a person's password over and over.
+        if (authTooManyFails($pdo, $email)) authOut(429, ['error' => 'Too many attempts. Please wait 15 minutes and try again.']);
+        authLogAttempt($pdo, $email, false);
+        $found = null; $table = null;
+        foreach (['team_members', 'client_users'] as $t) {
+            $st = $pdo->prepare("SELECT id, name FROM {$t} WHERE email = ? LIMIT 1");
+            $st->execute([$email]);
+            if ($row = $st->fetch(PDO::FETCH_ASSOC)) { $found = $row; $table = $t; break; }
+        }
+        if ($found) {
+            $temp = strtoupper(substr(bin2hex(random_bytes(6)), 0, 10));
+            $pdo->prepare("UPDATE {$table} SET password = ? WHERE id = ?")->execute([$temp, $found['id']]);
+            authStoreHash($pdo, $table, $found['id'], $temp);
+            $name = htmlspecialchars($found['name'] ?: explode('@', $email)[0]);
+            $html = '<div style="font-family:Montserrat,Arial,sans-serif;max-width:500px;margin:0 auto;padding:32px;background:#fff;border-radius:12px">'
+                . '<h2 style="text-align:center;font-size:20px;font-weight:800;color:#111827;margin-bottom:8px">Password Reset</h2>'
+                . '<p style="color:#4b5563;font-size:14px;line-height:1.6;text-align:center">Hi ' . $name . ', here is your temporary password:</p>'
+                . '<div style="margin:24px auto;text-align:center;background:#f9fafb;border:2px dashed #d1d5db;border-radius:10px;padding:18px 24px"><span style="font-size:26px;font-weight:800;letter-spacing:3px;color:#d90b2c;font-family:monospace">' . $temp . '</span></div>'
+                . '<p style="color:#6b7280;font-size:13px;text-align:center;line-height:1.6">Sign in with this temporary password, then update it in your account settings. If you did not ask for this, contact your admin.</p></div>';
+            authSendMail($email, 'Your temporary SocialFlow password', $html);
+        }
+        // Same answer either way, so this can't be used to discover which emails have accounts.
+        authOut(200, ['ok' => true]);
+    }
+
+    if ($action === 'request_access' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $in = json_decode(file_get_contents('php://input'), true) ?: [];
+        $email = strtolower(trim((string)($in['email'] ?? '')));
+        $name = trim((string)($in['name'] ?? ''));
+        if ($name === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) authOut(400, ['error' => 'Name and a valid email are required.']);
+        if (authTooManyFails($pdo, 'req:' . $email)) authOut(429, ['error' => 'Too many requests. Please try again later.']);
+        authLogAttempt($pdo, 'req:' . $email, false);
+        $ex = $pdo->prepare("SELECT status FROM access_requests WHERE email = ? LIMIT 1");
+        $ex->execute([$email]);
+        if (!$ex->fetch()) {
+            $id = bin2hex(random_bytes(16));
+            $id = substr($id,0,8).'-'.substr($id,8,4).'-'.substr($id,12,4).'-'.substr($id,16,4).'-'.substr($id,20,12);
+            $pdo->prepare("INSERT INTO access_requests (id, name, email, user_type, message, status) VALUES (?, ?, ?, ?, ?, 'pending')")
+                ->execute([$id, mb_substr($name, 0, 120), $email, ($in['user_type'] ?? '') === 'client' ? 'client' : 'internal', mb_substr(trim((string)($in['message'] ?? '') . (!empty($in['company']) ? "\nCompany: " . $in['company'] : '')), 0, 2000)]);
+            // Tell the admins (taken from the team list, not a fixed address).
+            $admins = $pdo->query("SELECT email FROM team_members WHERE role = 'admin' AND status = 'active' AND email IS NOT NULL AND email <> ''")->fetchAll(PDO::FETCH_COLUMN);
+            if ($admins) {
+                $html = '<div style="font-family:Arial,sans-serif;padding:24px"><h2>New access request</h2><p><b>' . htmlspecialchars($name) . '</b> (' . htmlspecialchars($email) . ') asked for access to SocialFlow.</p><p>Review it in SocialFlow → Team → Access Requests.</p></div>';
+                authSendMail($admins, 'New Access Request on SocialFlow', $html);
+            }
+        }
+        authOut(200, ['ok' => true]);
+    }
+
     if ($action !== 'login' || $_SERVER['REQUEST_METHOD'] !== 'POST') authOut(400, ['error' => 'Unknown action']);
 
     $in = json_decode(file_get_contents('php://input'), true) ?: [];
