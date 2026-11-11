@@ -19,18 +19,18 @@ require_once __DIR__ . '/config.php';
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, apikey, Authorization, Prefer');
+header('Access-Control-Allow-Headers: Content-Type, apikey, Authorization, Prefer, X-SF-Session');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
     exit;
 }
 
-$providedKey = $_SERVER['HTTP_APIKEY'] ?? '';
-if (!$providedKey && !empty($_SERVER['HTTP_AUTHORIZATION'])) {
-    $providedKey = preg_replace('/^Bearer\s+/i', '', $_SERVER['HTTP_AUTHORIZATION']);
-}
-if (!hash_equals(API_KEY, (string)$providedKey)) {
+// Accepts a real login session (X-SF-Session, see auth.php) or — for now —
+// the legacy shared key. $AUTH says which; stage 1 grants both the same access.
+require_once __DIR__ . '/auth-lib.php';
+$AUTH = authResolve();
+if (!$AUTH) {
     http_response_code(401);
     echo json_encode(['error' => 'Invalid or missing API key']);
     exit;
@@ -193,6 +193,7 @@ function normalizeNumericEmptyStrings(array $record, string $table) {
 function castRow($row, $table = null) {
     global $NUMERIC_COLUMNS;
     $numericCols = $table && isset($NUMERIC_COLUMNS[$table]) ? $NUMERIC_COLUMNS[$table] : [];
+    unset($row['password_hash']); // scrambled passwords never leave the server
     foreach ($row as $k => $v) {
         if (is_string($v) && strlen($v) > 0 && ($v[0] === '[' || $v[0] === '{')) {
             $decoded = json_decode($v, true);
@@ -229,6 +230,7 @@ try {
         foreach ($records as $record) {
             if (!is_array($record) || !$record) continue;
             $record = normalizeNumericEmptyStrings($record, $table);
+            unset($record['password_hash']);
             if (empty($record['id'])) $record['id'] = generateUuid();
             $cols = array_keys($record);
             $colSql = implode(',', array_map('ident', $cols));
@@ -275,6 +277,8 @@ try {
             exit;
         }
         $body = normalizeNumericEmptyStrings($body, $table);
+        unset($body['password_hash']);
+        if (!$body) { echo json_encode([]); exit; }
         $sets = [];
         $bind = [':id' => $id];
         foreach ($body as $k => $v) {

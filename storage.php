@@ -10,18 +10,18 @@ require_once __DIR__ . '/config.php';
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, apikey, Authorization');
+header('Access-Control-Allow-Headers: Content-Type, apikey, Authorization, X-SF-Session');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
     exit;
 }
 
-$providedKey = $_SERVER['HTTP_APIKEY'] ?? '';
-if (!$providedKey && !empty($_SERVER['HTTP_AUTHORIZATION'])) {
-    $providedKey = preg_replace('/^Bearer\s+/i', '', $_SERVER['HTTP_AUTHORIZATION']);
-}
-if (!hash_equals(API_KEY, (string)$providedKey)) {
+// Accepts a real login session (X-SF-Session, see auth.php) or — for now —
+// the legacy shared key. $AUTH says which; stage 1 grants both the same access.
+require_once __DIR__ . '/auth-lib.php';
+$AUTH = authResolve();
+if (!$AUTH) {
     http_response_code(401);
     echo json_encode(['error' => 'Invalid or missing API key']);
     exit;

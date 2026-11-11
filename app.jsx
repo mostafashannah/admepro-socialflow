@@ -1334,10 +1334,37 @@ const perfLabel = s => s>=85?"Excellent":s>=70?"Good":s>=50?"Average":"Needs Imp
 // ════════════════════════════════════════════════════════════════
 // SUPABASE API — direct browser calls, no proxy needed (CORS ✓)
 // ════════════════════════════════════════════════════════════════
+// Real server-side login session (auth.php). The token is sent with every
+// data request next to the legacy key; later stages make the server rely on
+// it alone and drop the shared key.
+const sfSession = {
+  get(){ try{ return localStorage.getItem("sf_session")||""; }catch(e){ return ""; } },
+  set(t){ try{ t ? localStorage.setItem("sf_session", t) : localStorage.removeItem("sf_session"); }catch(e){} },
+};
+// Signs in on the server. Returns {ok:true,user} | {ok:false,error} | {unavailable:true} when the
+// sign-in service can't be reached (older server) so the caller can fall back to the legacy check.
+async function serverLogin(email, password, mode) {
+  try {
+    const r = await fetch(window.location.origin+"/auth.php?action=login", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({email, password, mode})});
+    const ct = r.headers.get("content-type")||"";
+    if(!ct.includes("json")) return {unavailable:true};
+    const d = await r.json().catch(()=>null);
+    if(!d) return {unavailable:true};
+    if(r.ok && d.token && d.user) { sfSession.set(d.token); return {ok:true, user:d.user}; }
+    if(r.status===401 || r.status===403 || r.status===429 || r.status===400) return {ok:false, error:d.error||"Sign-in failed."};
+    return {unavailable:true};
+  } catch(e) { return {unavailable:true}; }
+}
+function serverLogout() {
+  const t = sfSession.get(); sfSession.set("");
+  if(t) { try { fetch(window.location.origin+"/auth.php?action=logout", {method:"POST", headers:{"X-SF-Session":t}, keepalive:true}).catch(()=>{}); } catch(e){} }
+}
 const SB_HEADERS = {
   "Content-Type": "application/json",
   "apikey": SB_KEY,
   "Authorization": `Bearer ${SB_KEY}`,
+  // Read at request time (getter), so it follows login/logout without rebuilding this object.
+  get "X-SF-Session"(){ return sfSession.get(); },
 };
 
 // Entity name → Supabase table name
@@ -27678,6 +27705,15 @@ function LoginScreen({onLogin,clients}) {
 
   const handleLogin = async () => {
     setErr(""); setLoading(true);
+    // Sign in on the server first (password checked there, real session issued). Only if that
+    // service can't be reached at all does it fall back to the legacy in-browser check below.
+    const sv = await serverLogin(email.trim(), password, mode);
+    if(sv.ok) {
+      const u = sv.user;
+      if(u.isClient && !u.clientOrg && u.client_id) u.clientOrg = clients.find(c=>c.id===u.client_id)||{name:u.client_name,id:u.client_id};
+      onLogin(u); setLoading(false); return;
+    }
+    if(sv.ok===false) { setErr(sv.error); setLoading(false); return; }
     if(mode==="team") {
       // 1. Check Supabase team_members first (real approved users)
       try {
@@ -54122,7 +54158,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         </div>
       )}
       <div style={impersonatorUser?{marginTop:48}:{}}>
-        <ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} onAddPost={addPost} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]} comments={data.comments||[]} onAddComment={handleAddComment} team={data.team||[]} contactReports={data.contactReports||[]} onAddContactReportComment={addContactReportComment} brandingAssets={brandingAssets} portalUser={currentUser} portalUsers={data.clientUsers||[]} onUpdatePortalUser={updateClientUser}/>
+        <ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{serverLogout();try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} onAddPost={addPost} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]} comments={data.comments||[]} onAddComment={handleAddComment} team={data.team||[]} contactReports={data.contactReports||[]} onAddContactReportComment={addContactReportComment} brandingAssets={brandingAssets} portalUser={currentUser} portalUsers={data.clientUsers||[]} onUpdatePortalUser={updateClientUser}/>
       </div>
     </>);
   }
@@ -54245,7 +54281,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
           currentUser={currentUser}
           notifications={data.notifications}
           userProfile={userProfile}
-          onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}}
+          onLogout={()=>{serverLogout();try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}}
           open={true}
           wallpaper={wallpaper}
           onWallpaperChange={handleWallpaperChange}
@@ -54264,7 +54300,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
           currentUser={currentUser}
           notifications={data.notifications}
           userProfile={userProfile}
-          onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}}
+          onLogout={()=>{serverLogout();try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}}
           open={sidebarOpen}
           onClose={()=>setSidebarOpen(false)}
           wallpaper={wallpaper}
