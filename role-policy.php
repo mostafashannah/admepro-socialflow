@@ -28,7 +28,7 @@ const RP_DEFAULTS = [
 
 const RP_SALARY_COLS = ['salary','probation_salary','bank_account','bank_name','iban','national_id','national_id_number'];
 const RP_SECRET_TEAM_COLS = ['password','password_hash'];
-const RP_PROTECTED_TEAM_COLS = ['role','status','email','password','password_hash','salary','probation_salary','probation_months','manager_id',
+const RP_PROTECTED_TEAM_COLS = ['role','status','email','password','password_hash','salary','probation_salary','probation_months','manager_id','team_leader_id',
     'employment_type','attendance_policy_exempt','termination_date','termination_reason','start_date'];
 
 /** Same rule as hasPerm() in app.jsx. */

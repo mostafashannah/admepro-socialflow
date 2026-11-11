@@ -1485,7 +1485,7 @@ function sbTable(entityName) {
 // Known columns per table — used to strip unknown fields before POST/PATCH
 const SB_SCHEMA = {
   projects: ["title","description","client_id","client_name","status","start_date","end_date","platforms","team_members","project_type","posting_start","posting_end"],
-  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","assigned_to_extra","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","published_platforms","platform_post_ids","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected","sector","content_completed_at","design_completed_at","design_assigned_to","published_at","pre_approval_stage","design_completed_dates","content_completed_dates","is_plan_parent","plan_items","is_routine","checklist","routine_status","routine_note","routine_flag","routine_completed_at"],
+  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","assigned_to_extra","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","published_platforms","platform_post_ids","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected","sector","content_completed_at","design_completed_at","design_assigned_to","published_at","pre_approval_stage","design_completed_dates","content_completed_dates","is_plan_parent","plan_items","is_routine","checklist","routine_status","routine_note","routine_flag","routine_completed_at","leader_review_status","leader_review_at","leader_review_to","leader_reviewer","leader_paused_secs","leader_review_note"],
   // address/website/contact_person were never real columns on the clients
   // table (mysql-schema.sql only has name/email/phone/logo_url/industry/
   // status/account_manager_id/notes/platforms/portal_password/username) —
@@ -4576,7 +4576,9 @@ function postDelayInfo(post, asOfDate) {
   const inOwnerStage = post.is_routine ? post.routine_status==="open" : ["design","content_creation"].includes(post.stage);
   if(post.is_routine && post.routine_status==="missed") return null;
   let endTs = null;
-  if(inOwnerStage) endTs = Date.now();
+  const waitingLeader = post.leader_review_status==="pending" && post.leader_review_at;
+  if(waitingLeader) endTs = parseSqlUtc(post.leader_review_at).getTime();
+  else if(inOwnerStage) endTs = Date.now();
   else {
     const c = [post.design_completed_at, post.content_completed_at, post.routine_completed_at].filter(Boolean).map(x=>parseSqlUtc(x).getTime()).sort((a,b)=>b-a)[0];
     if(c) endTs = c;
@@ -4586,8 +4588,9 @@ function postDelayInfo(post, asOfDate) {
   const todayKey = new Date().toISOString().split("T")[0];
   let frozenDay = false;
   if(asOfDate && inOwnerStage && asOfDate < todayKey) { const e = new Date(`${asOfDate}T23:59:59`); endTs = Math.min(endTs, e.getTime()); frozenDay = true; }
-  const secs = workingDelaySecs(dueTs.getTime(), endTs);
+  const secs = workingDelaySecs(dueTs.getTime(), endTs) - (Number(post.leader_paused_secs)||0);
   if(secs <= 0) return null;
+  if(waitingLeader) return {secs, live:false, frozenDay:false, waitingLeader:true, pausedNow:true};
   return {secs, live: inOwnerStage && !frozenDay, frozenDay, pausedNow: inOwnerStage && !frozenDay && !insideDelayWindow()};
 }
 function DelayBadge({post, light=false, big=false, asOf=null}) {
@@ -4602,8 +4605,8 @@ function DelayBadge({post, light=false, big=false, asOf=null}) {
   const color = light ? "#fff" : "#ef4444";
   return (
     <span style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:big?14:11,lineHeight:big?"normal":1.2,fontWeight:800,color,fontFamily:"monospace",whiteSpace:"nowrap",...(big?{background:"#ef444418",padding:"8px 12px",borderRadius:8}:{})}}>
-      <span>{info.frozenDay?"⏸":info.live?(info.pausedNow?"⏸":"⏰"):"✓"}</span>
-      <span>{info.frozenDay?`Delayed ${hms} (that day)`:info.live?`Delayed ${hms}${info.pausedNow?" (paused)":""}`:`Delivered ${human} late`}</span>
+      <span>{info.waitingLeader?"⏸":info.frozenDay?"⏸":info.live?(info.pausedNow?"⏸":"⏰"):"✓"}</span>
+      <span>{info.waitingLeader?`Delayed ${hms} (paused)`:info.frozenDay?`Delayed ${hms} (that day)`:info.live?`Delayed ${hms}${info.pausedNow?" (paused)":""}`:`Delivered ${human} late`}</span>
     </span>
   );
 }
@@ -6771,7 +6774,7 @@ function TaskLogView({postId, team=[]}) {
 
 // POST DETAIL MODAL
 // ════════════════════════════════════════════════════════════════
-function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onUndoPush,onAddComment,onDeleteComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[],allPosts=[],contactReports=[],onUpdatePlanItem,onSplitPlanItem}) {
+function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onUndoPush,onLeaderDecide,onAddComment,onDeleteComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[],allPosts=[],contactReports=[],onUpdatePlanItem,onSplitPlanItem}) {
   if(post?.is_plan_parent) {
     return (
       <Modal open onClose={onClose} title={post.title} subtitle={`${client?.name||post.client_name||""} · Calendar plan`} width={640}>
@@ -7934,6 +7937,23 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
           />
         )}
 
+        {/* Waiting for the team leader */}
+        {post.leader_review_status==="pending" && (()=>{
+          const lead = (team||[]).find(m=>m.email===post.leader_reviewer);
+          const canDecide = onLeaderDecide && (currentUser?.email===post.leader_reviewer || currentUser?.role==="admin");
+          const at = post.leader_review_at ? parseSqlUtc(post.leader_review_at) : null;
+          return (
+            <div style={{padding:"12px 14px",background:"#eab30818",border:"1px solid #eab30866",borderRadius:"var(--rs)",display:"flex",flexDirection:"column",gap:10}}>
+              <p style={{fontSize:13,color:"var(--text)",lineHeight:1.5}}>⏳ <b>Waiting {lead?.name||"team leader"}'s approval</b> to move to {STAGE_MAP[post.leader_review_to]?.label||"review"}{at?` · sent ${at.toLocaleString([], {weekday:"short",hour:"2-digit",minute:"2-digit"})}`:""}. Timer and delay are paused.</p>
+              {canDecide && <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <button onClick={async()=>{ await onLeaderDecide(post,true); onClose&&onClose(); }} style={{padding:"8px 16px",borderRadius:8,border:"none",background:"#10b981",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>✓ Approve</button>
+                <button onClick={async()=>{ const note = window.prompt("What needs fixing? (optional — sent to them)",""); if(note===null) return; await onLeaderDecide(post,false,note); onClose&&onClose(); }} style={{padding:"8px 16px",borderRadius:8,border:"1px solid #ef444466",background:"#ef444414",color:"#ef4444",fontWeight:700,fontSize:13,cursor:"pointer"}}>✕ Reject — keep working</button>
+              </div>}
+            </div>);
+        })()}
+        {post.leader_review_note && post.leader_review_status!=="pending" && ["design","content_creation"].includes(post.stage) && (
+          <div style={{padding:"10px 12px",background:"#ef444412",border:"1px solid #ef444444",borderRadius:"var(--rs)",fontSize:13,color:"var(--text2)"}}><b style={{color:"#ef4444"}}>Team leader note:</b> {post.leader_review_note}</div>
+        )}
         {/* Pushed to review before it was really finished → put it back (admin / account team only) */}
         {onUndoPush && ["admin","account_manager","account_director","account_executive"].includes(currentUser?.role) && ["internal_review","design_review"].includes(post.stage) && (
           <div style={{padding:"10px 12px",background:"#f59e0b14",border:"1px solid #f59e0b55",borderRadius:"var(--rs)",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
@@ -23779,7 +23799,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
 function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
   const [f,setF] = useState({
     name:member.name, email:member.email, role:member.role, department:member.department||"", title:member.title||"",
-    status:member.status||"active", manager_id:member.manager_id||"", whatsapp_number:member.whatsapp_number||"",
+    status:member.status||"active", manager_id:member.manager_id||"", team_leader_id:member.team_leader_id||"", whatsapp_number:member.whatsapp_number||"",
     start_date:member.start_date||"",
     salary:member.salary??"", probation_salary:member.probation_salary??"", probation_months:member.probation_months??"",
     vacation_days_total:member.vacation_days_total??21, wfh_days_total:member.wfh_days_total??2,
@@ -23887,6 +23907,12 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
           <Field label="Manager">
             <select value={f.manager_id} onChange={e=>s("manager_id",e.target.value)} style={inputSt}>
               <option value="">No manager set</option>
+              {managers.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Team Leader (approves their work)" hint="When this person moves a task to Review / Design Review, it waits for this leader to approve or reject first. Leave empty for no approval step.">
+            <select value={f.team_leader_id} onChange={e=>s("team_leader_id",e.target.value)} style={inputSt}>
+              <option value="">No team leader — goes straight to review</option>
               {managers.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </Field>
@@ -40799,8 +40825,28 @@ function MyTimelinePage({posts:postsRaw, team, currentUser, timeEntries, onPostC
     return hour >= startHour && hour < endHour;
   });
 
+  const _toApprove = (postsRaw||[]).filter(p=>p.leader_review_status==="pending" && p.leader_reviewer===currentUser?.email)
+    .sort((x,y)=>String(x.leader_review_at||"").localeCompare(String(y.leader_review_at||"")));
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"100%"}}>
+      {/* Team leader: work waiting for my approval */}
+      {_toApprove.length>0&&(
+        <div style={{background:"var(--surface)",border:"1px solid #eab30866",borderLeft:"4px solid #eab308",borderRadius:14,padding:14}}>
+          <p style={{fontWeight:800,fontSize:15,marginBottom:10}}>⏳ Tasks to approve <span style={{color:"#ca8a04"}}>({_toApprove.length})</span></p>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {_toApprove.map(p=>{ const who=(team||[]).find(m=>m.email===((p.stage==="design"?p.design_assigned_to:p.content_assigned_to)||p.assigned_to)); const at=p.leader_review_at?parseSqlUtc(p.leader_review_at):null; const mins=at?Math.round((Date.now()-at.getTime())/60000):null; return (
+              <button key={p.id} onClick={()=>onPostClickRaw&&onPostClickRaw(p)} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:10,background:"var(--surface2)",border:"1px solid var(--border)",cursor:"pointer",textAlign:"left",color:"var(--text)"}}>
+                <TaskThumb post={p} team={team} size={32}/>
+                <span style={{flex:1,minWidth:0}}>
+                  <span style={{display:"block",fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</span>
+                  <span style={{display:"block",fontSize:11,color:"var(--text3)"}}>{[who?.name, p.client_name, STAGE_MAP[p.leader_review_to]?.label&&("→ "+STAGE_MAP[p.leader_review_to].label)].filter(Boolean).join(" · ")}</span>
+                </span>
+                {mins!=null&&<span style={{fontSize:11,fontWeight:700,color:mins>60?"#ef4444":"#ca8a04",flexShrink:0}}>waiting {mins>=60?`${Math.floor(mins/60)}h ${mins%60}m`:`${mins}m`}</span>}
+                <span style={{fontSize:12,fontWeight:800,color:"#ca8a04"}}>Review →</span>
+              </button>); })}
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
         <div>
@@ -41043,7 +41089,10 @@ function MyTimelinePage({posts:postsRaw, team, currentUser, timeEntries, onPostC
                     const _nowM = new Date().getHours()*60 + new Date().getMinutes();
                     let _tailEnd = slot.end_mins;
                     if(slot.ghost) _tailEnd = slot.end_mins + Math.round((slot.ghost_delay_secs||0)/60);
-                    else if(slot.overdue && !slot.completed_today && !slot.snapshot) _tailEnd = dateStr < _todayKey ? DELAY_WINDOW.to*60 : Math.min(_nowM, DELAY_WINDOW.to*60);
+                    else if(slot.overdue && !slot.completed_today && !slot.snapshot) {
+                      _tailEnd = dateStr < _todayKey ? DELAY_WINDOW.to*60 : Math.min(_nowM, DELAY_WINDOW.to*60);
+                      if(post?.leader_review_status==="pending" && post.leader_review_at){ const _rq=parseSqlUtc(post.leader_review_at); if(_rq && _rq.toISOString().slice(0,10)===dateStr) _tailEnd=Math.min(_tailEnd,_rq.getHours()*60+_rq.getMinutes()); }
+                    }
                     const _tailStart = Math.max(slot.end_mins, DELAY_WINDOW.from*60);
                     const _tailW = Math.max(0, _tailEnd - _tailStart)/WORKING_MINS*100;
                     // On a day that has already ended, the delayed block itself is stretched (solid) to where the delay froze (9 PM at the latest);
@@ -41063,13 +41112,13 @@ function MyTimelinePage({posts:postsRaw, team, currentUser, timeEntries, onPostC
                           setCopiedTask({postId:post.id, durationMins: slot.end_mins-slot.start_mins});
                           setToast(` "${post.title}" copied — right-click a free slot (any day) to move it there`);
                         }:undefined}
-                        style={{...(post?.projected?{opacity:0.55,outline:"2px dashed rgba(255,255,255,0.7)",outlineOffset:-3}:{}),position:"absolute",zIndex:2,left:`${leftPct}%`,width:`${_pastDayStretch?_stretchedPct:widthPct}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,background:slot.overdue?"#ef4444":slot.completed_today?"#22c55e":(stage?.color||"var(--accent)"),borderRadius:8,backgroundImage:"linear-gradient(180deg, rgba(255,255,255,0.16), rgba(0,0,0,0.08))",boxShadow:slot.overdue?"0 0 0 1.5px #b91c1c inset, 0 2px 6px rgba(0,0,0,0.2)":"0 2px 6px rgba(0,0,0,0.18)",cursor:post?(canMove?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 8px"}}>
+                        style={{...(post?.projected?{opacity:0.55,outline:"2px dashed rgba(255,255,255,0.7)",outlineOffset:-3}:{}),position:"absolute",zIndex:2,left:`${leftPct}%`,width:`${_pastDayStretch?_stretchedPct:widthPct}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,background:(post?.leader_review_status==="pending"&&!slot.completed_today&&!slot.snapshot&&!slot.ghost)?"#eab308":slot.overdue?"#ef4444":slot.completed_today?"#22c55e":(stage?.color||"var(--accent)"),borderRadius:8,backgroundImage:"linear-gradient(180deg, rgba(255,255,255,0.16), rgba(0,0,0,0.08))",boxShadow:slot.overdue?"0 0 0 1.5px #b91c1c inset, 0 2px 6px rgba(0,0,0,0.2)":"0 2px 6px rgba(0,0,0,0.18)",cursor:post?(canMove?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 8px"}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
                           {post&&<TaskThumb post={post} team={team} size={34}/>}
                           <div style={{display:"flex",flexDirection:"column",minWidth:0,flex:1,lineHeight:1.2,gap:2}}>
                             <span style={{fontSize:12,lineHeight:1.2,color:"#fff",fontWeight:800,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
                             {widthPct>8&&<span style={{fontSize:11,lineHeight:1.2,color:"#fff",opacity:0.9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slot.start_time}–{slot.end_time}{slot.ghost?` · moved to ${fmtDate(slot.ghost_to)}`:""}{slot.delivered_here?` · due ${fmtDate(slot.due_was)}`:""}{slot.carried?" · carried over":""}{post?.projected?" · planned (repeats)":""}{post?.is_routine?` · 🔁 ${routineCounts(post).done}/${routineCounts(post).total}`:""}{slot.overdue?" · OVERDUE":slot.completed_today?" · Done":""}</span>}
-                            {widthPct>12&&(slot.ghost ? <span style={{fontSize:11,lineHeight:1.2,fontWeight:800,color:"#fff",fontFamily:"monospace",whiteSpace:"nowrap"}}>⏸ Delayed {(()=>{const t=Math.max(0,slot.ghost_delay_secs||0);return `${String(Math.floor(t/3600)).padStart(2,"0")}:${String(Math.floor(t%3600/60)).padStart(2,"0")}:${String(t%60).padStart(2,"0")}`;})()}</span> : post&&postDelayInfo(post, dateStr) ? <DelayBadge post={post} light asOf={dateStr}/> : post&&postTimerInfo(post) ? <LiveTimerBadge post={post} light/> : <span style={{fontSize:10.5,lineHeight:1.2,color:"#fff",opacity:0.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{[post?.client_name, stage?.label].filter(Boolean).join(" · ")}</span>)}
+                            {widthPct>12&&(slot.ghost ? <span style={{fontSize:11,lineHeight:1.2,fontWeight:800,color:"#fff",fontFamily:"monospace",whiteSpace:"nowrap"}}>⏸ Delayed {(()=>{const t=Math.max(0,slot.ghost_delay_secs||0);return `${String(Math.floor(t/3600)).padStart(2,"0")}:${String(Math.floor(t%3600/60)).padStart(2,"0")}:${String(t%60).padStart(2,"0")}`;})()}</span> : (post?.leader_review_status==="pending"&&!slot.completed_today&&!slot.snapshot) ? <span style={{fontSize:11,lineHeight:1.2,fontWeight:800,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>⏳ Waiting {((team||[]).find(m=>m.email===post.leader_reviewer)?.name||"leader").split(" ")[0]} review</span> : post&&postDelayInfo(post, dateStr) ? <DelayBadge post={post} light asOf={dateStr}/> : post&&postTimerInfo(post) ? <LiveTimerBadge post={post} light/> : <span style={{fontSize:10.5,lineHeight:1.2,color:"#fff",opacity:0.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{[post?.client_name, stage?.label].filter(Boolean).join(" · ")}</span>)}
                           </div>
                         </div>
                       </div>
@@ -53423,7 +53472,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   // so a later edit to the task's live duration, or it cycling through
   // again, never reaches back and changes how a past day's block rendered
   // (see generateDailySchedule's historyEntry lookup).
-  const appendCompletedDate = (existing, post, by="") => {
+  const appendCompletedDate = (existing, post, by="", atIso=null) => {
     let entries = [];
     try {
       const parsed = existing ? (Array.isArray(existing) ? existing : JSON.parse(existing)) : [];
@@ -53433,7 +53482,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       // captured at the time.
       entries = parsed.map(e => typeof e === "string" ? {date:e, duration_mins:estimateDuration(post)} : e);
     } catch(e) { entries = []; }
-    const today = new Date().toISOString().split("T")[0];
+    const today = (atIso||new Date().toISOString()).split("T")[0];
     const duration_mins = estimateDuration(post);
     // `by` = who actually did the work, so a task handed to a DIFFERENT person
     // afterwards never shows up as that new person's (or re-appears on the
@@ -53449,7 +53498,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       }
     } catch(e) { snap = {}; }
     const idx = entries.findIndex(e=>e.date===today && (e.by||"")===(by||"") && (e.due_date||"")===(snap.due_date||""));
-    const deliveredAt = new Date().toISOString();
+    const deliveredAt = atIso || new Date().toISOString();
     if (idx >= 0) entries[idx] = {date:today, duration_mins, by, at:deliveredAt, ...snap};
     else entries = [...entries, {date:today, duration_mins, by, at:deliveredAt, ...snap}];
     return JSON.stringify(entries);
@@ -53458,6 +53507,32 @@ Return ONLY valid JSON (no markdown, no explanation):
   // work was actually finished. Put it straight back where it was, as if it was
   // never pushed: same owner, same due date/time/duration, no "done" credit for
   // that push, no revision/rejection counted, nobody notified.
+  const leaderDecide = async (post, approve, note="") => {
+    if(post.leader_review_status!=="pending") return;
+    const owner = post.stage==="design" ? (post.design_assigned_to||post.assigned_to) : (post.content_assigned_to||post.assigned_to);
+    const ownerM = (data.team||[]).find(m=>m.email===owner);
+    const clear = {leader_review_status:null, leader_review_at:null, leader_review_to:null, leader_reviewer:null};
+    if(approve) {
+      const to = post.leader_review_to || (post.stage==="design"?"design_review":"internal_review");
+      const at = post.leader_review_at ? parseSqlUtc(post.leader_review_at).toISOString() : null;
+      try { await ue("Post", post.id, {...clear, leader_review_note:null}); } catch(e) { setToast(" Couldn't approve — try again."); return; }
+      await handleStageChange({...post, ...clear}, to, {_leaderOk:true, completed_at:at});
+      setToast(` Approved — moved to ${STAGE_MAP[to]?.label||to}`);
+    } else {
+      // Rejected: the work continues; the time it sat waiting is not counted as delay.
+      const due = (()=>{ if(!post.due_date) return null; const [h,m]=((post.due_time&&/^\d{1,2}:\d{2}/.test(post.due_time))?post.due_time.slice(0,5):"23:59").split(":").map(Number); const d=new Date(`${String(post.due_date).slice(0,10)}T00:00:00`); d.setHours(h,m,0,0); return d.getTime(); })();
+      const req = post.leader_review_at ? parseSqlUtc(post.leader_review_at).getTime() : Date.now();
+      const waited = due!=null ? workingDelaySecs(Math.max(due, req), Date.now()) : 0;
+      const patch = {...clear, leader_paused_secs:(Number(post.leader_paused_secs)||0)+waited, leader_review_note:note||null};
+      setData(d=>({...d, posts:d.posts.map(p=>p.id===post.id?{...p,...patch}:p)}));
+      setSelectedPost(sp=>sp&&sp.id===post.id?{...sp,...patch}:sp);
+      try { await ue("Post", post.id, patch); } catch(e) { setToast(" Couldn't save — try again."); return; }
+      if(ownerM) sendNotification("task_sent_back", ownerM.email, `[SocialFlow] Not approved yet: ${post.title}`,
+        `<div style="font-family:sans-serif;font-size:14px;color:#111827;line-height:1.6"><p>${currentUser?.name||"Your team leader"} didn't approve "${post.title}" yet${note?`:</p><p style="color:#555">${note}</p><p>`:"."} It's back on your timeline — continue and push again when ready.</p></div>`,
+        getNotifPrefs(ownerM.email), ownerM.whatsapp_number||null).catch(()=>{});
+      setToast(" Sent back to keep working");
+    }
+  };
   const undoPushToReview = async (post) => {
     const back = post.stage==="internal_review" ? "content_creation" : post.stage==="design_review" ? "design" : null;
     if(!back) return;
@@ -53489,6 +53564,32 @@ Return ONLY valid JSON (no markdown, no explanation):
   };
 
   const handleStageChange = async (post,newStage,overrides={}) => {
+    // Team-leader approval: when someone with a team leader pushes their OWN work to Review /
+    // Design Review, it waits for the leader first. The timer + delay freeze at the push time.
+    if(!overrides._leaderOk && (data.posts.find(p=>p.id===post.id)||post).leader_review_status==="pending") {
+      setToast(" This task is waiting for the team leader's approval.");
+      return;
+    }
+    if(!overrides._leaderOk) {
+      const isPush = (post.stage==="design" && newStage==="design_review") || (post.stage==="content_creation" && newStage==="internal_review");
+      const owner = post.stage==="design" ? (post.design_assigned_to||post.assigned_to) : (post.content_assigned_to||post.assigned_to);
+      const me = (data.team||[]).find(m=>m.email===currentUser?.email);
+      const leader = me?.team_leader_id ? (data.team||[]).find(m=>m.id===me.team_leader_id && m.status!=="inactive") : null;
+      const _lv = data.posts.find(p=>p.id===post.id) || post;
+      const _hasMedia = post.stage!=="design" || (Array.isArray(_lv.design_urls)?_lv.design_urls:parseJ(_lv.design_urls||"[]")).length>0 || (Array.isArray(_lv.design_assets)?_lv.design_assets:parseJ(_lv.design_assets||"[]")).length>0;
+      if(isPush && _hasMedia && me && owner===me.email && leader && leader.email!==me.email && post.leader_review_status!=="pending") {
+        const patch = {leader_review_status:"pending", leader_review_at:new Date().toISOString(), leader_review_to:newStage, leader_reviewer:leader.email, leader_review_note:null};
+        setData(d=>({...d, posts:d.posts.map(p=>p.id===post.id?{...p,...patch}:p)}));
+        setSelectedPost(sp=>sp&&sp.id===post.id?{...sp,...patch}:sp);
+        try { await ue("Post", post.id, patch); } catch(e) { setToast(" Couldn't send for approval — try again."); return; }
+        try { await pauseTimer(post.id); } catch(e) {}
+        sendNotification("task_stage_changed", leader.email, `[SocialFlow] Waiting your approval: ${post.title}`,
+          `<div style="font-family:sans-serif;font-size:14px;color:#111827;line-height:1.6"><p><b>${me.name}</b> finished "${post.title}"${post.client_name?` (${post.client_name})`:""} and is waiting for your approval before it goes to ${STAGE_MAP[newStage]?.label||newStage}.</p><p>Open SocialFlow → My Timeline → Tasks to approve.</p></div>`,
+          getNotifPrefs(leader.email), leader.whatsapp_number||null).catch(()=>{});
+        setToast(` Sent to ${leader.name.split(" ")[0]} for approval — timer paused`);
+        return;
+      }
+    }
     // Block transition if no assignee for stages that require one, unless the
     // caller (the assign+schedule modal) is supplying one right now via overrides.
     if(["content_creation","design","internal_review","client_approval"].includes(newStage) && !post.assigned_to && !overrides.assigned_to) {
@@ -53587,16 +53688,16 @@ Return ONLY valid JSON (no markdown, no explanation):
       // returned, even though it's genuinely active work again now. Gets
       // re-stamped fresh the next time it actually leaves the stage for
       // real (see the condition just above each of these).
-      content_completed_at: (priorStage==="content_creation" && newStage!=="content_creation") ? new Date().toISOString() : (newStage==="content_creation" ? null : post.content_completed_at),
-      design_completed_at: (priorStage==="design" && newStage!=="design") ? new Date().toISOString() : (newStage==="design" ? null : post.design_completed_at),
+      content_completed_at: (priorStage==="content_creation" && newStage!=="content_creation") ? (overrides.completed_at||new Date().toISOString()) : (newStage==="content_creation" ? null : post.content_completed_at),
+      design_completed_at: (priorStage==="design" && newStage!=="design") ? (overrides.completed_at||new Date().toISOString()) : (newStage==="design" ? null : post.design_completed_at),
       // Accumulates EVERY distinct day this task was actually finished —
       // unlike the single _completed_at timestamp above (which gets
       // overwritten/cleared each time the task cycles through the stage
       // again), this never gets cleared, so a task finished yesterday, sent
       // back, and finished again today shows as completed work on BOTH
       // days on the Timeline (see generateDailySchedule), not just today.
-      content_completed_dates: (priorStage==="content_creation" && newStage!=="content_creation") ? appendCompletedDate(post.content_completed_dates, post, post.content_assigned_to||post.assigned_to||"") : post.content_completed_dates,
-      design_completed_dates: (priorStage==="design" && newStage!=="design") ? appendCompletedDate(post.design_completed_dates, post, post.design_assigned_to||post.assigned_to||"") : post.design_completed_dates,
+      content_completed_dates: (priorStage==="content_creation" && newStage!=="content_creation") ? appendCompletedDate(post.content_completed_dates, post, post.content_assigned_to||post.assigned_to||"", overrides.completed_at) : post.content_completed_dates,
+      design_completed_dates: (priorStage==="design" && newStage!=="design") ? appendCompletedDate(post.design_completed_dates, post, post.design_assigned_to||post.assigned_to||"", overrides.completed_at) : post.design_completed_dates,
       // Remembers whatever stage this was ACTUALLY in right before landing
       // on Client Approval — used by trello-webhook.php's "comments only +
       // sync approval moves" mode to send a rejected/bounced-back card to
@@ -53694,7 +53795,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     const alreadyLoggedForThem = (data.perfLogs||[]).some(l=>l.post_id===post.id && l.user_email===priorAssigneeEmail && !(l.stage_from||"").startsWith("returned_"));
     if((leftOwnedStageForward || (reachedFinalStage && !ownedStage)) && !alreadyLoggedForThem) {
       const deadline = post.due_date || post.scheduled_date;
-      const onTime = !deadline || new Date() <= new Date(`${deadline}T23:59:59`);
+      const onTime = !deadline || new Date(overrides.completed_at||Date.now()) <= new Date(`${deadline}T23:59:59`);
       const qualityScore = (onTime?50:0) + (!wasRejected?50:0);
       const perfEmail = priorAssigneeEmail;
       if(perfEmail) {
@@ -53704,7 +53805,7 @@ Return ONLY valid JSON (no markdown, no explanation):
           post_id: post.id, post_title: post.title, project_id: updatedPost.project_id||"",
           client_name: post.client_name||"", stage_from: post.stage, stage_to: newStage,
           on_time: onTime, quality_score: qualityScore, revision_count: revisionCount,
-          client_approved: false, rejected: wasRejected, completed_at: new Date().toISOString(),
+          client_approved: false, rejected: wasRejected, completed_at: overrides.completed_at||new Date().toISOString(),
         };
         // perfLogs is only fetched once at load — without merging the new row
         // into local state too, Review Score/Key Metrics would keep reading
@@ -55238,6 +55339,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         onClose={()=>setSelectedPost(null)}
         onStageChange={handleStageChange}
         onUndoPush={undoPushToReview}
+        onLeaderDecide={leaderDecide}
         onAddComment={handleAddComment}
         onDeleteComment={handleDeleteComment}
         onEdit={handleEditPost}
