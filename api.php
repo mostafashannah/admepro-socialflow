@@ -35,6 +35,9 @@ if (!$AUTH) {
     echo json_encode(['error' => 'Invalid or missing API key']);
     exit;
 }
+// Guest pass (public link pages): may only touch the one record its link opens — see guest-policy.php.
+$GUEST = ($AUTH['kind'] === 'session' && ($AUTH['session']['user_type'] ?? '') === 'guest') ? $AUTH['session'] : null;
+if ($GUEST) require_once __DIR__ . '/guest-policy.php';
 
 $ALLOWED_TABLES = [
     'posts','projects','clients','team_members','comments','assets','time_logs',
@@ -63,11 +66,7 @@ if (!in_array($table, $ALLOWED_TABLES, true)) {
     exit;
 }
 
-$pdo = new PDO(
-    'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4',
-    DB_USER, DB_PASS,
-    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
-);
+$pdo = authPdo(); // same connection settings as before (auth-lib.php)
 
 // Quote a SQL identifier (table/column name) safely.
 function ident($name) {
@@ -218,7 +217,9 @@ try {
         $sql = "SELECT * FROM " . ident($table) . " $where $order LIMIT $limit";
         $stmt = $pdo->prepare($sql);
         $stmt->execute($bindings);
-        $rows = array_map(fn($r) => castRow($r, $table), $stmt->fetchAll(PDO::FETCH_ASSOC));
+        $rawRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if ($GUEST) $rawRows = guestFilterRows($pdo, $GUEST, $table, $rawRows, $_GET);
+        $rows = array_map(fn($r) => castRow($r, $table), $rawRows);
         echo json_encode($rows);
         exit;
     }
@@ -231,6 +232,7 @@ try {
             if (!is_array($record) || !$record) continue;
             $record = normalizeNumericEmptyStrings($record, $table);
             unset($record['password_hash']);
+            if ($GUEST) $record = guestCheckWrite($pdo, $GUEST, $table, 'POST', null, $record);
             if (empty($record['id'])) $record['id'] = generateUuid();
             $cols = array_keys($record);
             $colSql = implode(',', array_map('ident', $cols));
@@ -243,6 +245,11 @@ try {
             }
             $stmt->execute($bind);
             $created[] = $record['id'];
+            // A careers guest pass becomes tied to the application it just created.
+            if ($GUEST && $table === 'job_applications' && $GUEST['role'] === 'careers') {
+                $pdo->prepare("UPDATE auth_sessions SET user_id = ? WHERE token_hash = ?")->execute([$record['id'], $GUEST['token_hash']]);
+                $GUEST['user_id'] = $record['id'];
+            }
         }
         if (wantsRepresentation()) {
             $ids = $created ?: [null];
@@ -256,7 +263,9 @@ try {
             $sql = "SELECT * FROM " . ident($table) . " WHERE id IN (" . implode(',', $keys) . ")";
             $stmt = $pdo->prepare($sql);
             $stmt->execute($bindings);
-            echo json_encode(array_map(fn($r) => castRow($r, $table), $stmt->fetchAll(PDO::FETCH_ASSOC)));
+            $out = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            if ($GUEST && $table === 'job_applications') $out = array_map('guestHideInternal', $out);
+            echo json_encode(array_map(fn($r) => castRow($r, $table), $out));
         } else {
             echo json_encode([]);
         }
@@ -278,6 +287,7 @@ try {
         }
         $body = normalizeNumericEmptyStrings($body, $table);
         unset($body['password_hash']);
+        if ($GUEST) $body = guestCheckWrite($pdo, $GUEST, $table, 'PATCH', $id, $body);
         if (!$body) { echo json_encode([]); exit; }
         $sets = [];
         $bind = [':id' => $id];
@@ -292,13 +302,16 @@ try {
         if (wantsRepresentation()) {
             $stmt = $pdo->prepare("SELECT * FROM " . ident($table) . " WHERE id = :id");
             $stmt->execute([':id' => $id]);
-            echo json_encode(array_map(fn($r) => castRow($r, $table), $stmt->fetchAll(PDO::FETCH_ASSOC)));
+            $out = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            if ($GUEST) $out = array_map(fn($r) => guestHideInternal(guestSafeSettingsRow($r)), $out);
+            echo json_encode(array_map(fn($r) => castRow($r, $table), $out));
         } else {
             echo json_encode([]);
         }
         exit;
     }
 
+    if ($method === 'DELETE' && $GUEST) guestDeny();
     if ($method === 'DELETE') {
         $id = null;
         if (isset($_GET['id']) && preg_match('/^eq\.(.+)$/', $_GET['id'], $m)) $id = $m[1];

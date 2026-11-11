@@ -20,6 +20,11 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); echo json_
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/auth-lib.php';
 if (!authResolve()) { http_response_code(401); header('Content-Type: application/json'); echo json_encode(['error' => 'Not signed in']); exit; } // needs a login session (or the app key until stage 3)
+// Guest passes (public link pages): only to the candidate on their own application, 3 emails per pass.
+if (($__a = authResolve()) && $__a['kind'] === 'session' && ($__a['session']['user_type'] ?? '') === 'guest') {
+    require_once __DIR__ . '/guest-policy.php';
+    $__b = json_decode(file_get_contents('php://input'), true) ?: []; $__app = guestFetchOne(authPdo(), 'job_applications', $__a['session']['user_id']); $__to = is_array($__b['to'] ?? null) ? $__b['to'] : [$__b['to'] ?? '']; if (!$__app || count($__to) !== 1 || strcasecmp(trim($__to[0]), trim((string)$__app['candidate_email'])) !== 0 || !guestQuota(authPdo(), $__a['session'], 'mail', 3)) { http_response_code(403); echo json_encode(['error' => 'Not allowed for this link']); exit; }
+}
 require_once __DIR__ . '/recruitment-mail-lib.php';
 
 $body = json_decode(file_get_contents('php://input'), true);

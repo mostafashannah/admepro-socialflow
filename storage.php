@@ -43,6 +43,23 @@ if (!preg_match('/^[a-zA-Z0-9_-]+$/', $bucket) || $path === '' || strpos($path, 
 
 $dest = STORAGE_ROOT . '/' . $bucket . '/' . $path;
 
+// Never store files a browser/server could run: a .php/.html/.js uploaded here would be served from
+// this same domain (code execution / stealing logged-in sessions).
+if (preg_match('/\.(php\d?|phtml|phar|pht|htaccess|htm|html|xhtml|js|mjs|shtml|cgi|pl|py|sh)$/i', $path) || basename($path)[0] === '.') {
+    http_response_code(400);
+    echo json_encode(['error' => 'This file type cannot be uploaded']);
+    exit;
+}
+// Guest passes (public link pages) may only add files to their own folder, never delete.
+if (($AUTH['kind'] ?? '') === 'session' && ($AUTH['session']['user_type'] ?? '') === 'guest') {
+    require_once __DIR__ . '/guest-policy.php';
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !guestUploadAllowed($AUTH['session'], $path) || preg_match('/\.svg$/i', $path)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Not allowed for this link']);
+        exit;
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
     // Not finding the file is not an error from the caller's point of view —
     // the end state (file gone) is already true, so treat it the same as a

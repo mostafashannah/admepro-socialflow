@@ -19,6 +19,11 @@ set_time_limit(300);
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/auth-lib.php';
 if (!authResolve()) { http_response_code(401); header('Content-Type: application/json'); echo json_encode(['error' => 'Not signed in']); exit; } // needs a login session (or the app key until stage 3)
+// Guest passes (public link pages): only the careers/complete-application CV review, 3 calls per pass.
+if (($__a = authResolve()) && $__a['kind'] === 'session' && ($__a['session']['user_type'] ?? '') === 'guest') {
+    require_once __DIR__ . '/guest-policy.php';
+    if (!in_array($__a['session']['role'], ['careers', 'complete'], true) || !guestQuota(authPdo(), $__a['session'], 'ai', 3)) { http_response_code(429); echo json_encode(['error' => 'Limit reached']); exit; }
+}
 require_once __DIR__ . '/ai-outage-notify.php';
 $ANTHROPIC_KEY = ANTHROPIC_API_KEY;
 

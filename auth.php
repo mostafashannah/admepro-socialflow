@@ -38,6 +38,31 @@ try {
         authOut(200, ['ok' => true]);
     }
 
+    if ($action === 'guest' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        // A guest pass for one public link. It only opens the record the link's token points to.
+        require_once __DIR__ . '/guest-policy.php';
+        $in = json_decode(file_get_contents('php://input'), true) ?: [];
+        $kind = (string)($in['kind'] ?? '');
+        $tok = (string)($in['token'] ?? '');
+        $ip = 'ip:' . authClientIp();
+        if (authTooManyFails($pdo, $ip)) authOut(429, ['error' => 'Too many attempts. Please try again later.']);
+        $rowId = '';
+        if ($kind !== 'careers') {
+            if (!isset(GUEST_KINDS[$kind]) || strlen($tok) < 8) authOut(400, ['error' => 'Invalid link']);
+            [$tbl, $col] = GUEST_KINDS[$kind];
+            $st = $pdo->prepare("SELECT id FROM `$tbl` WHERE `$col` = ? LIMIT 1");
+            $st->execute([$tok]);
+            $rowId = $st->fetchColumn();
+            if (!$rowId) { authLogAttempt($pdo, $ip, false); authOut(404, ['error' => 'This link is invalid or has expired.']); }
+        }
+        authEnsureSchema($pdo);
+        $token = bin2hex(random_bytes(32));
+        $pdo->prepare("INSERT INTO auth_sessions (token_hash, user_type, user_id, email, role, client_id, created_at, last_seen_at, expires_at, ip, user_agent)
+            VALUES (?, 'guest', ?, NULL, ?, NULL, ?, ?, ?, ?, ?)")
+            ->execute([hash('sha256', $token), (string)$rowId, $kind, authNow(), authNow(), authNow(86400), authClientIp(), substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255)]);
+        authOut(200, ['token' => $token]);
+    }
+
     if ($action === 'forgot' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $in = json_decode(file_get_contents('php://input'), true) ?: [];
         $email = trim((string)($in['email'] ?? ''));

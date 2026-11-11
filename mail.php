@@ -15,6 +15,11 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/auth-lib.php';
 // Was an open relay: anyone could send email as noreply@admepro.com. Now needs a login session (or, until stage 3, the app key).
 if (PHP_SAPI !== 'cli' && !authResolve()) { http_response_code(401); echo json_encode(["error"=>"Not signed in"]); exit; }
+// Guest passes (public link pages): not allowed (public pages send through careers-mail.php).
+if (($__a = authResolve()) && $__a['kind'] === 'session' && ($__a['session']['user_type'] ?? '') === 'guest') {
+    require_once __DIR__ . '/guest-policy.php';
+    http_response_code(403); echo json_encode(['error' => 'Not allowed for this link']); exit;
+}
 $RESEND_KEY = RESEND_API_KEY;
 $FROM_NAME  = "SocialFlow by Admepro";
 $FROM_EMAIL = "noreply@admepro.com";

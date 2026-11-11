@@ -1339,7 +1339,8 @@ const perfLabel = s => s>=85?"Excellent":s>=70?"Good":s>=50?"Average":"Needs Imp
 // data request next to the legacy key; later stages make the server rely on
 // it alone and drop the shared key.
 const sfSession = {
-  get(){ try{ return localStorage.getItem("sf_session")||""; }catch(e){ return ""; } },
+  // A public link page's guest pass (set by GuestGate) takes priority on that page.
+  get(){ if(typeof window!=="undefined" && window.__sfGuestToken) return window.__sfGuestToken; try{ return localStorage.getItem("sf_session")||""; }catch(e){ return ""; } },
   set(t){ try{ t ? localStorage.setItem("sf_session", t) : localStorage.removeItem("sf_session"); }catch(e){} },
 };
 // Every call this app makes to its own server (.php endpoints, /api, /storage) carries the signed-in
@@ -27671,6 +27672,21 @@ function RequestAccessPage({onBack}) {
 // ════════════════════════════════════════════════════════════════
 // LOGIN SCREEN
 // ════════════════════════════════════════════════════════════════
+// Public link pages run on a "guest pass" (auth.php?action=guest): it only opens the one record the
+// link points to. Fetched before the page renders; window.__sfGuestToken is then sent with its calls.
+function GuestGate({kind, token, children}) {
+  const [ready, setReady] = useState(false);
+  useEffect(()=>{
+    let done = false;
+    fetch(window.location.origin+"/auth.php?action=guest", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({kind, token:token||""})})
+      .then(r=>r.ok?r.json():null).then(d=>{ if(d&&d.token) window.__sfGuestToken = d.token; })
+      .catch(()=>{}).finally(()=>{ if(!done) setReady(true); });
+    return ()=>{ done = true; };
+  },[kind, token]);
+  if(!ready) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><Spinner size={22}/></div>;
+  return children;
+}
+
 function LoginScreen({onLogin,clients}) {
   const [mode,setMode] = useState("team"); // "team" or "client"
   const [email,setEmail] = useState("");
@@ -54155,36 +54171,36 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
   // (a public visitor's preference here shouldn't depend on, or affect,
   // the logged-in app's theme).
   if(isCareersPath) {
-    return <CareersPage appSettings={appSettings}/>;
+    return <GuestGate kind="careers"><CareersPage appSettings={appSettings}/></GuestGate>;
   }
   if(legalPath) {
     return <LegalPage kind={legalPath}/>;
   }
   if(interviewToken) {
-    return <InterviewSchedulingPage token={interviewToken}/>;
+    return <GuestGate kind="interview" token={interviewToken}><InterviewSchedulingPage token={interviewToken}/></GuestGate>;
   }
   if(offerToken) {
-    return <OfferResponsePage token={offerToken}/>;
+    return <GuestGate kind="offer" token={offerToken}><OfferResponsePage token={offerToken}/></GuestGate>;
   }
   if(taskToken) {
-    return <TaskSubmissionPage token={taskToken}/>;
+    return <GuestGate kind="task" token={taskToken}><TaskSubmissionPage token={taskToken}/></GuestGate>;
   }
   if(policyToken) {
-    return <PolicyAcceptancePage token={policyToken} appSettings={appSettings}/>;
+    return <GuestGate kind="policy" token={policyToken}><PolicyAcceptancePage token={policyToken} appSettings={appSettings}/></GuestGate>;
   }
   if(onboardingToken) {
-    return <OnboardingDocsPage token={onboardingToken}/>;
+    return <GuestGate kind="onboarding" token={onboardingToken}><OnboardingDocsPage token={onboardingToken}/></GuestGate>;
   }
   if(contractSignToken) {
-    return <SignedContractUploadPage token={contractSignToken}/>;
+    return <GuestGate kind="contract" token={contractSignToken}><SignedContractUploadPage token={contractSignToken}/></GuestGate>;
   }
   if(completeToken) {
-    return <CompleteApplicationPage token={completeToken}/>;
+    return <GuestGate kind="complete" token={completeToken}><CompleteApplicationPage token={completeToken}/></GuestGate>;
   }
 
   // Accept invitation flow (URL has ?invite=TOKEN)
   if(inviteToken && !currentUser) {
-    return (<><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/><AcceptInvitationPage token={inviteToken} onAccepted={()=>{ try{window.history.replaceState({},"",window.location.pathname);}catch(e){} window.location.reload(); }}/></>);
+    return (<><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/><GuestGate kind="invite" token={inviteToken}><AcceptInvitationPage token={inviteToken} onAccepted={()=>{ try{window.history.replaceState({},"",window.location.pathname);}catch(e){} window.location.reload(); }}/></GuestGate></>);
   }
 
   // OAuth callback — auto-login if user exists in team_members

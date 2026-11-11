@@ -89,7 +89,7 @@ function authFindSession($token) {
         $s = $st->fetch(PDO::FETCH_ASSOC);
         if (!$s) return null;
         // Slide the expiry / last-seen at most once every 10 minutes.
-        if (strtotime($s['last_seen_at'] . ' UTC') < time() - 600) {
+        if (($s['user_type'] ?? '') !== 'guest' && strtotime($s['last_seen_at'] . ' UTC') < time() - 600) {
             $pdo->prepare("UPDATE auth_sessions SET last_seen_at = ?, expires_at = ? WHERE token_hash = ?")
                 ->execute([authNow(), authNow(AUTH_SESSION_DAYS * 86400), $s['token_hash']]);
         }
