@@ -1,0 +1,127 @@
+{
+  "title": "Kohi Bar",
+  "client": {
+    "en": "Kohi Bar",
+    "ar": "Kohi Bar"
+  },
+  "order": 2,
+  "published": true,
+  "featured": true,
+  "categories": [
+    "branding",
+    "creative"
+  ],
+  "tags": [
+    "egypt",
+    "food-and-beverage",
+    "identity",
+    "packaging"
+  ],
+  "cover": "images/cover.webp",
+  "hero": "images/hero.webp",
+  "seo": {
+    "title": {
+      "en": "Coffee Brand Identity Design Egypt: Kohi Bar Case Study | admepro",
+      "ar": "هوية علامة قهوة في مصر: دراسة حالة Kohi Bar | admepro"
+    },
+    "description": {
+      "en": "admepro crafted the Kohi Bar brand identity: logo, visual language and packaging design for a specialty coffee brand with a bold, minimalist look.",
+      "ar": "صمّمت admepro هوية Kohi Bar: الشعار واللغة البصرية والتغليف لعلامة قهوة مختصة بطابع جريء وبسيط."
+    }
+  },
+  "summary": {
+    "en": "Kohi Bar is a distinctive coffee destination, crafting unique coffee experiences through innovative brewing methods and carefully selected beans. Their artisanal approach elevates the everyday coffee ritual into something extraordinary.",
+    "ar": "Kohi Bar وجهة قهوة مميزة تصنع تجارب فريدة عبر طرق تحضير مبتكرة وحبوب منتقاة بعناية، وتحوّل طقس القهوة اليومي إلى شيء استثنائي."
+  },
+  "meta": {
+    "strategy": {
+      "en": "Brand Strategy",
+      "ar": "استراتيجية العلامة"
+    },
+    "design": {
+      "en": "Branding, Packaging",
+      "ar": "الهوية، التغليف"
+    }
+  },
+  "sections": [
+    {
+      "heading": {
+        "en": "Our collaboration with Kohi Bar gave their coffee a distinctive presence.",
+        "ar": "منح تعاوننا مع Kohi Bar قهوتهم حضورًا مميزًا."
+      },
+      "text": {
+        "en": [
+          "The project encompassed a cohesive visual system, from distinctive packaging design to branded materials. Each element reflects Kohi Bar's commitment to coffee craftsmanship, resulting in a brand experience that resonates with coffee connoisseurs.",
+          "We developed a comprehensive brand strategy that positioned Kohi Bar in the specialty coffee market, emphasizing their unique brewing methods with an identity that speaks to modern coffee enthusiasts."
+        ],
+        "ar": [
+          "شمل المشروع نظامًا بصريًا متكاملًا، من تصميم التغليف المميز إلى المواد المطبوعة. كل عنصر يعكس التزام Kohi Bar بحرفية القهوة، لتصبح التجربة قريبة من عشّاق القهوة الحقيقيين.",
+          "وضعنا استراتيجية شاملة تموضع Kohi Bar في سوق القهوة المختصة، مع إبراز طرق التحضير الفريدة بهوية تخاطب محبي القهوة العصريين."
+        ]
+      },
+      "media": [
+        {
+          "type": "video",
+          "src": "/assets/video/v2mp4-1.mp4",
+          "poster": "/assets/video/v2mp4-1.webp",
+          "alt": "Kohi Bar brand film",
+          "loop": true
+        }
+      ],
+      "layout": "wide"
+    },
+    {
+      "label": {
+        "en": "01. Identity Design",
+        "ar": "01. تصميم الهوية"
+      },
+      "heading": {
+        "en": "Where coffee culture meets artistic expression.",
+        "ar": "حيث تلتقي ثقافة القهوة بالتعبير الفني."
+      },
+      "text": {
+        "en": [
+          "The Kohi Bar logo embodies modern coffee culture through clean, sophisticated design elements. The mark captures the artisanal spirit of coffee crafting with a contemporary edge.",
+          "Our packaging design blends functionality with aesthetic appeal, showcasing the premium quality of the coffee while creating an engaging unboxing experience that extends the brand's story."
+        ],
+        "ar": [
+          "يجسّد شعار Kohi Bar ثقافة القهوة الحديثة بعناصر تصميم نظيفة وراقية، تلتقط روح الحرفية بلمسة معاصرة.",
+          "يجمع تصميم التغليف بين الوظيفة والجمال، ويبرز جودة القهوة مع تجربة فتح عبوة ممتعة تكمل قصة العلامة."
+        ]
+      },
+      "media": [
+        {
+          "type": "image",
+          "src": "images/identity-1.webp",
+          "alt": "Kohi Bar identity"
+        },
+        {
+          "type": "image",
+          "src": "images/identity-2.webp",
+          "alt": "Kohi Bar identity"
+        },
+        {
+          "type": "image",
+          "src": "images/cover.webp",
+          "alt": "Kohi Bar signage"
+        },
+        {
+          "type": "image",
+          "src": "images/identity-3.webp",
+          "alt": "Kohi Bar packaging"
+        },
+        {
+          "type": "image",
+          "src": "images/identity-4.webp",
+          "alt": "Kohi Bar packaging"
+        },
+        {
+          "type": "image",
+          "src": "images/identity-5.webp",
+          "alt": "Kohi Bar packaging"
+        }
+      ],
+      "layout": "grid-3"
+    }
+  ]
+}

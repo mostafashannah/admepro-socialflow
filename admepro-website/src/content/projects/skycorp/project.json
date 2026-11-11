@@ -1,0 +1,112 @@
+{
+  "title": "Skycorp",
+  "client": {
+    "en": "Edge Holding Developments",
+    "ar": "Edge Holding Developments"
+  },
+  "order": 9,
+  "published": true,
+  "featured": true,
+  "categories": [
+    "branding",
+    "creative"
+  ],
+  "tags": [
+    "development",
+    "egypt",
+    "identity",
+    "real-estate"
+  ],
+  "cover": "images/cover.webp",
+  "hero": "images/tower.webp",
+  "seo": {
+    "title": {
+      "en": "Skycorp: Corporate Brand Identity Design Egypt | admepro",
+      "ar": "Skycorp: تصميم هوية مؤسسية في مصر | admepro"
+    },
+    "description": {
+      "en": "admepro designed the Skycorp corporate identity and marketing strategy for Edge Holding, establishing a strong, premium workspace brand.",
+      "ar": "صمّمت admepro الهوية المؤسسية والاستراتيجية التسويقية لـ Skycorp من Edge Holding لبناء علامة مساحات عمل فاخرة وقوية."
+    }
+  },
+  "summary": {
+    "en": "Skycorp from Edge Holding Developments reimagines the modern workspace from its prestigious tower-top location. By integrating premium lifestyle amenities, including exclusive food partnerships and rooftop fitness, Skycorp turns traditional offices into dynamic, elevated business destinations.",
+    "ar": "تعيد Skycorp من Edge Holding Developments تعريف مساحة العمل الحديثة من موقعها المميز في قمة البرج. وبدمج مزايا حياتية فاخرة، منها شراكات طعام حصرية ولياقة على السطح، تحوّل المكاتب التقليدية إلى وجهات أعمال حيوية وراقية."
+  },
+  "meta": {
+    "strategy": {
+      "en": "Business Strategy, Brand Strategy, Marketing Strategy",
+      "ar": "استراتيجية الأعمال، استراتيجية العلامة، الاستراتيجية التسويقية"
+    },
+    "design": {
+      "en": "Branding, Identity, Outdoors",
+      "ar": "الهوية، التصميم البصري، الإعلانات الخارجية"
+    }
+  },
+  "sections": [
+    {
+      "heading": {
+        "en": "Elevating workspace culture beyond traditional boundaries.",
+        "ar": "الارتقاء بثقافة العمل إلى ما بعد الحدود التقليدية."
+      },
+      "text": {
+        "en": [
+          "The project covered a complete brand ecosystem, from visual identity to marketing strategy. Each touchpoint communicates Skycorp's unique value: professional sophistication combined with lifestyle amenities that resonate with modern businesses.",
+          "Our partnership began at the very start, where we crafted a business strategy that redefined the corporate environment and positioned Skycorp as a pioneer in the premium workspace sector."
+        ],
+        "ar": [
+          "غطّى المشروع منظومة علامة متكاملة، من الهوية البصرية إلى الاستراتيجية التسويقية. وتعبّر كل نقطة تواصل عن قيمة Skycorp الفريدة: احترافية راقية مع مزايا حياتية تناسب الشركات الحديثة.",
+          "بدأت شراكتنا منذ اللحظة الأولى، حيث صغنا استراتيجية أعمال أعادت تعريف بيئة العمل ووضعت Skycorp في موقع الريادة بقطاع مساحات العمل الفاخرة."
+        ]
+      },
+      "media": [
+        {
+          "type": "video",
+          "src": "/assets/video/v1-4.mp4",
+          "poster": "/assets/video/v1-4.webp",
+          "alt": "Skycorp identity animation",
+          "loop": true
+        }
+      ],
+      "layout": "wide"
+    },
+    {
+      "label": {
+        "en": "01. The Idea",
+        "ar": "01. الفكرة"
+      },
+      "heading": {
+        "en": "Where sky-high ambitions meet ground-breaking design.",
+        "ar": "حيث تلتقي الطموحات العالية بالتصميم المبتكر."
+      },
+      "text": {
+        "en": [
+          "The Skycorp logo captures elevation and sophistication through architecture-inspired design. The mark symbolizes both physical height and business ascent: a statement about reaching new professional heights.",
+          "Our creative strategy extended across platforms, from corporate materials to social campaigns, reflecting the premium space while highlighting the lifestyle integrations that set Skycorp apart."
+        ],
+        "ar": [
+          "يجسّد شعار Skycorp الارتفاع والرقي بعناصر مستوحاة من العمارة، ويرمز إلى العلو المكاني وصعود الأعمال معًا: رسالة عن بلوغ آفاق مهنية جديدة.",
+          "امتدت استراتيجيتنا الإبداعية عبر المنصات، من المواد المؤسسية إلى حملات السوشيال ميديا، لتعكس فخامة المكان وتبرز المزايا الحياتية التي تميز Skycorp."
+        ]
+      },
+      "media": [
+        {
+          "type": "image",
+          "src": "images/mockup-1.webp",
+          "alt": "Skycorp brand mockup"
+        },
+        {
+          "type": "image",
+          "src": "images/mockup-2.webp",
+          "alt": "Skycorp brand mockup"
+        },
+        {
+          "type": "image",
+          "src": "images/cover.webp",
+          "alt": "Skycorp billboard"
+        }
+      ],
+      "layout": "grid-3"
+    }
+  ]
+}

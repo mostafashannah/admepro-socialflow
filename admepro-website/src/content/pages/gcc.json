@@ -1,0 +1,41 @@
+{
+  "_comment": "The live GCC page still contains theme demo text and demo images. This version keeps the same layout with real admepro copy.",
+  "path": "/gcc-ksa-ai-marketing-agency/",
+  "seo": {
+    "title": { "en": "Saudi Arabia & GCC AI-Powered Creative Agency | admepro", "ar": "وكالة إبداعية بالذكاء الاصطناعي في السعودية والخليج | admepro" },
+    "description": {
+      "en": "admepro helps brands launch and grow in Saudi Arabia, the UAE and the GCC: branding, AI content, video, web and performance marketing from teams in Riyadh, Dubai and Cairo.",
+      "ar": "تساعد admepro العلامات التجارية على الانطلاق والنمو في السعودية والإمارات والخليج: الهوية، ومحتوى الذكاء الاصطناعي، والفيديو، والمواقع، والتسويق الأدائي عبر فرقنا في الرياض ودبي والقاهرة."
+    }
+  },
+  "metaLocation": { "en": "GCC, KSA", "ar": "الخليج، السعودية" },
+  "metaServices": { "en": "Branding, Creative Direction & Strategy, UX/UI Design, Web Development, 3D, AI Content & Production, Video & Animation", "ar": "الهوية، والإخراج الإبداعي والاستراتيجية، وتصميم تجربة المستخدم، وتطوير المواقع، والـ3D، ومحتوى الذكاء الاصطناعي والإنتاج، والفيديو والرسوم المتحركة" },
+  "labelLocation": { "en": "Location", "ar": "الموقع" },
+  "labelServices": { "en": "Services", "ar": "الخدمات" },
+  "eyebrow": { "en": "Digital First Studio", "ar": "استوديو رقمي أولًا" },
+  "title": { "en": "Saudi Arabia AI Powered Creative Agency.", "ar": "وكالة إبداعية مدعومة بالذكاء الاصطناعي في السعودية." },
+  "foundation": {
+    "title": { "en": "Creating the foundation for your sustained success.", "ar": "نبني الأساس لنجاحك المستدام." },
+    "text": { "en": "We believe that true digital success isn't measured in weeks, but in years. While others chase fleeting trends and quick wins, we focus on building long-term value through scalable strategies and sustainable growth.", "ar": "نؤمن بأن النجاح الرقمي الحقيقي لا يُقاس بالأسابيع بل بالسنوات. بينما يطارد الآخرون الصيحات العابرة والمكاسب السريعة، نركّز على بناء قيمة طويلة المدى عبر استراتيجيات قابلة للتوسع ونمو مستدام." },
+    "cards": [
+      { "title": { "en": "KSA & GCC", "ar": "السعودية والخليج" }, "text": { "en": "Strategy, storytelling, visual systems & campaigns", "ar": "الاستراتيجية، والسرد، والأنظمة البصرية، والحملات" }, "image": "home/gcc-ksa" },
+      { "title": { "en": "Product & Experience", "ar": "المنتج والتجربة" }, "text": { "en": "UX/UI, design systems & prototyping", "ar": "تجربة وواجهة المستخدم، وأنظمة التصميم، والنماذج الأولية" }, "image": "home/ecommerce" },
+      { "title": { "en": "Motion & Visual", "ar": "الحركة والصورة" }, "text": { "en": "Animation, 3D & brand films", "ar": "الرسوم المتحركة، والـ3D، والأفلام الدعائية" }, "image": "home/ai-content" },
+      { "title": { "en": "Research & Strategy", "ar": "البحث والاستراتيجية" }, "text": { "en": "Discovery, testing & validation", "ar": "الاستكشاف، والاختبار، والتحقق" }, "image": "home/real-estate" }
+    ]
+  },
+  "scale": {
+    "title": { "en": "Scale brands through the seamless integration of design, tech, and digital strategy.", "ar": "ننمّي العلامات التجارية بدمج سلس بين التصميم والتقنية والاستراتيجية الرقمية." },
+    "items": [
+      { "title": { "en": "Website & Mobile UX Design", "ar": "تصميم تجربة المواقع والتطبيقات" }, "text": { "en": "Fast, bilingual Arabic/English websites and apps designed around how GCC customers actually browse and buy.", "ar": "مواقع وتطبيقات سريعة بالعربية والإنجليزية، مصممة وفق طريقة تصفح وشراء العملاء في الخليج فعليًا." } },
+      { "title": { "en": "Art Direction & Brand Strategy", "ar": "الإخراج الفني واستراتيجية العلامة" }, "text": { "en": "Defining a unified aesthetic vision and strategic direction to ensure brand consistency and market differentiation across all touchpoints.", "ar": "نحدد رؤية جمالية موحدة واتجاهًا استراتيجيًا يضمنان اتساق علامتك وتميّزها في السوق عبر كل نقاط التواصل." } }
+    ],
+    "pillars": [
+      { "title": { "en": "Reliable solutions", "ar": "حلول موثوقة" }, "text": { "en": "When we develop a digital service, you can be assured of receiving a reliable and long-lasting solution. This commitment begins in the planning phase and continues with support.", "ar": "عندما نطوّر خدمة رقمية، يمكنك الاطمئنان إلى حل موثوق وطويل الأمد. يبدأ هذا الالتزام من مرحلة التخطيط ويستمر مع الدعم." } },
+      { "title": { "en": "Customer journeys", "ar": "رحلات العملاء" }, "text": { "en": "Our approach focuses on understanding user behavior to remove friction, build loyalty, and ensure that every interaction, from first click to final conversion, is intuitive and meaningful.", "ar": "نركّز على فهم سلوك المستخدم لإزالة العقبات وبناء الولاء، وضمان أن تكون كل خطوة، من أول نقرة حتى إتمام الشراء، سهلة وذات معنى." } },
+      { "title": { "en": "New technologies", "ar": "تقنيات حديثة" }, "text": { "en": "By integrating the latest advancements in AI, cloud infrastructure, and frameworks, we transform complex innovations into practical tools that drive efficiency and future-proof your presence.", "ar": "بدمج أحدث تطورات الذكاء الاصطناعي والبنية السحابية وأُطر العمل، نحوّل الابتكارات المعقدة إلى أدوات عملية تزيد الكفاءة وتجهّز حضورك للمستقبل." } }
+    ]
+  },
+  "projects": ["tmg-noor-city", "skycorp", "mcm", "tablya", "asus-zenfone", "goldsgym", "moltobella"],
+  "projectsTitle": { "en": "Selected work for the region", "ar": "أعمال مختارة للمنطقة" }
+}

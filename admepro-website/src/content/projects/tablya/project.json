@@ -1,0 +1,85 @@
+{
+  "title": "Tablya",
+  "client": {
+    "en": "Tablya",
+    "ar": "Tablya"
+  },
+  "order": 11,
+  "published": true,
+  "featured": false,
+  "categories": [
+    "production"
+  ],
+  "tags": [
+    "food-and-beverage",
+    "food-styling",
+    "oman",
+    "photography"
+  ],
+  "cover": "images/cover.webp",
+  "seo": {
+    "title": {
+      "en": "Tablya: Food Photography & Content Production, Oman | admepro",
+      "ar": "Tablya: تصوير الطعام وإنتاج المحتوى في عُمان | admepro"
+    },
+    "description": {
+      "en": "admepro shot social media food photography for Tablya, an oriental restaurant brand in Oman, telling the story of its authentic dishes.",
+      "ar": "صوّرت admepro أطباق Tablya، مطعم المأكولات الشرقية في عُمان، لمحتوى السوشيال ميديا يروي قصة أطباقها الأصيلة."
+    }
+  },
+  "summary": {
+    "en": "Tablya brings the rich flavors of oriental cuisine to the international dining scene from its home in Oman. Our collaboration focused on captivating social media photography of their authentic dishes and dining experience, helping establish them as a distinguished international restaurant brand.",
+    "ar": "تقدّم Tablya نكهات المطبخ الشرقي الغنية لعشّاق الطعام حول العالم من مقرها في عُمان. ركّز تعاوننا على تصوير أطباقها الأصيلة وتجربتها لمحتوى السوشيال ميديا، لترسيخ حضورها كعلامة مطاعم دولية مميزة."
+  },
+  "meta": {
+    "strategy": {
+      "en": "Brand Strategy, Digital Strategy",
+      "ar": "استراتيجية العلامة، الاستراتيجية الرقمية"
+    },
+    "design": {
+      "en": "Branding, Moodboard",
+      "ar": "الهوية، لوحة الإلهام"
+    }
+  },
+  "sections": [
+    {
+      "label": {
+        "en": "Food Photography",
+        "ar": "تصوير الطعام"
+      },
+      "media": [
+        {
+          "type": "image",
+          "src": "images/dish-1.webp",
+          "alt": "Tablya koshary"
+        },
+        {
+          "type": "image",
+          "src": "images/dish-2.webp",
+          "alt": "Tablya soup"
+        },
+        {
+          "type": "image",
+          "src": "images/dish-3.webp",
+          "alt": "Tablya salad"
+        },
+        {
+          "type": "image",
+          "src": "images/dish-4.webp",
+          "alt": "Tablya dish"
+        },
+        {
+          "type": "image",
+          "src": "images/dish-5.webp",
+          "alt": "Tablya desserts"
+        },
+        {
+          "type": "image",
+          "src": "images/cover.webp",
+          "alt": "Tablya breakfast"
+        }
+      ],
+      "layout": "grid-3"
+    }
+  ]
+}

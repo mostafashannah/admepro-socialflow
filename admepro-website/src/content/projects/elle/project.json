@@ -1,0 +1,173 @@
+{
+  "title": "Elle",
+  "client": {
+    "en": "Elle Cosmetics",
+    "ar": "Elle Cosmetics"
+  },
+  "order": 10,
+  "published": true,
+  "featured": true,
+  "categories": [
+    "creative",
+    "production"
+  ],
+  "tags": [
+    "cosmetics",
+    "egypt",
+    "video-production"
+  ],
+  "cover": "images/cover.webp",
+  "hero": "images/hero.webp",
+  "seo": {
+    "title": {
+      "en": "Elle Egypt: Creative Campaign & Content Production | admepro",
+      "ar": "Elle مصر: حملة إبداعية وإنتاج محتوى | admepro"
+    },
+    "description": {
+      "en": "admepro crafted a cinematic nail-polish campaign for ELLE Cosmetics: creative concept, art direction, macro cinematography and color-accurate post-production.",
+      "ar": "صنعت admepro حملة سينمائية لطلاء أظافر ELLE Cosmetics: الفكرة الإبداعية، والإخراج الفني، والتصوير الماكرو، وما بعد الإنتاج بألوان دقيقة."
+    }
+  },
+  "summary": {
+    "en": "ELLE Cosmetics, a distinguished name in the beauty industry, represents sophistication and contemporary style in nail care. Our partnership showcased their premium nail polish collection through a campaign that captures both the brand's elegance and its commitment to self-expression.",
+    "ar": "ELLE Cosmetics اسم مميز في عالم الجمال، يمثل الرقي والأناقة العصرية في العناية بالأظافر. قدّمت شراكتنا مجموعة طلاء الأظافر الفاخرة عبر حملة تجسّد أناقة العلامة والتزامها بحرية التعبير عن الذات."
+  },
+  "meta": {
+    "strategy": {
+      "en": "Branding Strategy, Creative Concept",
+      "ar": "استراتيجية العلامة، الفكرة الإبداعية"
+    },
+    "design": {
+      "en": "Art Direction, Mood Board",
+      "ar": "الإخراج الفني، لوحة الإلهام"
+    }
+  },
+  "sections": [
+    {
+      "heading": {
+        "en": "Elevating beauty through cinematic color stories.",
+        "ar": "الارتقاء بالجمال عبر قصص لونية سينمائية."
+      },
+      "text": {
+        "en": [
+          "Our approach turned ELLE's nail polish collection into a visual masterpiece. The campaign merged high-fashion aesthetics with artistic cinematography, showing the rich pigments and long-lasting formula while keeping the collection's cohesive luxury positioning.",
+          "We celebrated each shade through minimalist storytelling: elegant hand choreography, color-specific backgrounds, and precise macro shots planned with professional hand models.",
+          "Controlled studio lighting and macro cinematography captured the true finish of every shade, and color-accurate grading preserved authentic polish tones for a luxurious result that meets ELLE's standards."
+        ],
+        "ar": [
+          "حوّل نهجنا مجموعة طلاء أظافر ELLE إلى تحفة بصرية، تجمع بين جماليات الموضة الراقية والتصوير السينمائي الفني، لإبراز الألوان الغنية والتركيبة طويلة الثبات مع الحفاظ على التموضع الفاخر للمجموعة.",
+          "احتفينا بكل لون عبر سرد بسيط: حركة يد أنيقة، وخلفيات مختارة لكل لون، ولقطات ماكرو دقيقة خُطط لها مع عارضات أيادٍ محترفات.",
+          "التقطت الإضاءة المدروسة والتصوير الماكرو اللمسة الحقيقية لكل لون، وحافظ تصحيح الألوان الدقيق على الدرجات الأصلية لنتيجة فاخرة تليق بمعايير ELLE."
+        ]
+      },
+      "media": [
+        {
+          "type": "vimeo",
+          "id": "359275724",
+          "poster": "images/film-1.webp",
+          "alt": "Elle nail polish campaign film"
+        }
+      ],
+      "layout": "wide"
+    }
+  ],
+  "credits": [
+    {
+      "role": {
+        "en": "Directing",
+        "ar": "الإخراج"
+      },
+      "people": [
+        {
+          "name": "Yazid Eldaly",
+          "title": {
+            "en": "Director",
+            "ar": "مخرج"
+          }
+        },
+        {
+          "name": "Radwa Elbarbary",
+          "title": {
+            "en": "Assistant Director",
+            "ar": "مساعد مخرج"
+          }
+        }
+      ]
+    },
+    {
+      "role": {
+        "en": "Camera Crew",
+        "ar": "فريق التصوير"
+      },
+      "people": [
+        {
+          "name": "Mohamed Tarek",
+          "title": {
+            "en": "DOP",
+            "ar": "مدير التصوير"
+          }
+        }
+      ]
+    },
+    {
+      "role": {
+        "en": "Production",
+        "ar": "الإنتاج"
+      },
+      "people": [
+        {
+          "name": "Mostafa Shannah",
+          "title": {
+            "en": "Executive Producer",
+            "ar": "منتج منفذ"
+          }
+        }
+      ]
+    },
+    {
+      "role": {
+        "en": "Music Production",
+        "ar": "الإنتاج الموسيقي"
+      },
+      "people": [
+        {
+          "name": "Yazid Eldaly",
+          "title": {
+            "en": "Music Producer",
+            "ar": "منتج موسيقي"
+          }
+        }
+      ]
+    },
+    {
+      "role": {
+        "en": "Account Management",
+        "ar": "إدارة الحساب"
+      },
+      "people": [
+        {
+          "name": "Radwa Elbarbary",
+          "title": {
+            "en": "Account Director",
+            "ar": "مدير الحسابات"
+          }
+        }
+      ]
+    },
+    {
+      "role": {
+        "en": "Art Direction",
+        "ar": "الإخراج الفني"
+      },
+      "people": [
+        {
+          "name": "Israa Mobarak",
+          "title": {
+            "en": "Art Director",
+            "ar": "مدير فني"
+          }
+        }
+      ]
+    }
+  ]
+}

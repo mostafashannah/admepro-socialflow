@@ -1,0 +1,40 @@
+{
+  "seo": {
+    "title": { "en": "About admepro: AI Marketing Agency Egypt & GCC", "ar": "من نحن | admepro وكالة تسويق بالذكاء الاصطناعي في مصر والخليج" },
+    "description": {
+      "en": "12+ years building brands across Egypt & GCC. admepro is an AI-powered growth agency with in-house studios in Cairo, Dubai & Riyadh. Meet our team.",
+      "ar": "أكثر من 12 عامًا في بناء العلامات التجارية في مصر والخليج. admepro وكالة نمو مدعومة بالذكاء الاصطناعي باستوديوهات داخلية في القاهرة ودبي والرياض. تعرّف على فريقنا."
+    }
+  },
+  "eyebrow": { "en": "Who We Are", "ar": "من نحن" },
+  "title": { "en": "We make strategies, design & development to create valuable campaigns.", "ar": "نصنع الاستراتيجيات والتصميم والتطوير لنبني حملات ذات قيمة." },
+  "servicesEyebrow": { "en": "Services", "ar": "الخدمات" },
+  "servicesTitle": { "en": "Creative agency with art & digital experience.", "ar": "وكالة إبداعية بخبرة فنية ورقمية." },
+  "services": [
+    { "title": { "en": "Branding Identity\nCampaign Design", "ar": "الهوية البصرية\nوتصميم الحملات" }, "text": { "en": ["A strong brand identity is the foundation upon which a successful campaign can be built.", "We develop a remarkable Brand Story, Brand Voice, Visual Identity and Brand Guidelines."], "ar": ["الهوية القوية هي الأساس الذي تُبنى عليه أي حملة ناجحة.", "نطوّر قصة علامتك، ونبرة صوتها، وهويتها البصرية، ودليل استخدامها."] } },
+    { "title": { "en": "Digital Marketing &\nContent Creation", "ar": "التسويق الرقمي\nوصناعة المحتوى" }, "text": { "en": ["Our comprehensive digital marketing and content creation services are designed to help your business thrive in the digital age.", "We combine strategic planning, creative execution, and data-driven insights to deliver measurable results."], "ar": ["خدماتنا المتكاملة في التسويق الرقمي وصناعة المحتوى مصممة لتساعد أعمالك على الازدهار في العصر الرقمي.", "نجمع بين التخطيط الاستراتيجي، والتنفيذ الإبداعي، والرؤى المبنية على البيانات لتحقيق نتائج قابلة للقياس."] } },
+    { "title": { "en": "Digital Content &\nVideo Production", "ar": "المحتوى الرقمي\nوإنتاج الفيديو" }, "text": { "en": ["Our team of skilled content creators and videographers brings your brand's story to life through compelling digital content.", "From commercial videos to informative Reels, we create content that resonates with your target audience."], "ar": ["فريقنا من صنّاع المحتوى والمصورين المحترفين يحوّل قصة علامتك إلى محتوى رقمي مؤثر.", "من الإعلانات التجارية إلى الريلز التعليمية، نصنع محتوى يتواصل مع جمهورك المستهدف."] } },
+    { "title": { "en": "UX/UI Design &\nWebsite/App Design", "ar": "تصميم تجربة المستخدم\nوالمواقع والتطبيقات" }, "text": { "en": ["Our expert UX/UI designers specialize in creating intuitive and visually stunning digital experiences.", "We combine user-centered design principles with cutting-edge technology to deliver exceptional website and app designs."], "ar": ["مصممو تجربة وواجهة المستخدم لدينا متخصصون في بناء تجارب رقمية سهلة الاستخدام ومبهرة بصريًا.", "نجمع بين مبادئ التصميم المتمحور حول المستخدم وأحدث التقنيات لنقدّم مواقع وتطبيقات استثنائية."] } }
+  ],
+  "teamEyebrow": { "en": "Team", "ar": "الفريق" },
+  "teamTitle": { "en": "We believe that people are essential.", "ar": "نؤمن بأن الناس هم الأساس." },
+  "team": [
+    { "name": { "en": "Mostafa Shannah", "ar": "مصطفى شنّة" }, "role": { "en": "Founder & CEO", "ar": "المؤسس والرئيس التنفيذي" } },
+    { "name": { "en": "Radwa El Barbary", "ar": "رضوى البربري" }, "role": { "en": "Co-Founder, Account Director", "ar": "شريك مؤسس، مدير الحسابات" } }
+  ],
+  "numbersEyebrow": { "en": "Statistics", "ar": "إحصائيات" },
+  "numbersTitle": { "en": "Achievements by the numbers.", "ar": "إنجازاتنا بالأرقام." },
+  "numbers": [
+    { "value": 300, "suffix": "+", "label": { "en": "Satisfied clients\nacross 7 countries", "ar": "عميل راضٍ\nفي 7 دول" } },
+    { "value": 1, "suffix": "K+", "label": { "en": "Projects\nover 11 years", "ar": "مشروع\nخلال 11 عامًا" } },
+    { "value": 10, "suffix": "M+", "label": { "en": "Media buying\npaid ads", "ar": "إنفاق إعلاني\nمدفوع" } }
+  ],
+  "conversion": { "label": { "en": "Digital campaigns conversion rate", "ar": "معدل التحويل في الحملات الرقمية" }, "value": 75 },
+  "studiosTitle": { "en": "Working in different fields & having our own studios.", "ar": "نعمل في مجالات متعددة ولدينا استوديوهاتنا الخاصة." },
+  "studios": [
+    { "title": { "en": "In-house studios", "ar": "استوديوهات داخلية" }, "text": { "en": "Our in-house studios ensure high-quality and efficient production. We bring innovative ideas to life with complete creative control.", "ar": "تضمن استوديوهاتنا الداخلية إنتاجًا عالي الجودة وبكفاءة. نحوّل الأفكار المبتكرة إلى واقع مع تحكم إبداعي كامل." } },
+    { "title": { "en": "Dedicated & passionate people", "ar": "فريق شغوف ومتفانٍ" }, "text": { "en": "Our team is passionate and committed to delivering excellence. Their expertise drives the success of every project.", "ar": "فريقنا شغوف وملتزم بتقديم التميز، وخبرته هي ما يقود نجاح كل مشروع." } },
+    { "title": { "en": "Market knowledge", "ar": "فهم عميق للسوق" }, "text": { "en": "We use deep market knowledge to craft resonant strategies. Staying updated on trends keeps your brand competitive.", "ar": "نستخدم معرفتنا العميقة بالسوق لصياغة استراتيجيات مؤثرة، ومتابعتنا للاتجاهات تبقي علامتك في المنافسة." } }
+  ],
+  "studioImage": "stock/about-studio"
+}
