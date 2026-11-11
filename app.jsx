@@ -4462,30 +4462,55 @@ function Modal({open,onClose,title,subtitle,width=560,children,footer,headerActi
 }
 
 // Full-size view of a profile photo — click any avatar image to open it here.
+// Saves an attachment for real on phones too: iOS ignores <a download> for
+// files on another path, so share the file (→ "Save to Files"/"Save Image")
+// when the phone supports it, otherwise download it as a blob.
+async function sfSaveFile(url, name) {
+  const fname = (name && /\.[a-z0-9]{2,5}$/i.test(name)) ? name : (decodeURIComponent((url||"").split("?")[0].split("/").pop()||"") || name || "file");
+  try {
+    const res = await fetch(url); if(!res.ok) throw new Error("fetch");
+    const blob = await res.blob();
+    const file = new File([blob], fname, {type: blob.type||"application/octet-stream"});
+    if (navigator.canShare && navigator.share && /iPhone|iPad|Android/i.test(navigator.userAgent) && navigator.canShare({files:[file]})) {
+      try { await navigator.share({files:[file], title:fname}); return; } catch(e) { if(e && e.name==="AbortError") return; }
+    }
+    const obj = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = obj; a.download = fname; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(obj), 60000);
+  } catch(e) { window.open(url, "_blank", "noopener"); }
+}
+
 function ImageLightbox({url, alt, onClose}) {
+  const [saving, setSaving] = useState(false);
+  useEffect(()=>{ const k=e=>{ if(e.key==="Escape") onClose&&onClose(); }; document.addEventListener("keydown",k); return ()=>document.removeEventListener("keydown",k); },[]); // eslint-disable-line react-hooks/exhaustive-deps
   if(!url) return null;
-  // PDFs (and anything else that isn't an image) get an embedded viewer
-  // instead of trying to render a broken <img> — same modal chrome/Download
-  // button either way, so "View" on any attachment (not just photos) opens
-  // in-app instead of just linking out.
+  // PDFs and videos get their own viewer instead of a broken <img>.
   const cleanUrl = (url||"").toLowerCase().split("?")[0];
   const isPdf = cleanUrl.endsWith(".pdf");
   const isVideo = /\.(mp4|mov|webm|m4v)$/.test(cleanUrl);
+  const isPhone = window.innerWidth < 768 || /iPhone|iPad|Android/i.test(navigator.userAgent);
+  const btn = {height:38,minWidth:38,padding:"0 12px",borderRadius:19,background:"rgba(255,255,255,0.14)",border:"none",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,fontSize:13,fontWeight:700,flexShrink:0};
   return ReactDOM.createPortal(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:1200,display:"flex",alignItems:"center",justifyContent:"center",padding:24,cursor:(isPdf||isVideo)?"default":"zoom-out"}} className="fade-in">
-      <a href={url} download={alt||""} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} aria-label="Download" style={{position:"absolute",top:20,right:66,width:38,height:38,borderRadius:"50%",background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",textDecoration:"none"}}>
-        <Ico d={Icons.download||Icons.upload} size={17} stroke="#fff"/>
-      </a>
-      <button onClick={onClose} aria-label="Close" style={{position:"absolute",top:20,right:20,width:38,height:38,borderRadius:"50%",background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-        <Ico d={Icons.x} size={17} stroke="#fff"/>
-      </button>
-      {isPdf ? (
-        <iframe src={url} title={alt||"Attachment"} onClick={e=>e.stopPropagation()} style={{width:"85vw",height:"88vh",border:"none",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,0.5)",background:"#fff"}}/>
-      ) : isVideo ? (
-        <video src={url} controls autoPlay playsInline onClick={e=>e.stopPropagation()} style={{maxWidth:"90vw",maxHeight:"90vh",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,0.5)"}}/>
-      ) : (
-        <img src={url} alt={alt||""} onClick={e=>e.stopPropagation()} style={{maxWidth:"90vw",maxHeight:"90vh",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,0.5)",cursor:"default"}}/>
-      )}
+    <div className="fade-in" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:1200,display:"flex",flexDirection:"column"}}>
+      {/* Top bar stays below the phone's status bar / notch */}
+      <div style={{display:"flex",alignItems:"center",gap:8,padding:"calc(env(safe-area-inset-top, 0px) + 10px) 14px 10px",flexShrink:0}}>
+        <span style={{flex:1,minWidth:0,color:"#fff",fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{alt||""}</span>
+        <button onClick={async()=>{ setSaving(true); await sfSaveFile(url, alt); setSaving(false); }} aria-label="Download" style={btn}>
+          {saving?<Spinner size={14}/>:<Ico d={Icons.download||Icons.upload} size={16} stroke="#fff"/>}<span>{saving?"Saving…":"Download"}</span>
+        </button>
+        <button onClick={onClose} aria-label="Close" style={btn}><Ico d={Icons.x} size={17} stroke="#fff"/></button>
+      </div>
+      <div onClick={onClose} style={{flex:1,minHeight:0,display:"flex",alignItems:isPdf&&isPhone?"stretch":"center",justifyContent:"center",padding:isPdf&&isPhone?0:"0 16px calc(env(safe-area-inset-bottom, 0px) + 16px)",cursor:(isPdf||isVideo)?"default":"zoom-out"}}>
+        {isPdf ? (
+          isPhone
+            ? <div onClick={e=>e.stopPropagation()} style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,paddingBottom:"env(safe-area-inset-bottom, 0px)"}}><PdfViewer url={url}/></div>
+            : <iframe src={url} title={alt||"Attachment"} onClick={e=>e.stopPropagation()} style={{width:"85vw",height:"100%",border:"none",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,0.5)",background:"#fff"}}/>
+        ) : isVideo ? (
+          <video src={url} controls autoPlay playsInline onClick={e=>e.stopPropagation()} style={{maxWidth:"100%",maxHeight:"100%",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,0.5)"}}/>
+        ) : (
+          <img src={url} alt={alt||""} onClick={e=>e.stopPropagation()} style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,0.5)",cursor:"default"}}/>
+        )}
+      </div>
     </div>,
     document.body
   );
