@@ -11924,6 +11924,7 @@ No markdown, no explanation.`;
       {!isAdmin&&currentUser?.role!=="account_director"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <LeaderApprovals posts={data.posts} team={team} currentUser={currentUser} onOpen={onOpenPost}/>
+          <TeamLeaderInsights data={data} team={team} currentUser={currentUser} onOpen={onOpenPost} setPage={setPage}/>
           {/* A vacation/WFH/personal-leave request used to only ever surface
               via the manager's WhatsApp/email/notification-bell ping and
               Team → Leave & WFH (buried a few clicks deep) — nothing put it
@@ -40579,6 +40580,111 @@ function MemberHoverCard({member, slots:allSlots=[], dateStr, members=[], style,
       </div>, document.body);
   }
   return <div style={style} onMouseEnter={show} onMouseLeave={()=>setPos(null)}>{children}{card}</div>;
+}
+
+// Team leader dashboard: a live, colourful read on the people they lead.
+function TeamLeaderInsights({data, team, currentUser, onOpen, setPage}) {
+  const [,tick] = useState(0);
+  useEffect(()=>{ const id=setInterval(()=>tick(x=>x+1),60000); return ()=>clearInterval(id); },[]);
+  const me = (team||[]).find(m=>m.email===currentUser?.email);
+  const crew = me ? (team||[]).filter(m=>m.team_leader_id===me.id && m.status!=="inactive") : [];
+  if(!crew.length) return null;
+  const posts = data.posts||[], logs = data.perfLogs||[], te = data.timeEntries||[];
+  const todayStr = new Date().toISOString().slice(0,10);
+  const weekAgo = Date.now()-7*864e5;
+  const num = v => Number(v)||0;
+  const tsOf = v => { const d = v ? parseSqlUtc(v) : null; return d && !isNaN(d) ? d.getTime() : NaN; };
+  const fmtH = sec => { const h=Math.floor(sec/3600), m=Math.floor(sec%3600/60); return h?`${h}h ${m}m`:`${m}m`; };
+  let scored = []; try { scored = calcAllPerf(crew, logs, true, data.maiReportSessions||[], posts); } catch(e) {}
+  const rows = crew.map(m=>{
+    let today = []; try { today = generateDailySchedule(posts, m.email, todayStr, m.role).filter(sl=>!sl.ghost); } catch(e) {}
+    const doneToday = today.filter(sl=>sl.completed_today).length;
+    const active = te.find(t=>t.user_email===m.email && t.status==="active");
+    const activePost = active && posts.find(p=>p.id===active.post_id);
+    const secsToday = te.filter(t=>t.user_email===m.email && String(t.date||"").slice(0,10)===todayStr).reduce((a,t)=>a+num(t.total_seconds)+(t.status==="active"&&t.started_at?Math.max(0,(Date.now()-tsOf(t.started_at))/1000):0),0);
+    const pen = liveScorePenalty(m.email);
+    const wk = logs.filter(l=>l.user_email===m.email && !String(l.stage_from||"").startsWith("returned_") && tsOf(l.completed_at||l.created_at)>=weekAgo);
+    const wkReturns = logs.filter(l=>l.user_email===m.email && String(l.stage_from||"").startsWith("returned_") && tsOf(l.completed_at||l.created_at)>=weekAgo).length;
+    const onTime = wk.length ? Math.round(wk.filter(l=>l.on_time===true||l.on_time===1||l.on_time==="1").length/wk.length*100) : null;
+    const waiting = posts.filter(p=>p.leader_review_status==="pending" && p.leader_reviewer===me.email && ((p.stage==="design"?p.design_assigned_to:p.content_assigned_to)||p.assigned_to)===m.email).length;
+    const score = scored.find(x=>x.email===m.email)?.perf?.score ?? null;
+    return {m, total:today.length, doneToday, activePost, working:!!active, secsToday, delayed:pen.openDelayed, delayH:pen.delayHours||0, wkDone:wk.length, wkReturns, onTime, waiting, score};
+  }).sort((a,b)=>(b.working?1:0)-(a.working?1:0) || b.delayed-a.delayed);
+  const T = rows.reduce((a,r)=>({total:a.total+r.total, done:a.done+r.doneToday, working:a.working+(r.working?1:0), delayed:a.delayed+r.delayed, secs:a.secs+r.secsToday, wk:a.wk+r.wkDone, ret:a.ret+r.wkReturns, waiting:a.waiting+r.waiting}),{total:0,done:0,working:0,delayed:0,secs:0,wk:0,ret:0,waiting:0});
+  const pct = T.total ? Math.round(T.done/T.total*100) : 0;
+  const allOnTime = (()=>{ const v=rows.filter(r=>r.onTime!=null); return v.length?Math.round(v.reduce((a,r)=>a+r.onTime,0)/v.length):null; })();
+  const star = [...rows].filter(r=>r.wkDone>0).sort((a,b)=>(b.onTime??0)-(a.onTime??0)||b.wkDone-a.wkDone)[0];
+  const needsHelp = [...rows].filter(r=>r.delayed>0).sort((a,b)=>b.delayH-a.delayH)[0];
+  const ring = (val, color, size=74) => { const r=(size-10)/2, c=2*Math.PI*r; return (
+    <svg width={size} height={size} style={{transform:"rotate(-90deg)",flexShrink:0}}>
+      <circle cx={size/2} cy={size/2} r={r} stroke="rgba(255,255,255,0.25)" strokeWidth="8" fill="none"/>
+      <circle cx={size/2} cy={size/2} r={r} stroke={color} strokeWidth="8" fill="none" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c*(1-Math.min(1,val/100))} style={{transition:"stroke-dashoffset .8s"}}/>
+    </svg>); };
+  const stat = (label, value, sub, color, icon) => (
+    <div style={{flex:"1 1 130px",minWidth:0,padding:"12px 14px",borderRadius:14,background:"var(--surface)",border:"1px solid var(--border)",position:"relative",overflow:"hidden"}}>
+      <div style={{position:"absolute",right:-10,top:-10,width:54,height:54,borderRadius:"50%",background:color+"1f"}}/>
+      <div style={{display:"flex",alignItems:"center",gap:6,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.06em",color:"var(--text3)"}}><Ico d={icon} size={12} stroke={color}/>{label}</div>
+      <p style={{fontSize:24,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color,lineHeight:1.2,marginTop:4}}>{value}</p>
+      <p style={{fontSize:11,color:"var(--text3)"}}>{sub}</p>
+    </div>);
+  const mood = pct>=80?"Your team is flying today 🚀":pct>=50?"Solid progress — keep the momentum 💪":T.delayed?"A few tasks need a push today ⚡":"Fresh day — let's get moving ☀️";
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:12}} className="fade-in">
+      {/* Hero */}
+      <div style={{borderRadius:18,padding:"18px 20px",background:"linear-gradient(135deg,#6366f1 0%,#8b5cf6 55%,#ec4899 100%)",color:"#fff",display:"flex",alignItems:"center",gap:18,flexWrap:"wrap",boxShadow:"0 10px 30px rgba(99,102,241,0.25)"}}>
+        <div style={{position:"relative",flexShrink:0}}>
+          {ring(pct,"#fff")}
+          <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><b style={{fontSize:18,lineHeight:1}}>{pct}%</b><span style={{fontSize:9,opacity:0.85}}>today</span></div>
+        </div>
+        <div style={{flex:1,minWidth:200}}>
+          <p style={{fontSize:11,fontWeight:800,letterSpacing:"0.08em",textTransform:"uppercase",opacity:0.85}}>Your team · {crew.length} {crew.length>1?"people":"person"}</p>
+          <p style={{fontSize:19,fontWeight:800,fontFamily:"'Montserrat',sans-serif",margin:"2px 0 6px"}}>{mood}</p>
+          <p style={{fontSize:13,opacity:0.92}}>{T.done} of {T.total} tasks done · {T.working} working now · {fmtH(T.secs)} tracked</p>
+        </div>
+        {T.waiting>0&&<div style={{background:"rgba(255,255,255,0.18)",borderRadius:12,padding:"10px 14px",textAlign:"center"}}><b style={{fontSize:22,display:"block"}}>{T.waiting}</b><span style={{fontSize:11}}>waiting your approval</span></div>}
+      </div>
+      {/* Stats */}
+      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+        {stat("Delayed now", T.delayed, T.delayed?"tasks past their time":"nothing late 🎉", T.delayed?"#ef4444":"#10b981", Icons.alert)}
+        {stat("Done this week", T.wk, "stages finished", "#6366f1", Icons.check)}
+        {stat("On time", allOnTime==null?"—":allOnTime+"%", "this week", allOnTime==null?"#94a3b8":allOnTime>=80?"#10b981":allOnTime>=60?"#f59e0b":"#ef4444", Icons.clock||Icons.calendar)}
+        {stat("Sent back", T.ret, "revisions this week", T.ret?"#f97316":"#10b981", Icons.repeat)}
+      </div>
+      {/* Highlights */}
+      {(star||needsHelp)&&<div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+        {star&&<div style={{flex:"1 1 240px",padding:"12px 14px",borderRadius:14,background:"linear-gradient(135deg,#10b98118,#10b98105)",border:"1px solid #10b98140",display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:22}}>🏆</span><p style={{fontSize:13,color:"var(--text2)"}}><b style={{color:"var(--text)"}}>{star.m.name.split(" ")[0]}</b> is this week's star — {star.wkDone} done{star.onTime!=null?`, ${star.onTime}% on time`:""}. Say well done!</p></div>}
+        {needsHelp&&<div style={{flex:"1 1 240px",padding:"12px 14px",borderRadius:14,background:"linear-gradient(135deg,#ef444418,#ef444405)",border:"1px solid #ef444440",display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:22}}>🤝</span><p style={{fontSize:13,color:"var(--text2)"}}><b style={{color:"var(--text)"}}>{needsHelp.m.name.split(" ")[0]}</b> has {needsHelp.delayed} delayed task{needsHelp.delayed>1?"s":""}{needsHelp.delayH?` (${Math.round(needsHelp.delayH*10)/10}h)`:""} — check if they need help.</p></div>}
+      </div>}
+      {/* People */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:10}}>
+        {rows.map(r=>{ const p = r.total?Math.round(r.doneToday/r.total*100):0; const col = r.delayed?"#ef4444":r.working?"#10b981":"#94a3b8"; return (
+          <div key={r.m.id} style={{padding:14,borderRadius:16,background:"var(--surface)",border:"1px solid var(--border)",borderTop:`3px solid ${col}`,display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{position:"relative"}}><Avatar name={r.m.name} size={40} role={r.m.role} photoUrl={r.m.photo_url}/>
+                <span style={{position:"absolute",right:-1,bottom:-1,width:12,height:12,borderRadius:"50%",background:col,border:"2px solid var(--surface)"}}/></div>
+              <div style={{flex:1,minWidth:0}}>
+                <p style={{fontSize:14,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.m.name}</p>
+                <p style={{fontSize:11,color:r.working?"#10b981":"var(--text3)",fontWeight:r.working?700:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.working?`● Working on ${r.activePost?.title||"a task"}`:"Not tracking right now"}</p>
+              </div>
+              {r.score!=null&&<span title="Performance score" style={{fontSize:13,fontWeight:800,color:perfColor(r.score),background:perfColor(r.score)+"18",padding:"3px 8px",borderRadius:99}}>{r.score}</span>}
+            </div>
+            <div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--text3)",marginBottom:4}}><span>Today {r.doneToday}/{r.total}</span><span>{fmtH(r.secsToday)} tracked</span></div>
+              <div style={{height:7,borderRadius:99,background:"var(--surface2)",overflow:"hidden"}}><div style={{width:`${p}%`,height:"100%",borderRadius:99,background:`linear-gradient(90deg,#6366f1,${p>=80?"#10b981":"#8b5cf6"})`,transition:"width .6s"}}/></div>
+            </div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {r.delayed>0&&<span style={{fontSize:11,fontWeight:700,color:"#ef4444",background:"#ef444414",padding:"3px 8px",borderRadius:99}}>⏰ {r.delayed} delayed</span>}
+              {r.waiting>0&&<span style={{fontSize:11,fontWeight:700,color:"#ca8a04",background:"#eab30818",padding:"3px 8px",borderRadius:99}}>⏳ {r.waiting} to approve</span>}
+              <span style={{fontSize:11,fontWeight:700,color:"#6366f1",background:"#6366f114",padding:"3px 8px",borderRadius:99}}>✓ {r.wkDone} this week</span>
+              {r.onTime!=null&&<span style={{fontSize:11,fontWeight:700,color:r.onTime>=80?"#10b981":"#f59e0b",background:(r.onTime>=80?"#10b981":"#f59e0b")+"14",padding:"3px 8px",borderRadius:99}}>{r.onTime}% on time</span>}
+              {r.wkReturns>0&&<span style={{fontSize:11,fontWeight:700,color:"#f97316",background:"#f9731614",padding:"3px 8px",borderRadius:99}}>↩ {r.wkReturns} sent back</span>}
+            </div>
+          </div>); })}
+      </div>
+    </div>
+  );
 }
 
 // Team leader: work waiting for my approval (My Timeline + Dashboard).
