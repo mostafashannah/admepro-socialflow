@@ -25,7 +25,7 @@ const DEFAULT_MAX_UPLOAD_MB = 100; // matches the server's PHP post_max_size/upl
 // display spot individually.
 async function convertHeicIfNeeded(file) {
   const isHeic = /\.(heic|heif)$/i.test(file.name) || /^image\/hei[cf]/i.test(file.type||"");
-  if (!isHeic || !window.heic2any) return file;
+  if (!isHeic || !(await window.sfLib("heic2any"))) return file;
   try {
     const converted = await window.heic2any({blob:file, toType:"image/jpeg", quality:0.9});
     const jpegBlob = Array.isArray(converted) ? converted[0] : converted;
@@ -80,7 +80,7 @@ function UploadProgressToast() {
 const downloadAllMedia = async (assets, zipName="media") => {
   const list = (assets||[]).map(a=>({url:a.url||a.file_url||a.data||"", name:a.name||""})).filter(a=>a.url&&a.url!=="#");
   if(!list.length) return;
-  if(!window.JSZip) { list.forEach(a=>window.open(a.url,"_blank")); return; }
+  if(!(await window.sfLib("JSZip"))) { list.forEach(a=>window.open(a.url,"_blank")); return; }
   const id = ++uploadProgressStore.seq;
   const safe = n => String(n).replace(/[^a-zA-Z0-9._ -]/g,"_").trim() || "file";
   uploadProgressStore.items[id] = {id, name:`${list.length} files (zip)`, loaded:0, total:list.length, cancel:null, verb:"Preparing"};
@@ -1800,7 +1800,7 @@ async function buildCvContentBlock(file) {
   const isLegacyDoc = !isDocx && (name.endsWith(".doc") || file.type === "application/msword");
   if (isLegacyDoc) throw new Error("Legacy .doc files can't be read for AI scoring — please re-save as PDF or .docx.");
   if (isDocx) {
-    if (!window.mammoth) throw new Error("Word document reader not loaded — please try again in a moment.");
+    if (!(await window.sfLib("mammoth"))) throw new Error("Word document reader not loaded — please try again in a moment.");
     const arrayBuffer = await file.arrayBuffer();
     const result = await window.mammoth.extractRawText({arrayBuffer});
     const text = (result.value||"").trim();
@@ -1877,8 +1877,8 @@ async function convertCvToPdfForStorage(file) {
   const isDocx = name.endsWith(".docx") || file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   if (!isDocx) return file;
   const [mammothLib, jspdfLib] = await Promise.all([
-    waitForLib(()=>window.mammoth),
-    waitForLib(()=>window.jspdf),
+    window.sfLib("mammoth"),
+    window.sfLib("jspdf"),
   ]);
   if (!mammothLib || !jspdfLib) {
     console.error("convertCvToPdfForStorage: mammoth/jspdf failed to load from CDN");
@@ -1896,7 +1896,7 @@ async function convertCvToPdfForStorage(file) {
   // screenshot-of-HTML approach — entirely. html2pdf.js bundles jsPDF
   // internally but doesn't expose it as a global, so it's loaded as its
   // own separate CDN script in index.html (window.jspdf.jsPDF).
-  const jsPDFCtor = window.jspdf?.jsPDF;
+  const jsPDFCtor = (await window.sfLib("jspdf"))?.jsPDF;
   if (!jsPDFCtor) {
     console.error("convertCvToPdfForStorage: jsPDF constructor not found on window.jspdf");
     return file;
@@ -4200,7 +4200,7 @@ function PdfViewer({url}) {
     setError(false);
     (async () => {
       try {
-        if (!window.pdfjsLib) throw new Error("pdf.js not loaded");
+        if (!(await window.sfLib("pdfjsLib"))) throw new Error("pdf.js not loaded");
         const res = await fetch(url);
         const buf = await res.arrayBuffer();
         const pdf = await window.pdfjsLib.getDocument({data: buf}).promise;
@@ -13492,7 +13492,7 @@ function ClientSkillsSection({client, clientMemory=[], onUpsert, onDelete}) {
       if(lower.endsWith(".md")||lower.endsWith(".txt")) {
         text = await file.text();
       } else {
-        if(!window.JSZip) throw new Error("zip reader not loaded — refresh the page and try again");
+        if(!(await window.sfLib("JSZip"))) throw new Error("zip reader not loaded — refresh the page and try again");
         const zip = await window.JSZip.loadAsync(await file.arrayBuffer());
         const names = Object.keys(zip.files).filter(n=>!zip.files[n].dir);
         const skillPath = names.find(n=>/(^|\/)skill\.md$/i.test(n));
@@ -17820,7 +17820,7 @@ function platformLabelCap(p) { return p ? p.charAt(0).toUpperCase()+p.slice(1) :
 // a content-mix breakdown, engagement-rate analysis, and the top posts
 // by engagement, closing with a plain-language takeaways page.
 async function downloadInsightsReportPDF(client, posts, connectedPlatforms, rangeKey) {
-  const jsPDFCtor = window.jspdf?.jsPDF;
+  const jsPDFCtor = (await window.sfLib("jspdf"))?.jsPDF;
   if (!jsPDFCtor) { alert("PDF library failed to load — please refresh and try again."); return; }
   try {
     const now = new Date();
@@ -19922,7 +19922,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
   const gridExportRef = React.useRef(null);
   const [gridExporting, setGridExporting] = useState(false);
   const downloadGrid = async (as) => {
-    if (!gridExportRef.current || !window.html2canvas) return;
+    if (!gridExportRef.current || !(await window.sfLib("html2canvas"))) return;
     setGridExporting(true);
     // Hide the Published/Unpublished badge for the exported file only — it's
     // a live-status indicator useful while working in the app, not something
@@ -19946,7 +19946,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
       });
       const filename = `${(project.title||"grid").replace(/[^a-z0-9]+/gi,"_")}_grid`;
       if (as === "pdf") {
-        const jsPDFCtor = window.jspdf?.jsPDF;
+        const jsPDFCtor = (await window.sfLib("jspdf"))?.jsPDF;
         if (!jsPDFCtor) return;
         const imgData = canvas.toDataURL("image/jpeg", 0.92);
         // Fit the full grid onto one page at its own aspect ratio, rather
@@ -19968,8 +19968,8 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
 
   const [fullCalExporting, setFullCalExporting] = useState(false);
   const downloadFullCalendarPdf = async () => {
-    const jsPDFCtor = window.jspdf?.jsPDF;
-    if (!jsPDFCtor || !gridExportRef.current || !window.html2canvas) return;
+    const jsPDFCtor = (await window.sfLib("jspdf"))?.jsPDF;
+    if (!jsPDFCtor || !gridExportRef.current || !(await window.sfLib("html2canvas"))) return;
     setFullCalExporting(true);
     try {
       const W = 1280, H = 720, M = 70; // 16:9 "slide" canvas, in px units
@@ -20020,7 +20020,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
       try { await document.fonts.load("400 16px 'Noto Naskh Arabic'"); await document.fonts.load("700 16px 'Noto Naskh Arabic'"); await document.fonts.ready; } catch(e) {}
       const addWrapped = async (x, y, maxWidth, text, fontSize, opts={}) => {
         const str = String(text||"—");
-        if (hasArabic(str) && window.html2canvas) {
+        if (hasArabic(str) && (await window.sfLib("html2canvas"))) {
           const div = document.createElement("div");
           // unicode-bidi:plaintext (not a forced whole-block direction:rtl)
           // lets the browser resolve each line's base direction from its
@@ -22499,7 +22499,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
           alert(`Couldn't read the National ID off the attached photo${result.reason?` (${result.reason})`:""} — the contract will have a blank ID field. This is common with .heic photos (iPhone default format); ask them to resend it as .jpg/.png, or enter the ID manually via Edit before regenerating.`);
         }
       }
-      const jspdfLib = await waitForLib(()=>window.jspdf);
+      const jspdfLib = await window.sfLib("jspdf");
       const jsPDFCtor = jspdfLib?.jsPDF;
       if(!jsPDFCtor) throw new Error("PDF library failed to load");
       const template = appSettings?.employment_contract_template || DEFAULT_CONTRACT_TEMPLATE;
@@ -28303,7 +28303,7 @@ function generateQuotePDF(quote, items, branding) {
 // matches the reference design exactly. Red is used sparingly (just the
 // dot + a couple of small labels), everything else is black/gray.
 async function downloadQuotePDF(quote, items, branding) {
-  const jsPDFCtor = window.jspdf?.jsPDF;
+  const jsPDFCtor = (await window.sfLib("jspdf"))?.jsPDF;
   if (!jsPDFCtor) { alert("PDF library failed to load — please refresh and try again."); return; }
   try {
     const calc = calcQuote(items, quote.discount_value, quote.discount_type, quote.tax_rate);
@@ -38138,7 +38138,7 @@ async function downloadInvoicePDF(inv, payments, branding) {
   document.body.appendChild(wrapper);
 
   try {
-    await window.html2pdf().set({
+    await (await window.sfLib("html2pdf"))().set({
       margin: 0,
       filename: `${inv.invoice_number}.pdf`,
       image: { type: "jpeg", quality: 0.98 },
@@ -38286,7 +38286,7 @@ async function loadImageForPdfViaImg(url) {
   } catch(e) { return null; }
 }
 async function downloadContactReportPDF(report, clientName, branding, client, team) {
-  const jsPDFCtor = window.jspdf?.jsPDF;
+  const jsPDFCtor = (await window.sfLib("jspdf"))?.jsPDF;
   if (!jsPDFCtor) { alert("PDF library failed to load — please refresh and try again."); return; }
   try {
     const attendees = sortAttendeesForDisplay(resolveAttendeesLive(parseMaybeJson(report.attendees, []), client, team));
@@ -49093,7 +49093,7 @@ RULES:
           const buf = await file.arrayBuffer();
           let text = "";
           if(isExcel){
-            if(!window.XLSX) throw new Error("Excel reader not loaded — refresh the page and try again");
+            if(!(await window.sfLib("XLSX"))) throw new Error("Excel reader not loaded — refresh the page and try again");
             const wb = window.XLSX.read(buf, {type:"array"});
             text = wb.SheetNames.map(n=>{
               const ws = wb.Sheets[n];
@@ -49101,7 +49101,7 @@ RULES:
               return csv ? `### Sheet: ${n}\n${csv}` : "";
             }).filter(Boolean).join("\n\n");
           } else {
-            if(!window.mammoth) throw new Error("Word reader not loaded — refresh the page and try again");
+            if(!(await window.sfLib("mammoth"))) throw new Error("Word reader not loaded — refresh the page and try again");
             text = (await window.mammoth.extractRawText({arrayBuffer:buf})).value||"";
           }
           text = text.trim();

@@ -7,6 +7,10 @@
     "@babel/plugin-transform-nullish-coalescing-operator": "^7.29.7",
     "@babel/plugin-transform-optional-chaining": "^7.29.7",
     "@babel/preset-env": "^7.29.7",
-    "@babel/preset-react": "^7.29.7"
+    "@babel/preset-react": "^7.29.7",
+    "esbuild": "^0.24.0"
+  },
+  "scripts": {
+    "build": "babel app.jsx -o app.js && esbuild app.js --minify --keep-names --target=es2019 --legal-comments=none --log-level=error --allow-overwrite --outfile=app.js"
   }
 }

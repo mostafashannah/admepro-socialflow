@@ -86,28 +86,41 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline-offset:0
 <body>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div id="root"><div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:16px"><img src="/favicon.svg" width="52" height="52" style="border-radius:14px"/><p style="font-size:18px;font-weight:700;color:#1a1a2e;font-family:sans-serif">Loading SocialFlow…</p></div></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-<!-- Same reasoning as the jsPDF tag below — html2pdf.bundle.min.js doesn't
-     reliably expose html2canvas as its own global, and the Grid view export
-     (screenshotting the card grid to PNG/PDF) needs to call it directly
-     rather than going through html2pdf's own from/to chain. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/mammoth@1.7.0/mammoth.browser.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
-<!-- html2pdf.js bundles jsPDF internally but doesn't expose it as a
-     separate global — CV PDF generation needs jsPDF directly (writing
-     real text, not screenshotting HTML via html2canvas), so load it on
-     its own too. Exposes window.jspdf.jsPDF. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<!-- Renders PDFs (CV viewer) ourselves via canvas instead of relying on the
-     browser/OS's native PDF plugin inside an iframe — that plugin behaves
-     inconsistently on mobile (fixed zoom cropping the page width, broken
-     touch-scrolling for multi-page docs inside a nested iframe). Exposes
-     window.pdfjsLib. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";}</script>
-<script src="/app.js?v=1636"></script>
+<!-- Heavy tools (PDF/Excel/Word/zip/HEIC) load in the background AFTER the
+     app is up, instead of blocking every page open. Code that needs one
+     calls sfLib("name") which waits for it (and starts it if needed). -->
+<script>
+(function(){
+  var L={
+    html2pdf:"https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js",
+    html2canvas:"https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js",
+    mammoth:"https://cdn.jsdelivr.net/npm/mammoth@1.7.0/mammoth.browser.min.js",
+    heic2any:"https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js",
+    jspdf:"https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js",
+    JSZip:"https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js",
+    XLSX:"https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
+    pdfjsLib:"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
+  };
+  var P={};
+  function load(n){
+    if(window[n]) return Promise.resolve(window[n]);
+    if(P[n]) return P[n];
+    P[n]=new Promise(function(res){
+      var s=document.createElement("script"); s.src=L[n]; s.async=true;
+      s.onload=function(){ if(n==="pdfjsLib"&&window.pdfjsLib){ pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; } res(window[n]); };
+      s.onerror=function(){ delete P[n]; res(undefined); };
+      document.head.appendChild(s);
+    });
+    return P[n];
+  }
+  window.sfLib=function(n){ return L[n]?load(n):Promise.resolve(window[n]); };
+  // Warm them all up quietly once the app has loaded.
+  window.addEventListener("load",function(){
+    var go=function(){ Object.keys(L).forEach(function(n,i){ setTimeout(function(){ load(n); }, i*400); }); };
+    (window.requestIdleCallback||function(f){ setTimeout(f,1500); })(go,{timeout:4000});
+  });
+})();
+</script>
+<script src="/app.js?v=1637"></script>
 </body>
 </html>
