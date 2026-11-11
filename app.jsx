@@ -31599,26 +31599,28 @@ function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfL
   const handleSendTest = async () => {
     if(!selMember) return;
     setSending(true); setSendResult(null);
-    const html = generateEmailHTML(es, selMember, perf, posts, timelogs, appSettings, accentColor);
-    const ok = await sendEmail(selMember.email, resolveSubject(es.subject), html);
-    setSendResult({ok, member:selMember.name, email:selMember.email});
+    const r = await fetch(window.location.origin+"/daily-email.php?action=send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...es, email:selMember.email})}).then(r=>r.json()).catch(()=>({ok:false}));
+    setSendResult({ok:!!r.ok, member:selMember.name, email:selMember.email});
     setSending(false);
   };
 
   const handleSendAll = async () => {
     setSending(true); setSendResult(null);
-    const eligible = team.filter(t=>!["client","accountant"].includes(t.role));
-    let sent = 0;
-    for(const member of eligible) {
-      const html = generateEmailHTML(es, member, perf, posts, timelogs, appSettings, accentColor);
-      const ok = await sendEmail(member.email, resolveSubject(es.subject), html);
-      if(ok) sent++;
-    }
-    setSendResult({ok:sent>0, all:true, count:sent, total:eligible.length});
+    const r = await fetch(window.location.origin+"/daily-email.php?action=send_all",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(es)}).then(r=>r.json()).catch(()=>({ok:false,sent:0,total:0}));
+    setSendResult({ok:!!r.ok, all:true, count:r.sent||0, total:r.total||0});
     setSending(false);
   };
 
-  const previewHTML = selMember ? generateEmailHTML(es, selMember, perf, posts, timelogs, appSettings, accentColor) : "";
+  // Built on the server by the same code as the nightly email (real numbers for today).
+  const [previewHTML, setPreviewHTML] = useState("");
+  const _esKey = JSON.stringify([selMember?.email, es.include_metrics, es.include_working_hours, es.include_completed_tasks, es.include_pending_tasks, es.include_overdue_tasks, es.include_motivation, es.custom_footer]);
+  useEffect(()=>{
+    if(!selMember) { setPreviewHTML(""); return; }
+    let off=false;
+    const q = new URLSearchParams({action:"preview", email:selMember.email});
+    fetch(window.location.origin+"/daily-email.php?"+q.toString()).then(r=>r.text()).then(h=>{ if(!off) setPreviewHTML(h); }).catch(()=>{});
+    return ()=>{ off=true; };
+  },[_esKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const SECTIONS = [
     {key:"include_working_hours", label:"Working Hours", icon:"", desc:"Total hours logged and avg per task"},
