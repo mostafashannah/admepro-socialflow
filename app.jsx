@@ -11923,6 +11923,7 @@ No markdown, no explanation.`;
       {tab==="overview"&&(isAdmin||currentUser?.role==="account_director")&&<AdminControlCenter viewer={currentUser} data={{...data, appSettings}} setPage={setPage} onDecideLeaveRequest={onDecideLeaveRequest} onOpenPost={onOpenPost} onlineEmails={liveMemberEmails} onlineClients={liveClients}/>}
       {!isAdmin&&currentUser?.role!=="account_director"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
+          <LeaderApprovals posts={data.posts} team={team} currentUser={currentUser} onOpen={onOpenPost}/>
           {/* A vacation/WFH/personal-leave request used to only ever surface
               via the manager's WhatsApp/email/notification-bell ping and
               Team → Leave & WFH (buried a few clicks deep) — nothing put it
@@ -40580,6 +40581,32 @@ function MemberHoverCard({member, slots:allSlots=[], dateStr, members=[], style,
   return <div style={style} onMouseEnter={show} onMouseLeave={()=>setPos(null)}>{children}{card}</div>;
 }
 
+// Team leader: work waiting for my approval (My Timeline + Dashboard).
+function LeaderApprovals({posts, team, currentUser, onOpen}) {
+  const _toApprove = (posts||[]).filter(p=>p.leader_review_status==="pending" && p.leader_reviewer===currentUser?.email)
+    .sort((x,y)=>String(x.leader_review_at||"").localeCompare(String(y.leader_review_at||"")));
+  if(!_toApprove.length) return null;
+  return (
+      
+        <div style={{background:"var(--surface)",border:"1px solid #eab30866",borderLeft:"4px solid #eab308",borderRadius:14,padding:14}}>
+          <p style={{fontWeight:800,fontSize:15,marginBottom:10}}>⏳ Tasks to approve <span style={{color:"#ca8a04"}}>({_toApprove.length})</span></p>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {_toApprove.map(p=>{ const who=(team||[]).find(m=>m.email===((p.stage==="design"?p.design_assigned_to:p.content_assigned_to)||p.assigned_to)); const at=p.leader_review_at?parseSqlUtc(p.leader_review_at):null; const mins=at?Math.round((Date.now()-at.getTime())/60000):null; return (
+              <button key={p.id} onClick={()=>onOpen&&onOpen(p)} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:10,background:"var(--surface2)",border:"1px solid var(--border)",cursor:"pointer",textAlign:"left",color:"var(--text)"}}>
+                <TaskThumb post={p} team={team} size={32}/>
+                <span style={{flex:1,minWidth:0}}>
+                  <span style={{display:"block",fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</span>
+                  <span style={{display:"block",fontSize:11,color:"var(--text3)"}}>{[who?.name, p.client_name, STAGE_MAP[p.leader_review_to]?.label&&("→ "+STAGE_MAP[p.leader_review_to].label)].filter(Boolean).join(" · ")}</span>
+                </span>
+                {mins!=null&&<span style={{fontSize:11,fontWeight:700,color:mins>60?"#ef4444":"#ca8a04",flexShrink:0}}>waiting {mins>=60?`${Math.floor(mins/60)}h ${mins%60}m`:`${mins}m`}</span>}
+                <span style={{fontSize:12,fontWeight:800,color:"#ca8a04"}}>Review →</span>
+              </button>); })}
+          </div>
+        </div>
+      
+  );
+}
+
 function MyTimelinePage({posts:postsRaw, team, currentUser, timeEntries, onPostClick:onPostClickRaw, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule, onShiftOverdue, initialJump, onJumpConsumed, onBackToCalendar, activityLogs=[], appSettings, onQuickAdd, onMoveTask:onMoveTaskRaw}) {
   // Repeating tasks (routine + regular) only get created on their own day by the cron, so future days
   // looked empty. Project them onto future dates as "planned" blocks (same rules as recurring-tasks-cron.php).
@@ -40824,28 +40851,9 @@ function MyTimelinePage({posts:postsRaw, team, currentUser, timeEntries, onPostC
     return hour >= startHour && hour < endHour;
   });
 
-  const _toApprove = (postsRaw||[]).filter(p=>p.leader_review_status==="pending" && p.leader_reviewer===currentUser?.email)
-    .sort((x,y)=>String(x.leader_review_at||"").localeCompare(String(y.leader_review_at||"")));
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"100%"}}>
-      {/* Team leader: work waiting for my approval */}
-      {_toApprove.length>0&&(
-        <div style={{background:"var(--surface)",border:"1px solid #eab30866",borderLeft:"4px solid #eab308",borderRadius:14,padding:14}}>
-          <p style={{fontWeight:800,fontSize:15,marginBottom:10}}>⏳ Tasks to approve <span style={{color:"#ca8a04"}}>({_toApprove.length})</span></p>
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {_toApprove.map(p=>{ const who=(team||[]).find(m=>m.email===((p.stage==="design"?p.design_assigned_to:p.content_assigned_to)||p.assigned_to)); const at=p.leader_review_at?parseSqlUtc(p.leader_review_at):null; const mins=at?Math.round((Date.now()-at.getTime())/60000):null; return (
-              <button key={p.id} onClick={()=>onPostClickRaw&&onPostClickRaw(p)} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:10,background:"var(--surface2)",border:"1px solid var(--border)",cursor:"pointer",textAlign:"left",color:"var(--text)"}}>
-                <TaskThumb post={p} team={team} size={32}/>
-                <span style={{flex:1,minWidth:0}}>
-                  <span style={{display:"block",fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</span>
-                  <span style={{display:"block",fontSize:11,color:"var(--text3)"}}>{[who?.name, p.client_name, STAGE_MAP[p.leader_review_to]?.label&&("→ "+STAGE_MAP[p.leader_review_to].label)].filter(Boolean).join(" · ")}</span>
-                </span>
-                {mins!=null&&<span style={{fontSize:11,fontWeight:700,color:mins>60?"#ef4444":"#ca8a04",flexShrink:0}}>waiting {mins>=60?`${Math.floor(mins/60)}h ${mins%60}m`:`${mins}m`}</span>}
-                <span style={{fontSize:12,fontWeight:800,color:"#ca8a04"}}>Review →</span>
-              </button>); })}
-          </div>
-        </div>
-      )}
+      <LeaderApprovals posts={postsRaw} team={team} currentUser={currentUser} onOpen={onPostClickRaw}/>
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
         <div>
