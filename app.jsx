@@ -5824,7 +5824,7 @@ ${shapeInstr}`;
 // ════════════════════════════════════════════════════════════════
 // ASSET PICKER MODAL — choose from existing assets or upload new
 // ════════════════════════════════════════════════════════════════
-function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
+function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true, allowPdf=false}) {
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -5835,10 +5835,10 @@ function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
   useEffect(()=>{ if(open) { setSelected([]); setPickLimit(60); } },[open]);
   if(!open) return null;
 
-  const mediaAssets = assets.filter(a=>["image","video"].includes(a.file_type||(
-    (a.file_url||"").match(/\.(mp4|mov|webm|m4v)/i)?"video":
-    (a.file_url||"").match(/\.(jpg|jpeg|png|gif|webp|svg)/i)?"image":""
-  )));
+  const mediaAssets = assets.filter(a=>{
+    const t = a.file_type||((a.file_url||"").match(/\.(mp4|mov|webm|m4v)/i)?"video":(a.file_url||"").match(/\.(jpg|jpeg|png|gif|webp|svg)/i)?"image":(a.file_url||"").match(/\.pdf/i)?"pdf":"");
+    return ["image","video"].includes(t) || (allowPdf && (t==="pdf" || /\.pdf/i.test(a.file_url||"")));
+  });
 
   const filtered = mediaAssets.filter(a=>{
     if(!q) return true;
@@ -5860,7 +5860,7 @@ function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
     try {
       const results = await Promise.all(list.map(async f=>{
         const url = await uploadToStorage(f, "design/picker");
-        return {name:f.name, url, type:f.type, file_type:f.type.startsWith("video")?"video":"image", file_size:f.size};
+        return {name:f.name, url, type:f.type, file_type:f.type.startsWith("video")?"video":(f.type==="application/pdf"||/\.pdf$/i.test(f.name))?"pdf":"image", file_size:f.size};
       }));
       if(multiple) { onPick(results); onClose(); }
       else { onPick([results[0]]); onClose(); }
@@ -5890,7 +5890,7 @@ function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
             {uploading?<Spinner size={12}/>:<Ico d={Icons.upload} size={13} stroke="#fff"/>}
             {uploading?`Uploading${uploadPct!==null?` ${uploadPct}%`:"…"}`:"Upload New"}
           </button>
-          <input ref={fileRef} type="file" multiple={multiple} accept="image/*,video/*" style={{display:"none"}}
+          <input ref={fileRef} type="file" multiple={multiple} accept={allowPdf?"image/*,video/*,application/pdf,.pdf":"image/*,video/*"} style={{display:"none"}}
             onChange={e=>{handleUpload(e.target.files); e.target.value="";}}/>
         </div>
         {/* Grid */}
@@ -5906,9 +5906,12 @@ function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
               {filtered.slice(0,pickLimit).map(a=>{
                 const isSel = selected.find(x=>x.id===a.id);
                 const isVid = (a.file_type==="video")||((a.file_url||"").match(/\.(mp4|mov|webm|m4v)/i));
+                const isPdf = a.file_type==="pdf" || /\.pdf/i.test(a.file_url||"");
                 return (
                   <div key={a.id} onClick={()=>toggle(a)} style={{position:"relative",aspectRatio:"1/1",borderRadius:8,overflow:"hidden",border:`2px solid ${isSel?"var(--accent)":"var(--border)"}`,cursor:"pointer",background:"var(--surface2)",transition:"border-color 0.15s"}}>
-                    {isVid?(
+                    {isPdf?(
+                      <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:"var(--surface2)",fontSize:13,fontWeight:800,color:"#ef4444"}}>PDF</div>
+                    ):isVid?(
                       <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:"var(--surface2)"}}><Ico d={Icons.play} size={26} stroke="var(--text3)"/></div>
                     ):(
                       <img src={a.file_url} alt={a.name} loading="lazy" decoding="async" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
@@ -5951,14 +5954,38 @@ function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
 // is what's actually legal here, not calling a hook conditionally inline.
 function DesignFilePicker({post, assets, onAddAsset, project, onStageChange}) {
   const [showPicker, setShowPicker_] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [link, setLink] = useState("");
+  const addLink = () => {
+    let u = link.trim(); if(!u) return;
+    if(!/^https?:\/\//i.test(u)) u = "https://"+u;
+    try { new URL(u); } catch(e) { alert("That doesn't look like a valid link."); return; }
+    const newAssets = [...(post.design_assets||[]), {name:u.replace(/^https?:\/\//i,"").slice(0,60), type:"link", url:u, uploaded_at:new Date().toISOString()}];
+    ue("Post", post.id, {design_assets: newAssets}).catch(()=>{});
+    onStageChange({...post, design_assets:newAssets}, post.stage);
+    setLink(""); setLinkOpen(false);
+  };
   return (
     <>
-      <button onClick={()=>setShowPicker_(true)}
-        style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:14,background:"var(--surface)",borderRadius:"var(--rs)",border:"2px dashed #8b5cf644",cursor:"pointer",width:"100%"}}>
-        <Ico d={Icons.plus} size={14} stroke="#8b5cf6"/>
-        <span style={{fontSize:12,fontWeight:600,color:"#8b5cf6"}}>Add Photo / Video</span>
-      </button>
-      <AssetPickerModal open={showPicker} assets={assets} multiple onClose={()=>setShowPicker_(false)}
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={()=>setShowPicker_(true)}
+          style={{flex:2,display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:14,background:"var(--surface)",borderRadius:"var(--rs)",border:"2px dashed #8b5cf644",cursor:"pointer"}}>
+          <Ico d={Icons.plus} size={14} stroke="#8b5cf6"/>
+          <span style={{fontSize:12,fontWeight:600,color:"#8b5cf6"}}>Add Photo / Video / PDF</span>
+        </button>
+        <button onClick={()=>setLinkOpen(o=>!o)}
+          style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:14,background:"var(--surface)",borderRadius:"var(--rs)",border:"2px dashed #8b5cf644",cursor:"pointer"}}>
+          <Ico d={Icons.globe} size={14} stroke="#8b5cf6"/>
+          <span style={{fontSize:12,fontWeight:600,color:"#8b5cf6"}}>Add Link</span>
+        </button>
+      </div>
+      {linkOpen&&(
+        <div style={{display:"flex",gap:6,marginTop:8}}>
+          <input value={link} onChange={e=>setLink(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addLink()} placeholder="Paste a link (Drive, Figma, Canva, WeTransfer…)" style={{...inputSt,flex:1}} autoFocus/>
+          <button onClick={addLink} style={{padding:"0 16px",borderRadius:8,background:"#8b5cf6",color:"#fff",border:"none",fontWeight:700,fontSize:12,cursor:"pointer"}}>Add</button>
+        </div>
+      )}
+      <AssetPickerModal open={showPicker} assets={assets} multiple allowPdf onClose={()=>setShowPicker_(false)}
         onPick={async(picked)=>{
           const mapped = await Promise.all(picked.map(async(a,i)=>{
             // a.url = freshly uploaded via the picker's own "Upload New" button (not yet
@@ -6018,8 +6045,13 @@ function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canF
                 <img src={asset.url||asset.data} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={asset.name}/>
               :isVideo?
                 <video src={asset.url||asset.data} controls playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+              :asset.type==="link"?<a href={asset.url} target="_blank" rel="noreferrer" style={{textAlign:"center",padding:8,textDecoration:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                <Ico d={Icons.globe} size={22} stroke="#8b5cf6"/>
+                <span style={{fontSize:9,fontWeight:700,color:"#8b5cf6"}}>LINK</span>
+                <span style={{fontSize:9,color:"var(--text3)",wordBreak:"break-all"}}>{(asset.name||"").substring(0,22)}</span>
+              </a>
               :<div style={{textAlign:"center",padding:8}}>
-                <div style={{fontSize:24,marginBottom:4}}></div>
+                <div style={{fontSize:13,fontWeight:800,color:"#ef4444",marginBottom:4}}>{/\.pdf/i.test(asset.url||"")||asset.type==="application/pdf"||asset.type==="pdf"?"PDF":""}</div>
                 <p style={{fontSize:9,color:"var(--text3)",wordBreak:"break-all"}}>{(asset.name||"").substring(0,14)}…</p>
                 {asset.url&&(onView
                   ? <button onClick={()=>onView({url:asset.url, name:asset.name})} style={{fontSize:9,color:"var(--accent)",background:"none",border:"none",cursor:"pointer",padding:0,textDecoration:"underline"}}>View</button>
@@ -53181,7 +53213,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       const _urls = Array.isArray(_live.design_urls) ? _live.design_urls : parseJ(_live.design_urls||"[]");
       const _assets = Array.isArray(_live.design_assets) ? _live.design_assets : parseJ(_live.design_assets||"[]");
       if(!_urls.length && !_assets.length) {
-        setToast(" Upload at least one file (image, video or design) to this task before moving it to review.");
+        setToast(" Add at least one file (image, video, PDF) or a link to this task before moving it to review.");
         return;
       }
     }
