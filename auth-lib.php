@@ -33,10 +33,14 @@ function authNow($offsetSeconds = 0) { return gmdate('Y-m-d H:i:s', time() + $of
 
 // Creates the two small tables this needs the first time they are used, so
 // deploying is just "git pull" — no manual migration step to forget.
+// The app's DB user may not be allowed to CREATE tables (they come from migration-auth-tables.sql);
+// if the table already exists that's fine, so a refused CREATE is ignored.
+function sfTryExec(PDO $pdo, $sql) { try { $pdo->exec($sql); } catch (Throwable $e) { /* table made by the migration */ } }
+
 function authEnsureSchema(PDO $pdo) {
     static $done = false;
     if ($done) return;
-    $pdo->exec("CREATE TABLE IF NOT EXISTS auth_sessions (
+    sfTryExec($pdo, "CREATE TABLE IF NOT EXISTS auth_sessions (
         token_hash CHAR(64) NOT NULL PRIMARY KEY,
         user_type VARCHAR(20) NOT NULL,
         user_id VARCHAR(64) NOT NULL,
@@ -50,7 +54,7 @@ function authEnsureSchema(PDO $pdo) {
         user_agent VARCHAR(255) NULL,
         revoked TINYINT NOT NULL DEFAULT 0
     )");
-    $pdo->exec("CREATE TABLE IF NOT EXISTS auth_attempts (
+    sfTryExec($pdo, "CREATE TABLE IF NOT EXISTS auth_attempts (
         id VARCHAR(40) NOT NULL PRIMARY KEY,
         email VARCHAR(255) NULL,
         ip VARCHAR(64) NULL,
@@ -239,10 +243,10 @@ function authTeamOk($allowClient = false) {
 const AUTH_2FA_ROLES = ['admin', 'accountant', 'account_director'];
 
 function auth2faSchema(PDO $pdo) {
-    $pdo->exec("CREATE TABLE IF NOT EXISTS auth_codes (
+    sfTryExec($pdo, "CREATE TABLE IF NOT EXISTS auth_codes (
         id CHAR(32) NOT NULL PRIMARY KEY, user_type VARCHAR(20) NOT NULL, user_id VARCHAR(64) NOT NULL,
         code_hash CHAR(64) NOT NULL, expires_at DATETIME NOT NULL, attempts INT NOT NULL DEFAULT 0, used TINYINT NOT NULL DEFAULT 0)");
-    $pdo->exec("CREATE TABLE IF NOT EXISTS auth_devices (
+    sfTryExec($pdo, "CREATE TABLE IF NOT EXISTS auth_devices (
         token_hash CHAR(64) NOT NULL PRIMARY KEY, user_type VARCHAR(20) NOT NULL, user_id VARCHAR(64) NOT NULL, expires_at DATETIME NOT NULL)");
 }
 

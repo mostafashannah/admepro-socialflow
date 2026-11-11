@@ -1,0 +1,17 @@
+-- Security sign-in tables (run once as the MySQL admin; the app user may not CREATE tables).
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  token_hash CHAR(64) NOT NULL PRIMARY KEY, user_type VARCHAR(20) NOT NULL, user_id VARCHAR(64) NOT NULL,
+  email VARCHAR(255) NULL, role VARCHAR(64) NULL, client_id VARCHAR(64) NULL,
+  created_at DATETIME NOT NULL, last_seen_at DATETIME NOT NULL, expires_at DATETIME NOT NULL,
+  ip VARCHAR(64) NULL, user_agent VARCHAR(255) NULL, revoked TINYINT NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS auth_attempts (
+  id VARCHAR(40) NOT NULL PRIMARY KEY, email VARCHAR(255) NULL, ip VARCHAR(64) NULL, ok TINYINT NOT NULL DEFAULT 0, at DATETIME NOT NULL
+);
+CREATE TABLE IF NOT EXISTS auth_codes (
+  id CHAR(32) NOT NULL PRIMARY KEY, user_type VARCHAR(20) NOT NULL, user_id VARCHAR(64) NOT NULL,
+  code_hash CHAR(64) NOT NULL, expires_at DATETIME NOT NULL, attempts INT NOT NULL DEFAULT 0, used TINYINT NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS auth_devices (
+  token_hash CHAR(64) NOT NULL PRIMARY KEY, user_type VARCHAR(20) NOT NULL, user_id VARCHAR(64) NOT NULL, expires_at DATETIME NOT NULL
+);
