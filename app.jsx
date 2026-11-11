@@ -22280,6 +22280,33 @@ function AccountManagerMaiReportsTab({member, onUpdateTeamMember}) {
   );
 }
 
+function PwResetBox({member}) {
+  const [pw,setPw]=useState(""); const [busy,setBusy]=useState(false); const [msg,setMsg]=useState(null);
+  const gen=()=>{const c="ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";let s="";const a=new Uint32Array(10);crypto.getRandomValues(a);a.forEach(n=>s+=c[n%c.length]);setPw(s);setMsg(null);};
+  const save=async()=>{
+    if(pw.length<6){setMsg({e:true,t:"At least 6 characters"});return;}
+    setBusy(true);setMsg(null);
+    try{await ue("TeamMember",member.id,{password:pw});setMsg({e:false,t:"Saved — share it with "+(member.name||"them").split(" ")[0]});}
+    catch(e){setMsg({e:true,t:"Couldn't save, try again"});}
+    setBusy(false);
+  };
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:8,minWidth:260}}>
+      <div style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>Reset password</div>
+      <div style={{display:"flex",gap:6}}>
+        <input value={pw} onChange={e=>{setPw(e.target.value);setMsg(null);}} placeholder="New password" style={{flex:1,fontFamily:"monospace",fontSize:13,padding:"6px 8px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)"}}/>
+        <button onClick={gen} title="Generate" style={{padding:"0 9px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontSize:12,color:"var(--text2)"}}>Generate</button>
+      </div>
+      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+        <button onClick={save} disabled={busy||!pw} style={{padding:"6px 14px",borderRadius:7,border:"none",background:"var(--accent)",color:"#fff",fontWeight:700,fontSize:12,cursor:busy||!pw?"default":"pointer",opacity:busy||!pw?0.6:1}}>{busy?"Saving…":"Save"}</button>
+        {pw&&<button onClick={()=>{try{navigator.clipboard.writeText(pw);}catch(e){}}} style={{padding:"6px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontSize:12,color:"var(--text2)"}}>Copy</button>}
+        {msg&&<span style={{fontSize:11,color:msg.e?"#dc2626":"#16a34a",whiteSpace:"normal"}}>{msg.t}</span>}
+      </div>
+      <div style={{fontSize:11,color:"var(--text3)",whiteSpace:"normal"}}>Old passwords can't be shown — they're stored scrambled.</div>
+    </div>
+  );
+}
+
 function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, onUpdateAttendance, onBackfillApprovedVacation, onRefundStaleAbsencePenalty, expenses, invoices, payments, subscriptionPayments, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense, appSettings, brandingAssets, perfLogs=[], maiReportSessions=[], leaveCreditEvents=[], payrollRuns=[], onDecidePayrollRun}) {
   const [editingAttendanceId,setEditingAttendanceId] = useState(null);
   const [attendanceEditDraft,setAttendanceEditDraft] = useState({});
@@ -22863,7 +22890,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
           )}
           {canEdit&&(
             <div style={{position:"relative"}}>
-              <button onClick={()=>setShowPassword(p=>!p)} title="Show current password" style={{width:32,height:32,borderRadius:8,border:"1px solid var(--border2)",background:showPassword?"var(--accent)":"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+              <button onClick={()=>setShowPassword(p=>!p)} title="Reset password" style={{width:32,height:32,borderRadius:8,border:"1px solid var(--border2)",background:showPassword?"var(--accent)":"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
                 <Ico d={Icons.key} size={14} stroke={showPassword?"#fff":"var(--text2)"}/>
               </button>
               {showPassword&&(
@@ -22874,7 +22901,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                       <button onClick={()=>{try{navigator.clipboard.writeText(member.password);}catch(e){}}} title="Copy" style={{padding:4}}><Ico d={Icons.copy2} size={13} stroke="var(--text3)"/></button>
                     </>
                   ) : (
-                    <span style={{fontSize:12,color:"var(--text3)"}}>Passwords are stored securely and can't be shown. To change it, set a new one via Edit.</span>
+                    <PwResetBox member={member}/>
                   )}
                 </div>
               )}
