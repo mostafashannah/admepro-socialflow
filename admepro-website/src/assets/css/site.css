@@ -320,17 +320,16 @@ a.rev-card:hover .h5, a.rev-card:focus-visible .h5, a.rev-card:hover .rev-text, 
 .featured-label { font: 600 22px var(--head); border-bottom: 1px solid rgba(255, 255, 255, .5); padding-bottom: 10px; max-width: 360px; }
 
 /* proof + testimonials */
-.bar { margin-block: 18px 22px; }
+.bar { margin-block: 22px 26px; }
 .bar > span { font: 600 13px var(--head); display: block; margin-bottom: 10px; }
-.bar-track { --pad: 9px; position: relative; height: 30px; background: #ececec; border-radius: 99px; }
-.bar-track i { position: absolute; inset-block: var(--pad); inset-inline-start: var(--pad); width: calc((100% - 2 * var(--pad)) * var(--vn, 1)); background: #767b72; border-radius: 99px; box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
+.bar-track { --pad: 4.5px; position: relative; height: 14px; background: #ececec; border-radius: 99px; }
+.bar-track i { position: absolute; inset-block: var(--pad); inset-inline-start: var(--pad); width: calc((100% - 2 * var(--pad)) * var(--vn, 1)); background: #767b72; border-radius: 99px; }
 .bar.gradient .bar-track i { background: #767b72; }
-.bar-track b { position: absolute; inset-inline-end: 0; bottom: calc(100% + 6px); font: 600 11px var(--head); background: var(--inv-bg); color: var(--inv-text); padding: 2px 6px; border-radius: 4px; }
-.bar.gradient .bar-track b { inset-inline-start: calc(75% - 18px); inset-inline-end: auto; }
+.bar-track b { position: absolute; inset-inline-end: calc((100% - 2 * var(--pad)) * (1 - var(--vn, 1)) + var(--pad) - 14px); bottom: calc(100% + 9px); font: 500 12px/1 var(--head); background: #111013; color: #fff; padding: 6px 10px; border-radius: 8px; white-space: nowrap; }
+.bar-track b::after { content: ""; position: absolute; bottom: -4px; inset-inline-end: 10px; width: 9px; height: 9px; background: inherit; transform: rotate(45deg); border-radius: 0 0 2px 0; }
 /* animated fill: JS sets --cur from 0 to the target when the bar scrolls into view (no JS = full bar) */
 .js .bar-track i { width: calc((100% - 2 * var(--pad)) * var(--cur, 0) / 100); }
-.js .bar-track b { inset-inline-end: calc((100% - 2 * var(--pad)) * (100 - var(--cur, 0)) / 100 + var(--pad) - 18px); }
-.js .bar.gradient .bar-track b { inset-inline-start: calc((100% - 2 * var(--pad)) * var(--cur, 0) / 100 - 6px); inset-inline-end: auto; }
+.js .bar-track b { inset-inline-end: calc((100% - 2 * var(--pad)) * (100 - var(--cur, 0)) / 100 + var(--pad) - 14px); }
 .tslider { border-radius: var(--radius-lg); padding: clamp(24px, 3vw, 40px); background: var(--surface2); min-height: 300px; display: flex; flex-direction: column; }
 .tslider.dark { background: #1f1e22; color: #fff; }
 [data-theme="dark"] .tslider.dark { background: var(--surface2); }
@@ -685,6 +684,7 @@ a.rev-card:hover .h5, a.rev-card:focus-visible .h5, a.rev-card:hover .rev-text, 
 
 [data-theme="dark"] .bar-track { background: rgba(255, 255, 255, .08); }
 [data-theme="dark"] .bar-track i { background: #8b949e; }
+[data-theme="dark"] .bar-track b { background: #e6edf3; color: #0e1117; }
 /* round buttons: menu, search and close share one size and a thin red ring on hover/focus */
 .chrome-burger, .search-btn, .fullmenu-x { width: 48px; height: 48px; border-radius: 50%; box-shadow: 0 0 0 0 rgba(217, 10, 44, 0); transition: background .2s, color .2s, box-shadow .2s; }
 .chrome-burger:hover, .search-btn:hover, .fullmenu-x:hover, .chrome-burger:focus-visible, .search-btn:focus-visible, .fullmenu-x:focus-visible { box-shadow: 0 0 0 1px var(--red); outline: none; }
