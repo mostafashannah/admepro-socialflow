@@ -258,9 +258,9 @@ details[open] > summary .plus { transform: rotate(45deg); }
 @media (min-width: 640px) { .work-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 1000px) { .work-grid { grid-template-columns: repeat(3, 1fr); } .pcard.wide { grid-column: span 2; } }
 .pcard { position: relative; display: block; border-radius: var(--radius); overflow: hidden; aspect-ratio: 1 / 1; background: #ddd; isolation: isolate; }
-.pcard.wide { aspect-ratio: auto; }
+.pcard.wide { aspect-ratio: auto; height: 100%; min-height: 0; }
 @media (max-width: 999px) { .pcard.wide { aspect-ratio: 1 / 1; } }
-.pcard img { width: 100%; height: 100%; object-fit: cover; transition: transform .8s var(--ease); }
+.pcard img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform .8s var(--ease); }
 .pcard::after { content: ""; position: absolute; inset: 50% 0 0; background: linear-gradient(transparent, rgba(0, 0, 0, .55)); z-index: 0; }
 .pcard:hover img { transform: scale(1.04); }
 .pcard-meta { position: absolute; z-index: 1; inset-inline: 20px; bottom: 18px; color: #fff; display: grid; }
