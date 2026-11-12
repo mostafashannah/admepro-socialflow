@@ -40,6 +40,8 @@ function sfTryExec(PDO $pdo, $sql) { try { $pdo->exec($sql); } catch (Throwable 
 function authEnsureSchema(PDO $pdo) {
     static $done = false;
     if ($done) return;
+    // Fast path: the tables already exist (made by the migration) — a cheap read, no DDL on every request.
+    try { $pdo->query("SELECT 1 FROM auth_sessions LIMIT 0"); $pdo->query("SELECT 1 FROM auth_attempts LIMIT 0"); $done = true; return; } catch (Throwable $e) {}
     sfTryExec($pdo, "CREATE TABLE IF NOT EXISTS auth_sessions (
         token_hash CHAR(64) NOT NULL PRIMARY KEY,
         user_type VARCHAR(20) NOT NULL,

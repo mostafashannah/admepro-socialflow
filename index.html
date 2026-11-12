@@ -121,13 +121,9 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline-offset:0
     return P[n];
   }
   window.sfLib=function(n){ return L[n]?load(n):Promise.resolve(window[n]); };
-  // Warm them all up quietly once the app has loaded.
-  window.addEventListener("load",function(){
-    var go=function(){ Object.keys(L).forEach(function(n,i){ setTimeout(function(){ load(n); }, i*400); }); };
-    (window.requestIdleCallback||function(f){ setTimeout(f,1500); })(go,{timeout:4000});
-  });
+  // Loaded only when a feature needs one (PDF, Excel, Word, zip, HEIC) — no background downloads competing with the app.
 })();
 </script>
-<script src="/app.js?v=1661"></script>
+<script src="/app.js?v=1662"></script>
 </body>
 </html>
