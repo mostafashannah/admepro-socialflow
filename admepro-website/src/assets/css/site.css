@@ -390,7 +390,7 @@ a.rev-card:hover .h5, a.rev-card:focus-visible .h5, a.rev-card:hover .rev-text, 
 .team-cards-in { position: relative; display: flex; flex-wrap: wrap; gap: 16px; padding-block: 32px; }
 .tcard { width: min(280px, 100%); background: #fff; color: #111013; border-radius: var(--radius-lg); padding: 22px; display: grid; gap: 4px; box-shadow: 0 20px 50px rgba(0, 0, 0, .15); }
 .tcard.dark { background: rgba(40, 40, 44, .82); color: #fff; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
-.tcard-title { display: flex; justify-content: space-between; align-items: center; font: 600 26px var(--head); letter-spacing: -0.03em; margin-bottom: 24px; }
+.tcard-title { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; font: 600 26px var(--head); letter-spacing: -0.03em; margin-bottom: 24px; }
 .tcard.dark .circle { background: #111013; color: #fff; }
 .tcard .circle { background: #111013; color: #fff; }
 .tcard-pre { font-size: 13px; opacity: .6; }
@@ -719,3 +719,7 @@ a.rev-card:hover .h5, a.rev-card:focus-visible .h5, a.rev-card:hover .rev-text, 
 :dir(rtl) .tcard .circle:hover .i { animation-name: arrow-pass-rtl; }
 @keyframes arrow-pass-rtl { 0% { translate: 0 0; opacity: 1; } 45% { translate: -150% 0; opacity: 0; } 46% { translate: 150% 0; opacity: 0; } 100% { translate: 0 0; opacity: 1; } }
 .cursor.is-btn .c-dot, .cursor.is-btn .c-ring { opacity: 0; }
+
+/* card arrow buttons: always a true circle, top-aligned the same in both cards */
+.tcard .circle { flex: none; width: 38px; height: 38px; aspect-ratio: 1; margin-top: 2px; }
+.tcard-title { align-items: flex-start; }
