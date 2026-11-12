@@ -26246,7 +26246,6 @@ const CAREERS_MORE_LINKS = [
   {label:"Production", url:"https://admepro.com/production/"},
   {label:"GCC & KSA", url:"https://admepro.com/gcc-ksa-ai-marketing-agency/"},
   {label:"Blog", url:"https://admepro.com/blog/"},
-  {label:"Arabic site", url:"https://admepro.com/ar/"},
 ];
 
 // Full-screen menu overlay matching admepro.com's own site menu style —
@@ -26262,18 +26261,18 @@ function CareersFullMenu({onClose}) {
   const navBlock = (
     <div style={{display:"flex",flexDirection:"column",justifyContent:"center",marginLeft:isMobile?0:-100}}>
       {CAREERS_NAV_LINKS.map(item=>(
-        <a key={item.label} href={item.url} target="_blank" rel="noreferrer" className="careers-nav-flip" onTouchStart={()=>{}}>
+        <a key={item.label} href={item.url} className="careers-nav-flip" onTouchStart={()=>{}}>
           <span className="careers-nav-flip-inner">
             <span className="careers-nav-flip-face" style={navFontStyle}>{item.label}</span>
             <span className="careers-nav-flip-face back" style={navFontStyle}>{item.label}</span>
           </span>
         </a>
       ))}
-      <p style={{display:"flex",flexWrap:"wrap",gap:"8px 18px",marginTop:22,fontFamily:"'Montserrat',sans-serif",fontSize:14,fontWeight:600}}>
+      <p role="group" aria-label="More pages" style={{display:"flex",flexWrap:"wrap",alignItems:"center",marginTop:"clamp(24px,3.4vw,40px)",maxWidth:640,fontFamily:"'Montserrat',sans-serif",fontSize:15,fontWeight:500,lineHeight:1.9}}>
         {CAREERS_MORE_LINKS.map(item=>(
-          <a key={item.label} href={item.url} target="_blank" rel="noreferrer" className="careers-more-link">{item.label}</a>
+          <a key={item.label} href={item.url} className="careers-more-link">{item.label}</a>
         ))}
-        <a href="/careers" className="careers-more-link" aria-current="page" style={{color:"#fff"}}>Careers</a>
+        <a href="/careers" className="careers-more-link" aria-current="page">Career</a>
       </p>
     </div>
   );
@@ -26282,7 +26281,7 @@ function CareersFullMenu({onClose}) {
     <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:28,color:"rgba(255,255,255,0.6)",fontSize:15,textAlign:"left"}}>
       <div>
         <p style={{fontWeight:800,color:"#fff",marginBottom:8}}>Get In Touch</p>
-        <p>145 El Banafsig 3, New Cairo, Cairo,</p>
+        <p>145 El Banafsig 3, New Cairo, Cairo, Egypt</p>
         <p>info@admepro.com</p>
         <p>Ph: +20 100 037 0140</p>
       </div>
@@ -26305,6 +26304,7 @@ function CareersFullMenu({onClose}) {
           </a>
         ))}
       </div>
+      <a href="https://admepro.com/ar/" hrefLang="ar" lang="ar" className="careers-lang">AR</a>
     </div>
   );
 
@@ -26320,8 +26320,11 @@ function CareersFullMenu({onClose}) {
         .careers-nav-flip:hover .careers-nav-flip-inner,.careers-nav-flip:active .careers-nav-flip-inner{transform:rotateX(180deg)}
         .careers-nav-flip-face{display:block;backface-visibility:hidden}
         .careers-nav-flip-face.back{position:absolute;inset:0;transform:rotateX(180deg);color:#d90b2c}
-        .careers-more-link{color:rgba(255,255,255,0.6);text-decoration:none;padding:6px 0;border-bottom:1px dotted rgba(255,255,255,0.35);transition:color .15s,border-color .15s}
-        .careers-more-link:hover{color:#fff;border-bottom-color:#fff}
+        .careers-more-link{color:rgba(255,255,255,0.6);text-decoration:none;transition:color .2s}
+        .careers-more-link:not(:last-child)::after{content:"·";margin-inline:.7em;color:rgba(255,255,255,0.35)}
+        .careers-more-link:hover,.careers-more-link[aria-current]{color:#fff}
+        .careers-lang{font:700 15px 'Montserrat',sans-serif;color:#fff;border:1px solid rgba(255,255,255,0.25);border-radius:99px;padding:8px 18px;text-decoration:none;transition:color .15s,border-color .15s}
+        .careers-lang:hover{color:#d90b2c;border-color:#d90b2c}
       `}</style>
       <button onClick={onClose} style={{position:"absolute",top:20,right:20,width:44,height:44,borderRadius:"50%",background:"rgba(255,255,255,0.1)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff"}}>
         <Ico d={Icons.x} size={20}/>
