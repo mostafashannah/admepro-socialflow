@@ -40837,7 +40837,14 @@ function MyTimelinePage({posts:postsRaw, team, currentUser, timeEntries, onPostC
   const toggleRow = (k) => setCollapsedRows({...(collapsedRows||{}), [k]: !(collapsedRows||{})[k]});
   const [overrideTarget, setOverrideTarget] = useState(null); // {slot, post}
   const [overrideTime, setOverrideTime] = useState("09:00");
-  const effectiveUser = (isAM && viewUser) ? viewUser : currentUser;
+  // Seniors / team leaders (anyone set as someone's Team Leader, or a "senior_" role) can VIEW
+  // the timelines of their craft (designers see designers, content sees content…). Juniors see only their own.
+  const _me = (team||[]).find(m=>m.email===currentUser?.email);
+  const CRAFTS = [["graphic_designer","senior_graphic_designer","video_editor","senior_video_editor","motion_designer"],["content_creator","senior_content_creator"]];
+  const _myCraft = CRAFTS.find(c=>c.includes(currentUser?.role)) || null;
+  const isLead = !isAM && !!_myCraft && (String(currentUser?.role||"").startsWith("senior_") || (team||[]).some(m=>m.team_leader_id && _me && m.team_leader_id===_me.id && m.status!=="inactive"));
+  const canViewOthers = isAM || isLead;
+  const effectiveUser = (canViewOthers && viewUser) ? viewUser : currentUser;
 
   // Consume the jump once so it doesn't keep re-forcing this date/mode if the
   // component happens to re-render — clicking Prev/Next or a member button
@@ -40981,6 +40988,7 @@ function MyTimelinePage({posts:postsRaw, team, currentUser, timeEntries, onPostC
     .filter(m=>isAdminViewer || ["account_manager","account_director","account_executive"].includes(currentUser?.role) || !["account_manager","account_director","account_executive"].includes(m.role))
     // Account managers / executives never see the account director's timeline.
     .filter(m=>!(["account_manager","account_executive"].includes(currentUser?.role) && m.role==="account_director"))
+    .filter(m=>!isLead || (_myCraft.includes(m.role) && m.email!==currentUser?.email))
     .filter(m=>isAdminViewer || currentUser?.role==="account_director" || !TIMELINE_EXCLUDED_NAMES.some(n=>(m.name||"").trim().toLowerCase().split(/\s+/)[0]===n))
     .sort((a,b)=>{
       const ai = ROLE_SORT_ORDER.indexOf(a.role), bi = ROLE_SORT_ORDER.indexOf(b.role);
@@ -41051,10 +41059,10 @@ function MyTimelinePage({posts:postsRaw, team, currentUser, timeEntries, onPostC
             </button>
           )}
           <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?22:28,fontWeight:800,marginBottom:4}}>
-            {combinedView ? "Combined Timeline" : isAM && viewUser ? `${viewUser.name.split(" ")[0]}'s Schedule` : "My Daily Schedule"}
+            {combinedView ? "Combined Timeline" : canViewOthers && viewUser ? `${viewUser.name.split(" ")[0]}'s Schedule` : "My Daily Schedule"}
           </h1>
           <p style={{fontSize:13,color:"var(--text2)"}}>{viewDate.toLocaleDateString(undefined,{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</p>
-          {isAM && (
+          {canViewOthers && (
             <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
               <button onClick={()=>{setCombinedView(false);setViewUser(null);}} style={{padding:"4px 10px",borderRadius:"var(--rs)",border:`1px solid ${!combinedView&&!viewUser?"var(--accent)":"var(--border)"}`,background:!combinedView&&!viewUser?"var(--accent)22":"var(--surface)",color:!combinedView&&!viewUser?"var(--accent)":"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>
                 My Schedule
