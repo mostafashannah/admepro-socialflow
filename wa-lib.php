@@ -8,7 +8,7 @@ if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVE
  *
  * Template (create once in Meta WhatsApp Manager → Message templates, category UTILITY):
  *   name:     team_update   (or set WA_TEAM_TEMPLATE in config.php)
- *   language: English (en)  (or set WA_TEAM_TEMPLATE_LANG)
+ *   language: English (US) = en_US  (or set WA_TEAM_TEMPLATE_LANG)
  *   body:     SocialFlow update: {{1}}
  */
 function waIsWindowError($httpStatus, $response) {
@@ -46,7 +46,7 @@ function waWindowOpen(PDO $pdo, $to) {
 /** Sends $body to $to as the team template. Returns [ok, httpStatus, response]. */
 function waSendTeamTemplate($to, $body) {
     $name = defined('WA_TEAM_TEMPLATE') && WA_TEAM_TEMPLATE ? WA_TEAM_TEMPLATE : 'team_update';
-    $lang = defined('WA_TEAM_TEMPLATE_LANG') && WA_TEAM_TEMPLATE_LANG ? WA_TEAM_TEMPLATE_LANG : 'en';
+    $lang = defined('WA_TEAM_TEMPLATE_LANG') && WA_TEAM_TEMPLATE_LANG ? WA_TEAM_TEMPLATE_LANG : 'en_US';
     // Template parameters can't contain new lines/tabs or 4+ spaces, max ~1024 chars.
     $param = trim(preg_replace('/\s{2,}/', ' ', preg_replace('/[\r\n\t]+/', ' · ', strip_tags((string)$body))));
     if (mb_strlen($param) > 1000) $param = mb_substr($param, 0, 997) . '…';
