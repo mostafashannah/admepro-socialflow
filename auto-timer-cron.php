@@ -130,6 +130,7 @@ function alertEmailHtml(string $name, string $headline, string $lead, string $ti
         . '</td></tr></table></td></tr></table></body></html>';
 }
 function alertSend(string $to, string $subject, string $html): bool {
+    if (!(defined('TEAM_NOTIFICATION_EMAILS') && TEAM_NOTIFICATION_EMAILS)) return false; // team notification emails are off (WhatsApp / in-app instead)
     $ch = curl_init("https://api.resend.com/emails");
     curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20,
         CURLOPT_POSTFIELDS => json_encode(["from" => "SocialFlow <noreply@admepro.com>", "to" => [$to], "subject" => $subject, "html" => $html]),

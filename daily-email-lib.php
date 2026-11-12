@@ -153,6 +153,36 @@ function de_member_html(array $es, array $m, array $D, $motiv) {
     return de_shell("Hi $first, here's your day", $intro, $body, de_h($es['custom_footer'] ?? '') ?: 'Keep up the great work!');
 }
 
+/** Team-today block (stats + per-person table) as a standalone snippet for other emails. */
+function de_team_section(array $D) {
+    $inner = de_admin_rows($D);
+    return '<table width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 6px"><tr><td style="font-size:16px;font-weight:800;color:#111827;padding:0 0 4px">👥 Team today</td></tr></table>'
+        . '<table width="100%" cellpadding="0" cellspacing="0">' . $inner['stats'] . $inner['table'] . '</table>';
+}
+
+function de_admin_rows(array $D) {
+    $rows = []; $T = ['done' => 0, 'del' => 0, 'ret' => 0, 'secs' => 0];
+    foreach ($D['team'] as $p) {
+        if ($p['role'] === 'admin') continue;
+        $S = de_member_stats($p, $D);
+        $T['done'] += count($S['done']); $T['del'] += count($S['delayed']); $T['ret'] += count($S['returned']); $T['secs'] += $S['secs'];
+        $rows[] = [$p['name'], count($S['done']), count($S['delayed']), count($S['returned']), $S['secs']];
+    }
+    usort($rows, fn($a, $b) => $b[2] <=> $a[2] ?: $b[1] <=> $a[1]);
+    $stats = de_stats_row([['Done today', $T['done'], '#10b981'], ['Delayed', $T['del'], $T['del'] ? '#ef4444' : '#10b981'], ['Sent back', $T['ret'], $T['ret'] ? '#f97316' : '#10b981'], ['Tracked', de_hours($T['secs']), '#111827']]);
+    $tbl = '<tr><td style="padding:12px 0 0"><table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;font-size:13px">
+      <tr style="background:#f9fafb;color:#6b7280;font-size:11px;text-transform:uppercase"><td style="padding:8px 10px">Person</td><td style="padding:8px 6px;text-align:center">Done</td><td style="padding:8px 6px;text-align:center">Delayed</td><td style="padding:8px 6px;text-align:center">Back</td><td style="padding:8px 10px;text-align:right">Time</td></tr>';
+    foreach ($rows as [$n, $d, $l, $r, $sec]) {
+        $tbl .= '<tr><td style="padding:8px 10px;font-weight:700;color:#111827;border-top:1px solid #f3f4f6">' . de_h($n) . '</td>'
+            . '<td style="padding:8px 6px;text-align:center;color:#10b981;font-weight:700;border-top:1px solid #f3f4f6">' . $d . '</td>'
+            . '<td style="padding:8px 6px;text-align:center;font-weight:700;color:' . ($l ? '#ef4444' : '#9ca3af') . ';border-top:1px solid #f3f4f6">' . $l . '</td>'
+            . '<td style="padding:8px 6px;text-align:center;color:' . ($r ? '#f97316' : '#9ca3af') . ';border-top:1px solid #f3f4f6">' . $r . '</td>'
+            . '<td style="padding:8px 10px;text-align:right;color:#4b5563;border-top:1px solid #f3f4f6">' . de_hours($sec) . '</td></tr>';
+    }
+    $tbl .= '</table></td></tr>';
+    return ['stats' => $stats, 'table' => $tbl, 'T' => $T];
+}
+
 function de_admin_html(array $es, array $m, array $D) {
     $first = de_h(explode(' ', trim($m['name']))[0] ?: 'there');
     $rows = []; $T = ['done' => 0, 'del' => 0, 'ret' => 0, 'secs' => 0];

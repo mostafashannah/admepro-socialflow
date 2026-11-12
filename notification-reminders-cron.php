@@ -78,6 +78,10 @@ function email_card($rows) {
 }
 function email_divider() { return '<hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0"/>'; }
 
+// Team notification emails are switched off — people get WhatsApp / in-app instead.
+// Only the daily performance email and the admins' merged end-of-day brief are emailed.
+// define('TEAM_NOTIFICATION_EMAILS', true) in config.php to turn them back on.
+function team_emails_on() { return defined('TEAM_NOTIFICATION_EMAILS') && TEAM_NOTIFICATION_EMAILS; }
 function send_via_resend($to, $subject, $html) {
     $payload = json_encode([
         "from"    => "SocialFlow <noreply@admepro.com>",
@@ -145,7 +149,7 @@ if ($mode === 'reminders') {
                 email_card([['Client', htmlspecialchars($post['client_name'] ?: '—')], ['Due', htmlspecialchars($post['scheduled_date']), '#f59e0b']]) .
                 email_btn('https://socialflow.admepro.com/?task=' . rawurlencode($post['id']), 'Open Task')
             );
-            [$ok, $raw] = send_via_resend($m['email'], '[SocialFlow] Task due soon: '.$post['title'], $html);
+            if (!team_emails_on()) { $ok = false; $raw = 'team emails off'; } else [$ok, $raw] = send_via_resend($m['email'], '[SocialFlow] Task due soon: '.$post['title'], $html);
             log_email($insertLog, $m['email'], '[SocialFlow] Task due soon: '.$post['title'], $ok, $raw, $now);
             if ($ok) $counts['task_due_soon']++;
         }
@@ -175,7 +179,7 @@ if ($mode === 'reminders') {
                 email_btn('https://socialflow.admepro.com', 'Manage Subscription')
             );
             $subject = '[SocialFlow] Subscription renewing soon — '.($sub['client_name'] ?: $sub['service_name']);
-            [$ok, $raw] = send_via_resend($m['email'], $subject, $html);
+            if (!team_emails_on()) { $ok = false; $raw = 'team emails off'; } else [$ok, $raw] = send_via_resend($m['email'], $subject, $html);
             log_email($insertLog, $m['email'], $subject, $ok, $raw, $now);
             if ($ok) $counts['subscription_renewal']++;
         }
@@ -426,22 +430,32 @@ if ($mode === 'digest') {
             }
         }
 
-        if ($body === '') continue; // nothing worth sending
+        if ($body === '') $body = email_p('A quiet day — nothing flagged in your brief sections.'); // still send: team + finance are included below
 
         $sendEmail = !array_key_exists('email', $want) || !empty($want['email']);
         $sendWa = (!array_key_exists('whatsapp', $want) || !empty($want['whatsapp'])) && !empty($m['whatsapp_number']);
         if (!$sendEmail && !$sendWa) continue;
         $first = htmlspecialchars(explode(' ', trim($m['name']))[0] ?: 'there');
+        // Merged into this one email (admins used to get three): team performance + finance ledger.
+        if (!isset($mergedExtra)) {
+            require_once __DIR__ . '/daily-email-lib.php';
+            require_once __DIR__ . '/finance-csv-lib.php';
+            $mergedExtra = '';
+            try { $mergedExtra .= de_team_section(de_load($pdo, new DateTimeZone('Africa/Cairo'))); } catch (Throwable $e) { error_log('[digest] team section: '.$e->getMessage()); }
+            $fin = [];
+            try { $fin = fin_build($pdo); $mergedExtra .= '<table width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 6px"><tr><td style="font-size:16px;font-weight:800;color:#111827;padding:0 0 6px">💰 Finance</td></tr><tr><td>' . $fin['html'] . '</td></tr></table>'; } catch (Throwable $e) { error_log('[digest] finance: '.$e->getMessage()); }
+        }
         $html = email_base(
             email_h('End-of-day brief') .
             email_p('Good evening <strong>'.$first.'</strong> — the main points from today, '.$now->format('D j M').'.') .
             $body .
+            $mergedExtra .
             email_btn('https://socialflow.admepro.com', 'Open SocialFlow') .
-            '<p style="margin:0;font-size:11px;color:#9ca3af;text-align:center">Choose what appears here in Account → Notifications → Daily Digest.</p>'
+            '<p style="margin:0;font-size:11px;color:#9ca3af;text-align:center">One daily email: brief + team performance + finance ledger (attached). Choose brief sections in Account → Notifications → Daily Digest.</p>'
         );
         $ok = false; $raw = '';
         if ($sendEmail) {
-            [$ok, $raw] = send_via_resend($m['email'], '[SocialFlow] End-of-day brief — '.$now->format('d M Y'), $html);
+            [$ok, $raw] = fin_send_with_attachment($m['email'], '[SocialFlow] Daily report — '.$now->format('d M Y'), $html, $fin['filename'] ?? null, $fin['csv'] ?? '');
             log_email($insertLog, $m['email'], '[SocialFlow] Daily brief', $ok, $raw, $now);
         }
         if ($sendWa) {
@@ -517,6 +531,7 @@ if ($mode === 'digest_team') {
             $section('Pending', '#6b7280', $pending) .
             email_btn('https://socialflow.admepro.com', 'Open SocialFlow')
         );
+        if (!team_emails_on()) continue;
         [$ok, $raw] = send_via_resend($m['email'], '[SocialFlow] Your daily summary — '.$now->format('d M Y'), $html);
         log_email($insertLog, $m['email'], '[SocialFlow] Your daily summary', $ok, $raw, $now);
         if ($ok) {

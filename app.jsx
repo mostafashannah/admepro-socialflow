@@ -2689,7 +2689,8 @@ async function sendNotification(eventType, toEmail, subject, html, userPrefs, wa
   if(prefs.all_disabled) return false;
   if(prefs.mentions_only && eventType !== "task_mention") return false;
   if(prefs[eventType] === false) return false;
-  const emailOk = sendEmail(toEmail, subject, html);
+  // Team notification emails are off — WhatsApp / in-app only. Clients still get their approval emails.
+  const emailOk = eventType==="client_approval_required" ? sendEmail(toEmail, subject, html) : Promise.resolve(true);
   if(waNumber) {
     const _open = _link || window.location.origin;
     sendWhatsApp(waNumber, waBody ? (/https?:\/\//.test(waBody) ? waBody : `${waBody}\n\nOpen: ${_open}`) : `${subject}\n\nOpen: ${_open}`).catch(()=>{});

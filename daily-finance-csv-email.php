@@ -18,6 +18,8 @@ $pdo = new PDO(
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
 );
 
+// Merged into the admin end-of-day brief (notification-reminders-cron.php digest). `php daily-finance-csv-email.php force` still sends it on its own.
+if (($argv[1] ?? '') !== 'force') { echo json_encode(['sent'=>false,'reason'=>'merged_into_end_of_day_brief']); exit; }
 $app = $pdo->query("SELECT * FROM app_settings LIMIT 1")->fetch(PDO::FETCH_ASSOC) ?: [];
 $appName = $app['app_name'] ?: 'SocialFlow';
 

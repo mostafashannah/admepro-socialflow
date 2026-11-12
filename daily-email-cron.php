@@ -59,6 +59,7 @@ $fromName = $es['sender_name'] ?: 'SocialFlow';
 $sentCount = 0;
 foreach ($D['team'] as $member) {
     if (!$member['email']) continue;
+    if ($member['role'] === 'admin') continue; // admins get it inside the merged end-of-day brief
     [$ok, $raw] = de_send($member['email'], $subject, de_html_for($es, $member, $D, $motiv), $fromName);
     $insertLog->execute([':to' => $member['email'], ':subject' => $subject, ':from_name' => $fromName,
         ':status' => $ok ? 'sent' : 'failed', ':error_message' => $ok ? '' : $raw, ':sent_at' => $now->format('Y-m-d H:i:s')]);
