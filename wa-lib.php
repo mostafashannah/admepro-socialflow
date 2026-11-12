@@ -36,11 +36,31 @@ function waIsTeamNumber(PDO $pdo, $to) {
 /** True when this number messaged us in the last ~23h (free text is allowed). */
 function waWindowOpen(PDO $pdo, $to) {
     $tail = substr(preg_replace('/\D/', '', (string)$to), -9);
+    if (!empty($GLOBALS['sf_wa_inbound_from']) && substr($GLOBALS['sf_wa_inbound_from'], -9) === $tail) return true;
     try {
         $st = $pdo->prepare("SELECT 1 FROM pro_messages WHERE role = 'user' AND phone LIKE ? AND created_at >= (NOW() - INTERVAL 23 HOUR) LIMIT 1");
         $st->execute(['%' . $tail]);
-        return (bool)$st->fetchColumn();
+        if ($st->fetchColumn()) return true;
     } catch (Throwable $e) { return true; } // unknown → try free text first
+    // Replies to Mai are kept in her report sessions, not in pro_messages — check those too.
+    try {
+        $st = $pdo->prepare("SELECT tm.id FROM team_members tm LEFT JOIN user_profiles up ON up.user_email = tm.email
+            WHERE tm.status = 'active' AND (REPLACE(REPLACE(REPLACE(COALESCE(tm.whatsapp_number,''),'+',''),' ',''),'-','') LIKE ?
+               OR REPLACE(REPLACE(REPLACE(COALESCE(up.whatsapp_number,''),'+',''),' ',''),'-','') LIKE ?) LIMIT 1");
+        $st->execute(['%' . $tail, '%' . $tail]);
+        $mid = $st->fetchColumn();
+        if ($mid) {
+            $st = $pdo->prepare("SELECT transcript FROM mai_report_sessions WHERE account_manager_id = ? AND started_at >= (NOW() - INTERVAL 2 DAY) ORDER BY started_at DESC LIMIT 6");
+            $st->execute([$mid]);
+            $cut = time() - 23 * 3600;
+            foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $tr) {
+                foreach ((json_decode((string)$tr, true) ?: []) as $turn) {
+                    if (($turn['role'] ?? '') === 'user' && !empty($turn['at']) && strtotime($turn['at']) >= $cut) return true;
+                }
+            }
+        }
+    } catch (Throwable $e) { return true; }
+    return false;
 }
 
 /** Sends $body to $to as the team template. Returns [ok, httpStatus, response]. */

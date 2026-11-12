@@ -68,6 +68,7 @@ if (!$message || !in_array($msgType, ['text', 'audio', 'image', 'document'], tru
 
 $phoneNumberId = (string)($value['metadata']['phone_number_id'] ?? ''); // which of our numbers received it
 $from = preg_replace('/\D/', '', $message['from'] ?? ''); // digits only, no '+'
+$GLOBALS['sf_wa_inbound_from'] = $from; // they just wrote to us → their 24h window is open (free text, no template)
 $contactName = $value['contacts'][0]['profile']['name'] ?? null; // customer display name, if sent
 $isVoiceNote = false;
 $imageBase64 = null;
