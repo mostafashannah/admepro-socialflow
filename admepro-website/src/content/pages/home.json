@@ -1,6 +1,9 @@
 {
   "seo": {
-    "title": { "en": "Top AI Marketing Agency Egypt: Creative & Digital | admepro", "ar": "admepro | وكالة تسويق بالذكاء الاصطناعي في مصر والخليج" },
+    "title": {
+      "en": "Top AI Marketing Agency Egypt: Creative & Digital | admepro",
+      "ar": "admepro | وكالة تسويق بالذكاء الاصطناعي في مصر والخليج"
+    },
     "description": {
       "en": "admepro is Egypt's AI-powered marketing agency. We generate leads, increase sales & build revenue systems for real estate, e-commerce & GCC businesses.",
       "ar": "admepro وكالة تسويق رقمي متكاملة في مصر والخليج مدعومة بالذكاء الاصطناعي. نجلب العملاء المحتملين، ونزيد المبيعات، ونبني أنظمة نمو للعقارات والمتاجر الإلكترونية والشركات الخليجية."
@@ -8,59 +11,258 @@
   },
   "hero": {
     "eyebrow": "admepro.",
-    "title": { "en": "AI Marketing Agency\nThat Builds Brands", "ar": "وكالة تسويق بالذكاء الاصطناعي\nتبني العلامات التجارية" },
-    "cta": { "en": "Learn About Our Agency", "ar": "تعرّف على وكالتنا" },
-    "ctaHref": "/about/"
-  },
-  "clientsTitle": { "en": "Our Clients", "ar": "عملاؤنا" },
-  "intro": {
-    "eyebrow": { "en": "What We Do", "ar": "ماذا نقدّم" },
-    "title": { "en": "12+ years of expertise, now supercharged with AI. We build brands, create content at scale, and deliver results faster than ever.", "ar": "أكثر من 12 عامًا من الخبرة، أصبحت الآن مدعومة بالذكاء الاصطناعي. نبني العلامات التجارية، وننتج المحتوى على نطاق واسع، ونحقق النتائج أسرع من أي وقت مضى." },
-    "text": {
-      "en": ["At admepro, we combine 12+ years of agency expertise with cutting-edge AI tools to create smarter, faster, and more impactful campaigns. We use AI for content production, performance marketing, video generation, and brand strategy, giving your brand an unfair competitive advantage.", "We Generate Leads. We Increase Sales. We Build Growth Systems. Egypt & GCC's AI-powered marketing agency, trusted by Emaar, Vodafone, ASUS, and 200+ growing brands across 7 countries."],
-      "ar": ["في admepro نجمع بين أكثر من 12 عامًا من خبرة الوكالات وأحدث أدوات الذكاء الاصطناعي لنصنع حملات أذكى وأسرع وأكثر تأثيرًا. نستخدم الذكاء الاصطناعي في إنتاج المحتوى، والتسويق الأدائي، وتوليد الفيديو، واستراتيجية العلامة التجارية، لنمنح علامتك ميزة تنافسية حقيقية.", "نجلب العملاء المحتملين. نزيد المبيعات. نبني أنظمة النمو. وكالة التسويق المدعومة بالذكاء الاصطناعي في مصر والخليج، وشريك موثوق لإعمار وفودافون وASUS وأكثر من 200 علامة تجارية في 7 دول."]
+    "line1": {
+      "en": "AI Marketing Agency",
+      "ar": "وكالة تسويق بالذكاء الاصطناعي"
     },
-    "cta": { "en": "Book a Strategy Call", "ar": "احجز مكالمة استراتيجية" }
+    "line2": {
+      "en": "That Builds",
+      "ar": "تبني"
+    },
+    "words": {
+      "en": [
+        "Brands",
+        "Results"
+      ],
+      "ar": [
+        "العلامات التجارية",
+        "النتائج"
+      ]
+    },
+    "cta": {
+      "en": "Learn About Our Agency",
+      "ar": "تعرّف على وكالتنا"
+    },
+    "ctaHref": "/about/",
+    "_video": "Same background film as the live site: Vimeo 1027080421 (Gold's Gym), playing 0:20 to 0:50 on loop. The poster shows until it loads.",
+    "vimeo": "1027080421",
+    "start": 20,
+    "end": 50,
+    "poster": "/project/goldsgym/images/campaign.webp"
   },
-  "workTitle": { "en": "Work", "ar": "أعمالنا" },
+  "clientsTitle": {
+    "en": "Our Clients",
+    "ar": "عملاؤنا"
+  },
+  "intro": {
+    "eyebrow": {
+      "en": "What We Do",
+      "ar": "ماذا نقدّم"
+    },
+    "title": {
+      "en": "12+ years of expertise, now supercharged with AI. We build brands, create content at scale, and deliver results faster than ever.",
+      "ar": "أكثر من 12 عامًا من الخبرة، أصبحت الآن مدعومة بالذكاء الاصطناعي. نبني العلامات التجارية، وننتج المحتوى على نطاق واسع، ونحقق النتائج أسرع من أي وقت مضى."
+    },
+    "text": {
+      "en": [
+        "At admepro, we combine 12+ years of agency expertise with cutting-edge AI tools to create smarter, faster, and more impactful campaigns. We use AI for content production, performance marketing, video generation, and brand strategy, giving your brand an unfair competitive advantage.",
+        "We Generate Leads. We Increase Sales. We Build Growth Systems. Egypt & GCC's AI-powered marketing agency, trusted by Emaar, Vodafone, ASUS, and 200+ growing brands across 7 countries."
+      ],
+      "ar": [
+        "في admepro نجمع بين أكثر من 12 عامًا من خبرة الوكالات وأحدث أدوات الذكاء الاصطناعي لنصنع حملات أذكى وأسرع وأكثر تأثيرًا. نستخدم الذكاء الاصطناعي في إنتاج المحتوى، والتسويق الأدائي، وتوليد الفيديو، واستراتيجية العلامة التجارية، لنمنح علامتك ميزة تنافسية حقيقية.",
+        "نجلب العملاء المحتملين. نزيد المبيعات. نبني أنظمة النمو. وكالة التسويق المدعومة بالذكاء الاصطناعي في مصر والخليج، وشريك موثوق لإعمار وفودافون وASUS وأكثر من 200 علامة تجارية في 7 دول."
+      ]
+    },
+    "cta": {
+      "en": "Book a Strategy Call",
+      "ar": "احجز مكالمة استراتيجية"
+    }
+  },
+  "workTitle": {
+    "en": "Work",
+    "ar": "أعمالنا"
+  },
   "revenue": {
-    "eyebrow": { "en": "Our Services", "ar": "خدماتنا" },
-    "title": { "en": "We Don't Just Create Content.\nWe Build Revenue Systems.", "ar": "لا نصنع المحتوى فقط.\nبل نبني أنظمة للإيرادات." },
-    "text": { "en": "Most agencies give you posts and videos. admepro gives you a complete growth system: AI-powered strategy, performance-driven content, and paid media that turns attention into measurable revenue. From Cairo to Dubai to Riyadh, we build brands that grow.", "ar": "معظم الوكالات تقدّم لك منشورات وفيديوهات. أما admepro فتقدّم لك نظام نمو متكاملًا: استراتيجية مدعومة بالذكاء الاصطناعي، ومحتوى يحقق أداءً حقيقيًا، وإعلانات مدفوعة تحوّل الانتباه إلى إيرادات قابلة للقياس. من القاهرة إلى دبي إلى الرياض، نبني علامات تجارية تنمو." },
+    "eyebrow": {
+      "en": "Our Services",
+      "ar": "خدماتنا"
+    },
+    "title": {
+      "en": "We Don't Just Create Content.\nWe Build Revenue Systems.",
+      "ar": "لا نصنع المحتوى فقط.\nبل نبني أنظمة للإيرادات."
+    },
+    "text": {
+      "en": "Most agencies give you posts and videos. admepro gives you a complete growth system: AI-powered strategy, performance-driven content, and paid media that turns attention into measurable revenue. From Cairo to Dubai to Riyadh, we build brands that grow.",
+      "ar": "معظم الوكالات تقدّم لك منشورات وفيديوهات. أما admepro فتقدّم لك نظام نمو متكاملًا: استراتيجية مدعومة بالذكاء الاصطناعي، ومحتوى يحقق أداءً حقيقيًا، وإعلانات مدفوعة تحوّل الانتباه إلى إيرادات قابلة للقياس. من القاهرة إلى دبي إلى الرياض، نبني علامات تجارية تنمو."
+    },
     "cards": [
-      { "tag": { "en": "Real Estate", "ar": "العقارات" }, "title": { "en": "Real Estate Marketing", "ar": "التسويق العقاري" }, "text": { "en": "We build the full system: brand, content, and performance ads.", "ar": "نبني النظام كاملًا: الهوية، والمحتوى، والإعلانات الأدائية." }, "image": "home/real-estate", "href": "/blog/real-estate-marketing-in-egypt-how-top-developers-get-more-leads-in-2026/" },
-      { "tag": { "en": "E-Commerce", "ar": "التجارة الإلكترونية" }, "title": { "en": "E-Commerce Growth", "ar": "نمو المتاجر الإلكترونية" }, "text": { "en": "Full-funnel marketing for online stores.", "ar": "تسويق متكامل لكل مراحل رحلة العميل في المتاجر الإلكترونية." }, "image": "home/ecommerce", "href": "/digital/" },
-      { "tag": { "en": "GCC & KSA", "ar": "الخليج والسعودية" }, "title": { "en": "GCC & KSA Markets", "ar": "أسواق الخليج والسعودية" }, "text": { "en": "Full-service campaigns for brands expanding into Saudi Arabia and the Gulf.", "ar": "حملات متكاملة للعلامات التجارية التي تتوسع في السعودية والخليج." }, "image": "home/gcc-ksa", "href": "/gcc-ksa-ai-marketing-agency/" },
-      { "tag": { "en": "AI Powered", "ar": "بالذكاء الاصطناعي" }, "title": { "en": "AI Content Projects", "ar": "مشاريع محتوى بالذكاء الاصطناعي" }, "text": { "en": "AI video generation, AI content production, and AI campaign strategies.", "ar": "توليد الفيديو، وإنتاج المحتوى، واستراتيجيات الحملات بالذكاء الاصطناعي." }, "image": "home/ai-content", "href": "/blog/ai-content-production-egypt/", "dark": true }
+      {
+        "tag": {
+          "en": "Real Estate",
+          "ar": "العقارات"
+        },
+        "title": {
+          "en": "Real Estate Marketing",
+          "ar": "التسويق العقاري"
+        },
+        "text": {
+          "en": "We build the full system: brand, content, and performance ads.",
+          "ar": "نبني النظام كاملًا: الهوية، والمحتوى، والإعلانات الأدائية."
+        },
+        "image": "home/real-estate",
+        "href": "/blog/real-estate-marketing-in-egypt-how-top-developers-get-more-leads-in-2026/"
+      },
+      {
+        "tag": {
+          "en": "E-Commerce",
+          "ar": "التجارة الإلكترونية"
+        },
+        "title": {
+          "en": "E-Commerce Growth",
+          "ar": "نمو المتاجر الإلكترونية"
+        },
+        "text": {
+          "en": "Full-funnel marketing for online stores.",
+          "ar": "تسويق متكامل لكل مراحل رحلة العميل في المتاجر الإلكترونية."
+        },
+        "image": "home/ecommerce",
+        "href": "/digital/"
+      },
+      {
+        "tag": {
+          "en": "GCC & KSA",
+          "ar": "الخليج والسعودية"
+        },
+        "title": {
+          "en": "GCC & KSA Markets",
+          "ar": "أسواق الخليج والسعودية"
+        },
+        "text": {
+          "en": "Full-service campaigns for brands expanding into Saudi Arabia and the Gulf.",
+          "ar": "حملات متكاملة للعلامات التجارية التي تتوسع في السعودية والخليج."
+        },
+        "image": "home/gcc-ksa",
+        "href": "/gcc-ksa-ai-marketing-agency/"
+      },
+      {
+        "tag": {
+          "en": "AI Powered",
+          "ar": "بالذكاء الاصطناعي"
+        },
+        "title": {
+          "en": "AI Content Projects",
+          "ar": "مشاريع محتوى بالذكاء الاصطناعي"
+        },
+        "text": {
+          "en": "AI video generation, AI content production, and AI campaign strategies.",
+          "ar": "توليد الفيديو، وإنتاج المحتوى، واستراتيجيات الحملات بالذكاء الاصطناعي."
+        },
+        "image": "home/ai-content",
+        "href": "/blog/ai-content-production-egypt/",
+        "dark": true
+      }
     ]
   },
   "featured": {
     "project": "asus-zenfone",
-    "eyebrow": { "en": "Featured", "ar": "مشروع مميز" },
-    "title": { "en": "ASUS Zenfone Product Launch Campaign.", "ar": "حملة إطلاق هاتف ASUS Zenfone." },
-    "text": { "en": "A full creative production campaign for ASUS Zenfone in Egypt, from concept development and art direction to final video production and photography. High-quality content built to launch the Zenfone to Egyptian consumers.", "ar": "حملة إنتاج إبداعي متكاملة لهاتف ASUS Zenfone في مصر، من تطوير الفكرة والإخراج الفني حتى إنتاج الفيديو والتصوير النهائي. محتوى عالي الجودة صُمّم لإطلاق الهاتف للمستهلك المصري." }
+    "eyebrow": {
+      "en": "Featured",
+      "ar": "مشروع مميز"
+    },
+    "title": {
+      "en": "ASUS Zenfone Product Launch Campaign.",
+      "ar": "حملة إطلاق هاتف ASUS Zenfone."
+    },
+    "text": {
+      "en": "A full creative production campaign for ASUS Zenfone in Egypt, from concept development and art direction to final video production and photography. High-quality content built to launch the Zenfone to Egyptian consumers.",
+      "ar": "حملة إنتاج إبداعي متكاملة لهاتف ASUS Zenfone في مصر، من تطوير الفكرة والإخراج الفني حتى إنتاج الفيديو والتصوير النهائي. محتوى عالي الجودة صُمّم لإطلاق الهاتف للمستهلك المصري."
+    }
   },
   "proof": {
-    "eyebrow": { "en": "Client Success", "ar": "نجاح عملائنا" },
-    "title": { "en": "Real brands. Real growth.", "ar": "علامات حقيقية. نمو حقيقي." },
-    "titleMuted": { "en": "Real results.", "ar": "نتائج حقيقية." },
-    "barLabel": { "en": "Client Satisfaction", "ar": "رضا العملاء" },
-    "text": { "en": "We measure our success by yours. Every brand we work with gets a dedicated team, a clear strategy, and one goal: measurable growth across Egypt and the GCC.", "ar": "نقيس نجاحنا بنجاحك. كل علامة نعمل معها تحصل على فريق مخصص، واستراتيجية واضحة، وهدف واحد: نمو قابل للقياس في مصر والخليج." },
-    "cta": { "en": "See Our Work →", "ar": "شاهد أعمالنا ←" }
+    "eyebrow": {
+      "en": "Client Success",
+      "ar": "نجاح عملائنا"
+    },
+    "title": {
+      "en": "Real brands. Real growth.",
+      "ar": "علامات حقيقية. نمو حقيقي."
+    },
+    "titleMuted": {
+      "en": "Real results.",
+      "ar": "نتائج حقيقية."
+    },
+    "barLabel": {
+      "en": "Client Satisfaction",
+      "ar": "رضا العملاء"
+    },
+    "text": {
+      "en": "We measure our success by yours. Every brand we work with gets a dedicated team, a clear strategy, and one goal: measurable growth across Egypt and the GCC.",
+      "ar": "نقيس نجاحنا بنجاحك. كل علامة نعمل معها تحصل على فريق مخصص، واستراتيجية واضحة، وهدف واحد: نمو قابل للقياس في مصر والخليج."
+    },
+    "cta": {
+      "en": "See Our Work →",
+      "ar": "شاهد أعمالنا ←"
+    }
   },
   "showcase": {
-    "label": { "en": "Watch our recent showcase", "ar": "شاهد أحدث أعمالنا" },
+    "label": {
+      "en": "Watch our recent showcase",
+      "ar": "شاهد أحدث أعمالنا"
+    },
     "vimeo": "1027080421",
-    "title": { "en": "Strategy, bold creative, and data-driven campaigns, powered by AI, that deliver real results.", "ar": "استراتيجية، وإبداع جريء، وحملات قائمة على البيانات ومدعومة بالذكاء الاصطناعي تحقق نتائج حقيقية." }
+    "title": {
+      "en": "Strategy, bold creative, and data-driven campaigns, powered by AI, that deliver real results.",
+      "ar": "استراتيجية، وإبداع جريء، وحملات قائمة على البيانات ومدعومة بالذكاء الاصطناعي تحقق نتائج حقيقية."
+    }
   },
   "teamCards": [
-    { "title": { "en": "Combined experience", "ar": "خبرة متراكمة" }, "pre": { "en": "over", "ar": "أكثر من" }, "value": 12, "unit": { "en": " years", "ar": " عامًا" }, "post": { "en": "driving growth", "ar": "في صناعة النمو" }, "href": "/about/" },
-    { "title": { "en": "Sayed Hanafy", "ar": "سيد حنفي" }, "pre": { "en": "Campaign views", "ar": "مشاهدات الحملة" }, "value": 3, "unit": { "en": "M+ Views", "ar": " مليون+ مشاهدة" }, "post": { "en": "across all platforms", "ar": "على جميع المنصات" }, "href": "/portfolio/" }
+    {
+      "title": {
+        "en": "Combined experience",
+        "ar": "خبرة متراكمة"
+      },
+      "pre": {
+        "en": "over",
+        "ar": "أكثر من"
+      },
+      "value": 12,
+      "unit": {
+        "en": " years",
+        "ar": " عامًا"
+      },
+      "post": {
+        "en": "driving growth",
+        "ar": "في صناعة النمو"
+      },
+      "href": "/about/"
+    },
+    {
+      "title": {
+        "en": "Sayed Hanafy",
+        "ar": "سيد حنفي"
+      },
+      "pre": {
+        "en": "Campaign views",
+        "ar": "مشاهدات الحملة"
+      },
+      "value": 3,
+      "unit": {
+        "en": "M+ Views",
+        "ar": " مليون+ مشاهدة"
+      },
+      "post": {
+        "en": "across all platforms",
+        "ar": "على جميع المنصات"
+      },
+      "href": "/portfolio/"
+    }
   ],
   "contact": {
-    "eyebrow": { "en": "Say hello", "ar": "قل مرحبًا" },
-    "title": { "en": "Got a project?\nLet's talk.", "ar": "لديك مشروع؟\nلنتحدث." }
+    "eyebrow": {
+      "en": "Say hello",
+      "ar": "قل مرحبًا"
+    },
+    "title": {
+      "en": "Got a project?\nLet's talk.",
+      "ar": "لديك مشروع؟\nلنتحدث."
+    }
   },
-  "faqTitle": { "en": "Questions we get a lot.", "ar": "أسئلة شائعة." },
-  "faqEyebrow": { "en": "Still have Qs?", "ar": "لديك أسئلة؟" }
+  "faqTitle": {
+    "en": "Questions we get a lot.",
+    "ar": "أسئلة شائعة."
+  },
+  "faqEyebrow": {
+    "en": "Still have Qs?",
+    "ar": "لديك أسئلة؟"
+  }
 }

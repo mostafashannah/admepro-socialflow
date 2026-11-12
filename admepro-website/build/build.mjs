@@ -238,6 +238,14 @@ ${ENV === 'staging' ? `<div class="ribbon" role="note">TEST SITE · ${lang === '
     </div>
   </div>
 </div>
+<button class="search-btn" type="button" data-search-open aria-label="${esc(t('search', lang))}"><svg class="i no-flip" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+<div class="search" data-search hidden role="dialog" aria-modal="true" aria-label="${esc(t('search', lang))}">
+  <button class="fullmenu-x" type="button" data-search-close aria-label="${esc(t('close', lang))}">${icon.close}</button>
+  <div class="search-in">
+    <input type="search" class="search-input" placeholder="${esc(t('searchPh', lang))}" aria-label="${esc(t('search', lang))}" autocomplete="off" data-index="${lang === 'ar' ? '/ar/search.json' : '/search.json'}" data-empty="${esc(t('searchEmpty', lang))}">
+    <ul class="search-results" aria-live="polite"></ul>
+  </div>
+</div>
 <aside class="rail" aria-label="${lang === 'ar' ? 'الإعدادات والروابط' : 'Settings and social links'}">
   <div class="rail-pill" role="group" aria-label="${lang === 'ar' ? 'المظهر' : 'Theme'}">
     <button type="button" data-theme-set="dark" title="${lang === 'ar' ? 'الوضع الداكن' : 'Dark mode'}" aria-label="${lang === 'ar' ? 'الوضع الداكن' : 'Dark mode'}"><svg class="i no-flip" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -279,7 +287,7 @@ function footer(lang) {
 </footer>
 <div class="chat-pill" data-chat hidden>
   <span>${esc(t('chatPrompt', lang))}</span>
-  <a class="btn btn-dark btn-xs" href="${wa}" rel="noopener" target="_blank">${icon.wa}${esc(t('chatCta', lang))}</a>
+  <a class="chat-btn" href="${wa}" rel="noopener" target="_blank">${esc(t('chatCta', lang))}</a>
   <button type="button" class="chat-x" aria-label="${esc(t('close', lang))}" data-chat-close>${icon.close}</button>
 </div>
 <script src="${assetMap['assets/js/site.js']}" defer></script>
@@ -455,12 +463,13 @@ function homePage(lang) {
   const wideIdx = new Set([4, 7]);
   const fp = projectBySlug[H.featured.project];
   const body = `
-<section class="hero">
-  <div class="hero-type" aria-hidden="true"><span>admepro</span><span>admepro</span><span>admepro</span></div>
+<section class="hero"${H.hero.video ? ` data-hero-file="${esc(H.hero.video)}"` : ` data-hero-video="${esc(H.hero.vimeo)}" data-start="${H.hero.start}" data-end="${H.hero.end}"`}>
+  <div class="hero-media" aria-hidden="true">${img(H.hero.poster, '', { cls: 'hero-poster', eager: true, sizes: '100vw' })}</div>
+  <div class="hero-shade" aria-hidden="true"></div>
   <div class="wrap hero-in">
     <p class="hero-eyebrow" dir="ltr">admepro<span>.</span></p>
-    <h1 class="hero-title">${nl2br(tx(H.hero.title, lang))}</h1>
-    <a class="hero-link" href="${L(H.hero.ctaHref, lang)}">${esc(tx(H.hero.cta, lang))} ${icon.arrow}</a>
+    <h1 class="hero-title"><span class="sr">${esc(tx(H.hero.line1, lang))} ${esc(tx(H.hero.line2, lang))} ${esc(tx(H.hero.words, lang)[0])}</span><span aria-hidden="true">${esc(tx(H.hero.line1, lang))}<br>${esc(tx(H.hero.line2, lang))} <span class="typed" data-words="${esc(JSON.stringify(tx(H.hero.words, lang)))}">${esc(tx(H.hero.words, lang)[0])}</span><span class="caret">|</span></span></h1>
+    <a class="hero-link" href="${L(H.hero.ctaHref, lang)}">${esc(tx(H.hero.cta, lang))}</a>
   </div>
 </section>
 ${clientMarquee(lang)}
@@ -909,6 +918,25 @@ ${sitemap.flatMap((u) => [urlEntry(u.en, u), u.ar ? urlEntry(u.ar, u) : null]).f
 fs.writeFileSync(path.join(DIST, 'robots.txt'), ENV === 'staging'
   ? 'User-agent: *\nDisallow: /\n'
   : `User-agent: *\nAllow: /\n\nSitemap: ${abs('/sitemap.xml')}\n`);
+
+
+// client-side search index (used by the search button)
+for (const lang of LANGS) {
+  const items = [
+    { k: 'page', t: t('home', lang), u: L('/', lang), d: tx(P.home.seo.description, lang) },
+    { k: 'page', t: t('about', lang), u: L('/about/', lang), d: tx(P.about.seo.description, lang) },
+    { k: 'page', t: t('portfolio', lang), u: L('/portfolio/', lang), d: tx(P.listing.portfolio.seo.description, lang) },
+    { k: 'page', t: t('contact', lang), u: L('/contact-us/', lang), d: tx(P.contact.seo.description, lang) },
+    { k: 'page', t: t('gcc', lang), u: L(P.gcc.path, lang), d: tx(P.gcc.seo.description, lang) },
+    { k: 'page', t: t('blog', lang), u: L('/blog/', lang), d: tx(P.listing.blog.seo.description, lang) },
+    ...P.services.pages.map((S) => ({ k: 'page', t: tx(S.title, lang), u: L(S.path, lang), d: tx(S.seo.description, lang), x: S.items.map((i) => tx(i.title, lang)).join(' ') })),
+    ...projects.map((p) => ({ k: 'project', t: p.title, u: L(`/project/${p.slug}/`, lang), d: tx(p.summary, lang).slice(0, 140), i: projImg(p, p.cover),
+      x: [tx(p.client, lang), tx(p.client, 'en'), ...(p.tags || []).flatMap((k) => [tx(tags[k], lang), tags[k].en]), ...p.categories].join(' ') })),
+    ...posts.map((p) => ({ k: 'post', t: p.title, u: `/blog/${p.slug}/`, d: p.description, i: p.cover })),
+  ];
+  const labels = { project: t('kindProject', lang), page: t('kindPage', lang), post: t('kindPost', lang) };
+  fs.writeFileSync(path.join(DIST, lang === 'ar' ? 'ar/search.json' : 'search.json'), JSON.stringify({ labels, items }));
+}
 
 // public read-only feed of projects (integration point for SocialFlow, see INTEGRATION.md)
 fs.mkdirSync(path.join(DIST, 'api'), { recursive: true });

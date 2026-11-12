@@ -219,8 +219,8 @@
       "ar": "تخطَّ إلى المحتوى"
     },
     "langSwitch": {
-      "en": "العربية",
-      "ar": "English"
+      "en": "AR",
+      "ar": "EN"
     },
     "langSwitchLabel": {
       "en": "Switch to Arabic",
@@ -552,6 +552,30 @@
           "ar": "أخرى"
         }
       ]
+    },
+    "search": {
+      "en": "Search",
+      "ar": "بحث"
+    },
+    "searchPh": {
+      "en": "Type to search…",
+      "ar": "اكتب للبحث…"
+    },
+    "searchEmpty": {
+      "en": "No results. Try another word.",
+      "ar": "لا توجد نتائج. جرّب كلمة أخرى."
+    },
+    "kindProject": {
+      "en": "Project",
+      "ar": "مشروع"
+    },
+    "kindPage": {
+      "en": "Page",
+      "ar": "صفحة"
+    },
+    "kindPost": {
+      "en": "Article",
+      "ar": "مقال"
     }
   }
 }

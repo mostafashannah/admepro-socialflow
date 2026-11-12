@@ -127,6 +127,83 @@
 
   $$('[data-top]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' }); }));
 
+  // hero title typing animation: "That Builds Brands" → "That Builds Results" (as on the live site)
+  const typed = $('.typed');
+  if (typed && !reduced) {
+    const words = JSON.parse(typed.dataset.words || '[]'); let w = 0, i = words[0].length, del = true;
+    const tick = () => {
+      const word = words[w];
+      if (del) { i--; typed.textContent = word.slice(0, i); if (i <= 0) { del = false; w = (w + 1) % words.length; } setTimeout(tick, 60); }
+      else { i++; typed.textContent = words[w].slice(0, i); if (i >= words[w].length) { del = true; setTimeout(tick, 2200); } else setTimeout(tick, 110); }
+    };
+    setTimeout(tick, 2200);
+  }
+
+  // hero background film: loads after the page, loops between start and end seconds
+  const hero = $('[data-hero-video]');
+  const saveData = navigator.connection && navigator.connection.saveData;
+  if (hero && !reduced && !saveData) {
+    addEventListener('load', () => setTimeout(() => {
+      const { heroVideo: id, start = 0, end = 0 } = hero.dataset;
+      const f = document.createElement('iframe');
+      f.src = `https://player.vimeo.com/video/${encodeURIComponent(id)}?background=1&autoplay=1&muted=1&loop=1&autopause=0&dnt=1#t=${start}s`;
+      f.allow = 'autoplay; fullscreen'; f.title = ''; f.tabIndex = -1; f.setAttribute('aria-hidden', 'true');
+      $('.hero-media', hero).append(f);
+      const post = (m) => f.contentWindow && f.contentWindow.postMessage(JSON.stringify(m), 'https://player.vimeo.com');
+      addEventListener('message', (e) => {
+        if (e.origin !== 'https://player.vimeo.com') return;
+        let d; try { d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch { return; }
+        if (d.event === 'ready') { post({ method: 'addEventListener', value: 'timeupdate' }); post({ method: 'addEventListener', value: 'play' }); post({ method: 'setCurrentTime', value: +start }); }
+        if (d.event === 'play' || (d.event === 'timeupdate' && d.data && d.data.seconds > +start)) hero.classList.add('playing');
+        if (d.event === 'timeupdate' && +end && d.data && d.data.seconds >= +end) post({ method: 'setCurrentTime', value: +start });
+      });
+    }, 300));
+  }
+
+  // self-hosted header video (src/content/pages/home.json → hero.video): starts after the page has loaded
+  const heroFile = $('[data-hero-file]');
+  if (heroFile && !reduced && !saveData) {
+    addEventListener('load', () => {
+      const v = document.createElement('video');
+      Object.assign(v, { muted: true, loop: true, playsInline: true, autoplay: true, src: heroFile.dataset.heroFile });
+      v.setAttribute('aria-hidden', 'true'); v.className = 'hero-file';
+      v.addEventListener('playing', () => heroFile.classList.add('playing'), { once: true });
+      $('.hero-media', heroFile).append(v); v.play().catch(() => {});
+    });
+  }
+
+  // search (bottom-left button). The index is loaded only when someone opens search.
+  const sOpen = $('[data-search-open]'); const sBox = $('[data-search]');
+  if (sOpen && sBox) {
+    const input = $('.search-input', sBox); const list = $('.search-results', sBox); let data = null;
+    const norm = (x) => (x || '').toString().toLowerCase().normalize('NFKD').replace(/[ً-ٰٟ]/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
+    const escH = (x) => x.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const render = () => {
+      if (!data) return; const q = norm(input.value.trim());
+      if (!q) { list.innerHTML = ''; return; }
+      const words = q.split(/\s+/);
+      const hits = data.items.map((it) => {
+        const hay = norm([it.t, it.d, it.x].join(' ')); const title = norm(it.t);
+        if (!words.every((w) => hay.includes(w))) return null;
+        return [it, (title.startsWith(q) ? 3 : title.includes(q) ? 2 : 1) + (it.k === 'project' ? .5 : 0)];
+      }).filter(Boolean).sort((a, b) => b[1] - a[1]).slice(0, 12);
+      list.innerHTML = hits.length ? hits.map(([it]) => `<li><a href="${it.u}">${it.i ? `<img src="${it.i}" alt="" loading="lazy">` : '<span class="noimg"></span>'}<span><em>${escH(data.labels[it.k] || '')}</em><strong>${escH(it.t)}</strong><small>${escH(it.d || '')}</small></span></a></li>`).join('')
+        : `<li class="none">${escH(input.dataset.empty)}</li>`;
+    };
+    const open = async () => {
+      sBox.hidden = false; document.body.classList.add('menu-open'); input.focus();
+      if (!data) { try { data = await (await fetch(input.dataset.index)).json(); render(); } catch (e) { console.error(e); } }
+    };
+    const close = () => { sBox.hidden = true; document.body.classList.remove('menu-open'); sOpen.focus(); };
+    sOpen.addEventListener('click', open);
+    $('[data-search-close]', sBox).addEventListener('click', close);
+    input.addEventListener('input', render);
+    addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !sBox.hidden) close();
+      if (e.key === '/' && sBox.hidden && !/input|textarea|select/i.test(document.activeElement.tagName)) { e.preventDefault(); open(); }
+    });
+  }
+
   // ------------------------------------------------------------------ lead forms
   // SocialFlow integration point (see INTEGRATION.md). Today this is a STUB:
   // with no data-endpoint, nothing leaves the browser: the lead is shown in the console
