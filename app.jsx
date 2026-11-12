@@ -7961,26 +7961,10 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                 })}
               </>);
             })()}
-            {(post.stage==="content_creation"||isManager)&&(
-              <>
-                <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
-                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                  <button onClick={()=>{
-                    const url = prompt("Paste a reference link (e.g. a Drive file, competitor post, brief doc):");
-                    if(!url||!url.trim()) return;
-                    const newAssets = [...(post.design_assets||[]), {url:url.trim(), name:url.trim(), type:"link"}];
-                    onStageChange({...post, design_assets:newAssets}, post.stage);
-                  }} style={{fontSize:12,fontWeight:700,color:"var(--accent)",background:"none",border:"1px solid var(--accent)44",borderRadius:8,padding:"7px 12px",cursor:"pointer"}}>+ Add Link</button>
-                  {/* Real PDF upload — "Add Photo/Video" above only accepts
-                      images/video, so a brief document handed to the content
-                      team as an actual PDF file had no way in except pasting a
-                      link to somewhere it was already hosted. */}
-                  <button onClick={()=>pdfFileRef.current?.click()} disabled={uploadingPdf} style={{fontSize:12,fontWeight:700,color:"var(--accent)",background:"none",border:"1px solid var(--accent)44",borderRadius:8,padding:"7px 12px",cursor:uploadingPdf?"wait":"pointer"}}>
-                    {uploadingPdf?<><Spinner size={12}/> Uploading…</>:"+ Upload PDF"}
-                  </button>
-                  <input ref={pdfFileRef} type="file" accept="application/pdf,.pdf" style={{display:"none"}} onChange={e=>{handlePdfUpload(e.target.files?.[0]); e.target.value="";}}/>
-                </div>
-              </>
+            {/* Add tools here only outside Design — in Design they live in "Add design files" below.
+                The picker already handles photos, videos, PDFs and links. */}
+            {(post.stage==="content_creation"||isManager) && post.stage!=="design" && (
+              <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
             )}
           </div>
         )}
