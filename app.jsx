@@ -3783,7 +3783,7 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c", photoIsDark=true}) => 
   <style>{`
 .sf-tile{transition:transform .15s ease, box-shadow .15s ease}
 .sf-tile:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,0.12)}
-.sf-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 1px 2px rgba(0,0,0,0.04),0 4px 14px rgba(0,0,0,0.03)}
+.sf-card{flex-shrink:0;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 1px 2px rgba(0,0,0,0.04),0 4px 14px rgba(0,0,0,0.03)}
 .sf-sec-title{display:flex;align-items:center;gap:8px;font-family:Montserrat,sans-serif;font-weight:800;font-size:14px}
 .sf-sec-title::before{content:"";width:4px;height:16px;border-radius:4px;background:var(--accent)}
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Bricolage+Grotesque:wght@600;700;800&display=swap');
@@ -6087,7 +6087,7 @@ function FoldCard({id, title, sub, color="var(--accent)", defaultOpen=false, fla
   const [open, setOpen] = useState(()=>{ try{ const v=localStorage.getItem(key); if(v!==null) return v==="1"; }catch(e){} return defaultOpen; });
   const toggle = () => setOpen(o=>{ try{ localStorage.setItem(key, o?"0":"1"); }catch(e){} return !o; });
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:open?10:0}}>
+    <div style={{display:"flex",flexDirection:"column",gap:open?10:0,flexShrink:0,minHeight:"min-content"}}>
       <button onClick={toggle} style={{display:"flex",alignItems:"center",gap:10,width:"100%",textAlign:"left",padding:flat?"8px 2px":"12px 14px",borderRadius:12,border:flat?"none":"1px solid var(--border)",borderLeft:flat?"none":`3px solid ${color}`,background:flat?"transparent":"var(--surface)",cursor:"pointer",color:"var(--text)"}}>
         <span style={{flex:1,minWidth:0}}>
           <span style={{display:"block",fontSize:14,fontWeight:800}}>{title}</span>
@@ -6115,7 +6115,7 @@ function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canF
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:6}}>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(110px,1fr))",gridAutoRows:"min-content",alignItems:"start",gap:8}}>
         {post.design_assets.map((asset,i)=>{
           if(only && !only.has(i)) return null;
           const isImage = (asset.url||asset.data||"").match(/\.(jpg|jpeg|png|gif|webp|svg)/i)||(asset.type||"").startsWith("image");
@@ -6125,7 +6125,7 @@ function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canF
             onDragOver={e=>e.preventDefault()}
             onDrop={e=>{e.preventDefault(); if(dragIdx!==null) moveAsset(dragIdx,i); setDragIdx(null);}}
             style={{display:"flex",flexDirection:"column",gap:4,opacity:dragIdx===i?0.4:1,cursor:isCarousel?"grab":"default"}}>
-            <div className="sf-tile" style={{position:"relative",aspectRatio:"1/1",background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <div className="sf-tile" style={{position:"relative",height:118,width:"100%",flexShrink:0,background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
               {/* Slide order — a carousel publishes in exactly this array
                   order, so it needs to be obvious (and adjustable, via
                   drag or the arrows below) which image goes where. */}
