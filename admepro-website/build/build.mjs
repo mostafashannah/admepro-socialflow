@@ -256,15 +256,15 @@ ${ENV === 'staging' ? `<div class="ribbon" role="note">TEST SITE · ${lang === '
 </aside>`;
 }
 
-function footer(lang) {
+function footer(lang, { cta = true } = {}) {
   const cairo = site.offices[0];
   const wa = `https://wa.me/${site.whatsapp}?text=${encodeURIComponent(tx(site.whatsappText, lang))}`;
-  return `<section class="cta-band">
+  return `${cta ? `<section class="cta-band">
   <div class="wrap cta-band-in reveal">
     <div><h2 class="h2">${nl2br(t('footerCta', lang).replace(', ', ',\n').replace('، ', '،\n'))}</h2><p class="muted small">${esc(t('footerCtaSub', lang))}</p></div>
     <a class="btn btn-red" href="${L('/contact-us/', lang)}">${esc(t('getQuote', lang))}</a>
   </div>
-</section>
+</section>` : ''}
 <footer class="cfooter">
   <div class="cfooter-in">
     <div class="cfooter-top">
@@ -296,7 +296,7 @@ function footer(lang) {
 </html>`;
 }
 
-function page({ lang, key, pathEn, pathAr, title, description, image, type, schema, body, noAlt, otherHref }) {
+function page({ lang, key, pathEn, pathAr, title, description, image, type, schema, body, noAlt, otherHref, noCta }) {
   const other = otherHref || (lang === 'ar' ? pathEn : pathAr);
   return `${head({ lang, title, description, pathEn, pathAr, image, type, schema, noAlt })}
 <body class="page-${key}" id="top">
@@ -304,7 +304,7 @@ ${header(lang, key, other)}
 <main id="main">
 ${body}
 </main>
-${footer(lang)}`;
+${footer(lang, { cta: !noCta })}`;
 }
 
 // ---------------------------------------------------------------- schema.org
@@ -610,7 +610,7 @@ function contactPage(lang) {
   <a class="btn btn-red" href="${site.careersUrl}">${esc(tx(C.careers.cta, lang))}</a>
 </div></section>`;
   return page({
-    lang, key: 'contact', pathEn: '/contact-us/', pathAr: '/ar/contact-us/', title: tx(C.seo.title, lang), description: tx(C.seo.description, lang),
+    lang, noCta: true, key: 'contact', pathEn: '/contact-us/', pathAr: '/ar/contact-us/', title: tx(C.seo.title, lang), description: tx(C.seo.description, lang),
     schema: [orgSchema(), crumbs(lang, [{ name: t('contact', lang), path: '/contact-us/' }])], body,
   });
 }
@@ -726,7 +726,7 @@ function portfolioPage(lang) {
 </div></section>
 <section class="dark-band"><div class="wrap cta-band-in"><div>${eyebrow(tx(PF.ctaEyebrow, lang))}<h2 class="h3">${esc(tx(PF.ctaTitle, lang))}</h2></div><a class="btn btn-red" href="${L('/contact-us/', lang)}">${esc(t('getQuote', lang))}</a></div></section>`;
   return page({
-    lang, key: 'portfolio', pathEn: '/portfolio/', pathAr: '/ar/portfolio/', title: tx(PF.seo.title, lang), description: tx(PF.seo.description, lang),
+    lang, noCta: true, key: 'portfolio', pathEn: '/portfolio/', pathAr: '/ar/portfolio/', title: tx(PF.seo.title, lang), description: tx(PF.seo.description, lang),
     schema: [
       { '@type': 'CollectionPage', name: tx(PF.title, lang), url: abs(L('/portfolio/', lang)), inLanguage: lang,
         mainEntity: { '@type': 'ItemList', itemListElement: projects.map((p, i) => ({ '@type': 'ListItem', position: i + 1, url: abs(L(`/project/${p.slug}/`, lang)), name: p.title })) } },
@@ -802,7 +802,7 @@ ${credits}
 </div></section>`;
   const url = `/project/${p.slug}/`;
   return page({
-    lang, key: 'portfolio', pathEn: url, pathAr: '/ar' + url,
+    lang, noCta: true, key: 'portfolio', pathEn: url, pathAr: '/ar' + url,
     title: tx(p.seo?.title, lang) || `${p.title} | admepro`,
     description: tx(p.seo?.description, lang) || tx(p.summary, lang).slice(0, 155),
     image: projImg(p, p.cover), type: 'article',
