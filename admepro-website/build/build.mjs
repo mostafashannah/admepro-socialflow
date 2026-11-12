@@ -209,6 +209,7 @@ const brandIco = {
   facebook: 'M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07c0 6.02 4.39 11.01 10.13 11.93v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.49h-2.8V24C19.61 23.08 24 18.09 24 12.07z',
 };
 const shareIco = { fb: brandIco.facebook, x: 'M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z', in: 'M20.45 20.45h-3.56v-5.57c0-1.33-.03-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45z' };
+const wordmarkImgs = (eager = false) => `${img('/assets/img/brand/wordmark.webp', 'admepro', { cls: 'logo-on-light', eager, sizes: '(min-width: 900px) 900px, 80vw' })}${img('/assets/img/brand/wordmark-light.webp', '', { cls: 'logo-on-dark', eager, sizes: '(min-width: 900px) 900px, 80vw', attrs: 'aria-hidden="true"' })}`;
 const logoImgs = (h) => `<img src="/assets/img/brand/mark-dark.webp" alt="admepro" width="${Math.round(h * 972 / 900)}" height="${h}" class="logo-on-light"><img src="/assets/img/brand/mark-light.webp" alt="" width="${Math.round(h * 972 / 900)}" height="${h}" class="logo-on-dark" aria-hidden="true">`;
 
 function header(lang, current, otherHref) {
@@ -268,7 +269,7 @@ function footer(lang, { cta = true } = {}) {
 <footer class="cfooter">
   <div class="cfooter-in">
     <div class="cfooter-top">
-      <a class="cfooter-logo" href="${L('/', lang)}" aria-label="admepro">${logoImgs(32)}</a>
+      <a class="cfooter-logo" href="${L('/', lang)}" aria-label="admepro">${wordmarkImgs()}</a>
       <div class="cfooter-cols">
         <div class="cfooter-col">
           <div><p class="cf-h">${lang === 'ar' ? 'القاهرة' : 'Cairo'}</p><p class="cf-t">${lang === 'ar' ? '145 البنفسج 3<br>القاهرة الجديدة، القاهرة' : '145 El Banafsig 3<br>New Cairo, Cairo'}</p></div>
@@ -552,7 +553,7 @@ ${clientMarquee(lang)}
 function aboutPage(lang) {
   const A = P.about;
   const body = `
-<section class="about-hero"><div class="wrap"><h1 class="mega" dir="ltr">admepro<span class="red">.</span></h1></div></section>
+<section class="about-hero"><div class="wrap"><h1 class="about-logo"><span class="sr">admepro</span>${wordmarkImgs(true)}</h1></div></section>
 <section class="section-sm"><div class="wrap reveal">${eyebrow(tx(A.eyebrow, lang))}<p class="h2 about-lead">${esc(tx(A.title, lang))}</p></div></section>
 <section class="section tint">
   <div class="wrap split-3">

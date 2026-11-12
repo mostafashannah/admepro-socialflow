@@ -190,7 +190,7 @@ body.menu-open { overflow: hidden; }
 .cfooter { background: var(--surface); border-top: 1px solid var(--border); padding: 56px 20px 28px; font-family: var(--chrome); }
 .cfooter-in { max-width: 1100px; margin: 0 auto; }
 .cfooter-top { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 32px; }
-.cfooter-logo img { height: 32px; width: auto; }
+.cfooter-logo img { width: clamp(190px, 20vw, 260px); height: auto; }
 .cfooter-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 48px; width: min(560px, 100%); }
 .cfooter-col { display: flex; flex-direction: column; gap: 20px; }
 .cfooter-col p { margin: 0; }
@@ -413,6 +413,8 @@ a.rev-card:hover .h5, a.rev-card:focus-visible .h5, a.rev-card:hover .rev-text, 
 .page-head { padding-block: clamp(100px, 11vw, 150px) clamp(24px, 3vw, 40px); }
 .page-head .h1 { max-width: 20ch; }
 .about-hero { padding-block: clamp(110px, 12vw, 170px) 0; text-align: center; }
+.about-logo { margin: 0; text-align: center; }
+.about-logo img { width: min(900px, 80vw); height: auto; margin-inline: auto; }
 .about-lead { max-width: 24ch; }
 
 /* about */
