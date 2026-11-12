@@ -204,6 +204,7 @@
       el.classList.add('on');
       if (!raf) raf = requestAnimationFrame(loop);
       el.classList.toggle('is-view', !!e.target.closest('.pcard, .sample, .plist-item'));
+      el.classList.toggle('is-btn', !!e.target.closest('.tcard .circle'));
     }, { passive: true });
     // hide only when the mouse really exits through a window edge (ignores spurious leave events)
     document.documentElement.addEventListener('mouseleave', () => { if (x <= 2 || y <= 2 || x >= innerWidth - 2 || y >= innerHeight - 2) el.classList.remove('on'); });

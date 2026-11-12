@@ -248,7 +248,7 @@ body.menu-open { overflow: hidden; }
 .clients { padding-block: 20px 8px; }
 .clients .row-between { margin-bottom: 8px; }
 .marquee { overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); }
-.marquee-track { display: flex; width: max-content; animation: marquee 50s linear infinite; }
+.marquee-track { display: flex; width: max-content; animation: marquee 32s linear infinite; }
 .marquee-track img { height: clamp(28px, 3.5vw, 48px); width: auto; margin-inline-end: clamp(12px, 2vw, 32px); opacity: .9; }
 .marquee:hover .marquee-track { animation-play-state: paused; }
 @keyframes marquee { to { transform: translateX(-50%); } }
@@ -391,7 +391,7 @@ a.rev-card:hover .h5, a.rev-card:focus-visible .h5, a.rev-card:hover .rev-text, 
 .tcard { width: min(280px, 100%); background: #fff; color: #111013; border-radius: var(--radius-lg); padding: 22px; display: grid; gap: 4px; box-shadow: 0 20px 50px rgba(0, 0, 0, .15); }
 .tcard.dark { background: rgba(40, 40, 44, .82); color: #fff; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
 .tcard-title { display: flex; justify-content: space-between; align-items: center; font: 600 26px var(--head); letter-spacing: -0.03em; margin-bottom: 24px; }
-.tcard.dark .circle { background: #fff; color: #000; }
+.tcard.dark .circle { background: #111013; color: #fff; }
 .tcard .circle { background: #111013; color: #fff; }
 .tcard-pre { font-size: 13px; opacity: .6; }
 .tcard-val { font: 600 34px/1 var(--head); letter-spacing: -0.04em; }
@@ -710,3 +710,12 @@ a.rev-card:hover .h5, a.rev-card:focus-visible .h5, a.rev-card:hover .rev-text, 
 .is-view .c-dot { opacity: 0; }
 @media (hover: none), (pointer: coarse) { .cursor { display: none; } }
 @media print { .cursor { display: none; } }
+
+/* round arrow buttons on the home cards: red on hover, arrow slides out and a new one slides in */
+.tcard .circle { overflow: hidden; transition: background .6s var(--ease), color .3s; }
+.tcard .circle:hover { background: var(--red); color: #fff; transition: background .2s; }
+.tcard .circle:hover .i { animation: arrow-pass .55s cubic-bezier(.6, 0, .2, 1); }
+@keyframes arrow-pass { 0% { translate: 0 0; opacity: 1; } 45% { translate: 150% 0; opacity: 0; } 46% { translate: -150% 0; opacity: 0; } 100% { translate: 0 0; opacity: 1; } }
+:dir(rtl) .tcard .circle:hover .i { animation-name: arrow-pass-rtl; }
+@keyframes arrow-pass-rtl { 0% { translate: 0 0; opacity: 1; } 45% { translate: -150% 0; opacity: 0; } 46% { translate: 150% 0; opacity: 0; } 100% { translate: 0 0; opacity: 1; } }
+.cursor.is-btn .c-dot, .cursor.is-btn .c-ring { opacity: 0; }
