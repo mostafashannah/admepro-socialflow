@@ -7454,7 +7454,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
             <Badge label={post.priority} color={PRI_COLOR[post.priority]}/>
             {post.sector&&<Badge label={post.sector} color="#f59e0b"/>}
           </div>
-          {client?.has_sectors && Array.isArray(client.sectors) && client.sectors.length>0 && isManager && (
+          {!!client?.has_sectors && Array.isArray(client.sectors) && client.sectors.length>0 && isManager && (
             <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
               <span style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Sector</span>
               <select value={post.sector||""} onChange={e=>{
@@ -8488,7 +8488,16 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
           ) : activityTab==="internal" ? (
             <>
               <div style={{display:"flex",flexDirection:"column",gap:8,overflowY:"auto",flex:isMobile?"none":1,maxHeight:isMobile?220:undefined}}>
-                {internalComments.map((c,i)=>(
+                {internalComments.map((c,i)=>{
+                  // Stage moves and attachment removals are system events — shown as one quiet line so real comments stand out.
+                  const _sys = c.type==="stage_change" || /^🗑️ Removed attachment/.test(c.content||"");
+                  if(_sys) return (
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"2px 4px 2px 9px",fontSize:12,color:"var(--text3)",minWidth:0}}>
+                      <span style={{width:10,height:10,borderRadius:"50%",flexShrink:0,background:c.type==="stage_change"?(STAGE_MAP[(Object.keys(STAGE_MAP).find(k=>(c.content||"").includes(STAGE_MAP[k].label))||"")]?.color||"#94a3b8"):"#cbd5e1",boxShadow:"0 0 0 3px var(--surface)"}}/>
+                      <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><b style={{color:"var(--text2)",fontWeight:700}}>{(c.author_name||"System").split(" ")[0]}</b> {(c.content||"").replace(/^Moved to /,"→ ").replace(/^🗑️ /,"")}</span>
+                      <span style={{fontSize:10.5,flexShrink:0}}>{fmtDateTime(c.created_date||c.created_at)}</span>
+                    </div>);
+                  return (
                   <div key={i} style={{display:"flex",gap:10}}>
                     <Avatar name={c.author_name||"S"} size={28} photoUrl={commentAvatarUrl(c, team)}/>
                     <div style={{flex:1,background:c.type==="ai_reply"?"#10b98111":"var(--surface2)",borderRadius:"var(--rs)",padding:"9px 12px",border:`1px solid ${c.type==="ai_reply"?"#10b98155":"var(--border)"}`}}>
@@ -8538,7 +8547,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                       )}
                     </div>
                   </div>
-                ))}
+                );})}
                 {internalComments.length===0&&<p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:16}}>No activity yet</p>}
                 <div ref={commentsEndRef}/>
               </div>
