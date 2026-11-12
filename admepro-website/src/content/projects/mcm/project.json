@@ -1,0 +1,116 @@
+{
+  "title": "MCM",
+  "client": {
+    "en": "MCM Bahrain",
+    "ar": "MCM البحرين"
+  },
+  "order": 3,
+  "published": true,
+  "featured": true,
+  "categories": [
+    "digital"
+  ],
+  "tags": [
+    "bahrain",
+    "fashion",
+    "social-media"
+  ],
+  "cover": "images/cover.webp",
+  "seo": {
+    "title": {
+      "en": "MCM Bahrain: Social Media Content Case Study | admepro",
+      "ar": "MCM البحرين: دراسة حالة محتوى السوشيال ميديا | admepro"
+    },
+    "description": {
+      "en": "admepro managed social media content for MCM Bahrain, keeping a luxury fashion brand's digital presence consistent and engaging.",
+      "ar": "أدارت admepro محتوى السوشيال ميديا لفرع MCM في البحرين، بحضور رقمي متسق وجذاب لعلامة أزياء فاخرة."
+    }
+  },
+  "summary": {
+    "en": "MCM, an international fashion brand, partnered with us for social media content management for their Bahrain branch. Through strategic content creation, we maintained their digital presence with engaging content aligned with their luxury brand identity.",
+    "ar": "تعاونت MCM، علامة الأزياء العالمية، معنا لإدارة محتوى السوشيال ميديا لفرعها في البحرين. ومن خلال محتوى استراتيجي، حافظنا على حضورها الرقمي بمحتوى جذاب يتماشى مع هويتها الفاخرة."
+  },
+  "meta": {
+    "strategy": {
+      "en": "Digital Strategy",
+      "ar": "الاستراتيجية الرقمية"
+    },
+    "design": {
+      "en": "Social media layout",
+      "ar": "تصميم منشورات السوشيال ميديا"
+    }
+  },
+  "sections": [
+    {
+      "label": {
+        "en": "Social Media Posts",
+        "ar": "منشورات السوشيال ميديا"
+      },
+      "media": [
+        {
+          "type": "image",
+          "src": "images/post-01.webp",
+          "alt": "MCM social post"
+        },
+        {
+          "type": "image",
+          "src": "images/post-02.webp",
+          "alt": "MCM social post"
+        },
+        {
+          "type": "image",
+          "src": "images/post-03.webp",
+          "alt": "MCM social post"
+        },
+        {
+          "type": "image",
+          "src": "images/post-04.webp",
+          "alt": "MCM social post"
+        },
+        {
+          "type": "image",
+          "src": "images/post-05.webp",
+          "alt": "MCM social post"
+        },
+        {
+          "type": "image",
+          "src": "images/post-06.webp",
+          "alt": "MCM social post"
+        },
+        {
+          "type": "image",
+          "src": "images/post-07.webp",
+          "alt": "MCM social post"
+        },
+        {
+          "type": "image",
+          "src": "images/post-08.webp",
+          "alt": "MCM social post"
+        },
+        {
+          "type": "image",
+          "src": "images/post-09.webp",
+          "alt": "MCM social post"
+        },
+        {
+          "type": "image",
+          "src": "images/post-10.webp",
+          "alt": "MCM social post"
+        },
+        {
+          "type": "image",
+          "src": "images/post-11.webp",
+          "alt": "MCM social post"
+        },
+        {
+          "type": "image",
+          "src": "images/post-12.webp",
+          "alt": "MCM social post"
+        }
+      ],
+      "layout": "grid-3"
+    }
+  ],
+  "color": "#453121",
+  "date": "2024-03-01"
+}

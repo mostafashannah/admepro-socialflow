@@ -1,0 +1,33 @@
+{
+  "portfolio": {
+    "seo": {
+      "title": { "en": "Portfolio: Creative & Digital Work | admepro", "ar": "أعمالنا: مشاريع إبداعية ورقمية | admepro" },
+      "description": { "en": "Explore admepro's portfolio of AI-powered branding, digital marketing, video production & creative campaigns across multiple industries.", "ar": "استكشف أعمال admepro في الهوية والتسويق الرقمي وإنتاج الفيديو والحملات الإبداعية عبر قطاعات متعددة." }
+    },
+    "eyebrow": { "en": "Selected work", "ar": "أعمال مختارة" },
+    "title": { "en": "Portfolio", "ar": "أعمالنا" },
+    "categories": [
+      { "key": "branding", "label": { "en": "Branding", "ar": "الهوية" } },
+      { "key": "creative", "label": { "en": "Creative", "ar": "الإبداع" } },
+      { "key": "digital", "label": { "en": "Digital", "ar": "الرقمي" } },
+      { "key": "production", "label": { "en": "Production", "ar": "الإنتاج" } }
+    ],
+    "ctaTitle": { "en": "Ready to work with us?", "ar": "مستعد للعمل معنا؟" },
+    "ctaEyebrow": { "en": "Let's Collaborate", "ar": "لنتعاون" }
+  },
+  "blog": {
+    "path": "/blog/",
+    "seo": {
+      "title": { "en": "Insights: AI Marketing in Egypt & the GCC | admepro", "ar": "المدونة: التسويق بالذكاء الاصطناعي في مصر والخليج | admepro" },
+      "description": { "en": "Practical guides on AI marketing, performance ads, real estate marketing, video production and expanding into Saudi Arabia and the UAE, from the admepro team.", "ar": "أدلة عملية عن التسويق بالذكاء الاصطناعي، والإعلانات الأدائية، والتسويق العقاري، وإنتاج الفيديو، والتوسع في السعودية والإمارات من فريق admepro." }
+    },
+    "eyebrow": { "en": "Insights", "ar": "المدونة" },
+    "title": { "en": "Ideas, guides and lessons from our work.", "ar": "أفكار وأدلة ودروس من عملنا." },
+    "arNote": { "en": "", "ar": "مقالاتنا متاحة حاليًا باللغة الإنجليزية." }
+  },
+  "project": {
+    "ctaTitle": { "en": "Send us an email,\nto discuss a new project.", "ar": "راسلنا\nلنناقش مشروعك الجديد." },
+    "ctaEyebrow": { "en": "Let's Collaborate", "ar": "لنتعاون" },
+    "ctaText": { "en": "We're a team of creatives who are excited about unique ideas.", "ar": "نحن فريق من المبدعين المتحمسين للأفكار الفريدة." }
+  }
+}

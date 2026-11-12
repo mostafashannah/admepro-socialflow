@@ -1,0 +1,397 @@
+{
+  "title": "Moltobella",
+  "client": {
+    "en": "Swifax",
+    "ar": "Swifax"
+  },
+  "order": 12,
+  "published": true,
+  "featured": false,
+  "categories": [
+    "creative",
+    "digital",
+    "production"
+  ],
+  "tags": [
+    "egypt",
+    "fmcg",
+    "food-and-beverage",
+    "food-styling",
+    "identity",
+    "photography",
+    "social-media",
+    "video-production"
+  ],
+  "cover": "images/cover.webp",
+  "seo": {
+    "title": {
+      "en": "Moltobella: Social Media Marketing & Video Production Egypt | admepro",
+      "ar": "Moltobella: تسويق السوشيال ميديا وإنتاج الفيديو في مصر | admepro"
+    },
+    "description": {
+      "en": "5+ years building Moltobella, Egypt's premium chocolate spread: brand films, food photography, recipe videos with chef Sally Fouad and always-on social media.",
+      "ar": "أكثر من 5 سنوات في بناء Moltobella، كريمة الشوكولاتة الفاخرة في مصر: أفلام العلامة، وتصوير الطعام، وفيديوهات الوصفات مع الشيف سالي فؤاد، وإدارة السوشيال ميديا."
+    }
+  },
+  "summary": {
+    "en": "Moltobella is a premium chocolate spread brand in Egypt, known for its rich, velvety texture and superior quality. Crafted with carefully selected ingredients, it delivers an indulgent experience for chocolate lovers. We built the brand together, grew its awareness in the market, and have collaborated successfully for 5+ years.",
+    "ar": "Moltobella علامة كريمة شوكولاتة فاخرة في مصر، معروفة بقوامها الغني المخملي وجودتها العالية، ومصنوعة من مكونات منتقاة بعناية لتجربة استثنائية لعشّاق الشوكولاتة. بنينا العلامة معًا، ورفعنا الوعي بها في السوق، ونتعاون بنجاح منذ أكثر من 5 سنوات."
+  },
+  "meta": {
+    "strategy": {
+      "en": "Marketing Strategy, Digital Strategy",
+      "ar": "الاستراتيجية التسويقية، الاستراتيجية الرقمية"
+    },
+    "design": {
+      "en": "Social Media, Prints, Moodboard, Identity",
+      "ar": "السوشيال ميديا، المطبوعات، لوحة الإلهام، الهوية"
+    }
+  },
+  "sections": [
+    {
+      "label": {
+        "en": "01. Branding Video",
+        "ar": "01. فيلم العلامة"
+      },
+      "heading": {
+        "en": "Building a premium legacy: Moltobella's dancing jars.",
+        "ar": "بناء إرث فاخر: عبوات Moltobella الراقصة."
+      },
+      "text": {
+        "en": [
+          "Our approach helped establish Moltobella as the go-to premium chocolate spread in Egypt while presenting the full product range."
+        ],
+        "ar": [
+          "ساعد نهجنا على ترسيخ Moltobella كالخيار الأول لكريمة الشوكولاتة الفاخرة في مصر، مع تقديم مجموعة المنتجات كاملة."
+        ]
+      },
+      "media": [
+        {
+          "type": "vimeo",
+          "id": "1027082486",
+          "poster": "images/brand-film.webp",
+          "alt": "Moltobella brand film"
+        }
+      ],
+      "layout": "wide"
+    },
+    {
+      "label": {
+        "en": "02. Photography",
+        "ar": "02. التصوير الفوتوغرافي"
+      },
+      "heading": {
+        "en": "Over 5 years of main shoots and seasonal campaigns.",
+        "ar": "أكثر من 5 سنوات من جلسات التصوير الرئيسية والموسمية."
+      },
+      "text": {
+        "en": [
+          "Premium product and lifestyle photography showcases Moltobella with elegance and detail, highlighting the essence and appeal of the product so it resonates with consumers and reflects the brand's commitment to quality."
+        ],
+        "ar": [
+          "يعرض تصوير المنتج ونمط الحياة Moltobella بأناقة واهتمام بالتفاصيل، ليبرز جوهر المنتج وجاذبيته ويعكس التزام العلامة بالجودة."
+        ]
+      }
+    },
+    {
+      "label": {
+        "en": "Main Shoot · 2019",
+        "ar": "الجلسة الرئيسية · 2019"
+      },
+      "media": [
+        {
+          "type": "image",
+          "src": "images/main-1.webp",
+          "alt": "Moltobella main shoot"
+        },
+        {
+          "type": "image",
+          "src": "images/main-2.webp",
+          "alt": "Moltobella main shoot"
+        },
+        {
+          "type": "image",
+          "src": "images/main-3.webp",
+          "alt": "Moltobella main shoot"
+        },
+        {
+          "type": "image",
+          "src": "images/main-4.webp",
+          "alt": "Moltobella main shoot"
+        }
+      ],
+      "layout": "grid-4"
+    },
+    {
+      "label": {
+        "en": "Mother's Day Shoot · 2021",
+        "ar": "جلسة عيد الأم · 2021"
+      },
+      "media": [
+        {
+          "type": "beforeAfter",
+          "before": "images/mothers-before.webp",
+          "after": "images/mothers-after.webp",
+          "alt": "Mother's Day shoot before and after retouching"
+        },
+        {
+          "type": "image",
+          "src": "images/mothers-1.webp",
+          "alt": "Moltobella Mother's Day"
+        },
+        {
+          "type": "image",
+          "src": "images/mothers-2.webp",
+          "alt": "Moltobella Mother's Day"
+        },
+        {
+          "type": "image",
+          "src": "images/mothers-3.webp",
+          "alt": "Moltobella Mother's Day"
+        },
+        {
+          "type": "image",
+          "src": "images/mothers-4.webp",
+          "alt": "Moltobella Mother's Day"
+        },
+        {
+          "type": "image",
+          "src": "images/mothers-5.webp",
+          "alt": "Moltobella Mother's Day"
+        }
+      ],
+      "layout": "grid-3"
+    },
+    {
+      "label": {
+        "en": "Eid Shoot · 2020",
+        "ar": "جلسة العيد · 2020"
+      },
+      "media": [
+        {
+          "type": "image",
+          "src": "images/eid-1.webp",
+          "alt": "Moltobella Eid shoot"
+        },
+        {
+          "type": "image",
+          "src": "images/eid-2.webp",
+          "alt": "Moltobella Eid shoot"
+        },
+        {
+          "type": "image",
+          "src": "images/eid-3.webp",
+          "alt": "Moltobella Eid shoot"
+        },
+        {
+          "type": "image",
+          "src": "images/eid-4.webp",
+          "alt": "Moltobella Eid shoot"
+        },
+        {
+          "type": "image",
+          "src": "images/eid-5.webp",
+          "alt": "Moltobella Eid shoot"
+        }
+      ],
+      "layout": "grid-3"
+    },
+    {
+      "label": {
+        "en": "03. Recipe Videos",
+        "ar": "03. فيديوهات الوصفات"
+      },
+      "heading": {
+        "en": "Bringing chocolate-spread stories to life.",
+        "ar": "قصص كريمة الشوكولاتة تنبض بالحياة."
+      },
+      "text": {
+        "en": [
+          "The video series brings the Moltobella experience to life with creative serving suggestions and irresistible recipe ideas, each crafted to show the spread's versatility and build a craving-inducing social presence.",
+          "Our strategy positions Moltobella as more than a chocolate spread: an essential part of sweet moments. Through consistent storytelling and community engagement, we built a loyal following."
+        ],
+        "ar": [
+          "تُحيي سلسلة الفيديو تجربة Moltobella باقتراحات تقديم مبتكرة ووصفات لا تقاوَم، وصُمّم كل فيديو ليبرز تعدد استخدامات الكريمة ويصنع حضورًا يثير الشهية.",
+          "تقدّم استراتيجيتنا Moltobella كجزء أساسي من اللحظات الحلوة، لا مجرد كريمة شوكولاتة. ومن خلال سرد متسق وتفاعل مع المجتمع بنينا جمهورًا وفيًا."
+        ]
+      },
+      "media": [
+        {
+          "type": "vimeo",
+          "id": "1030743589",
+          "poster": "images/recipe-1.webp",
+          "alt": "Moltobella recipe video"
+        },
+        {
+          "type": "vimeo",
+          "id": "1030740774",
+          "poster": "images/recipe-2.webp",
+          "alt": "Moltobella recipe video"
+        },
+        {
+          "type": "vimeo",
+          "id": "1030741252",
+          "poster": "images/recipe-3.webp",
+          "alt": "Moltobella recipe video"
+        },
+        {
+          "type": "vimeo",
+          "id": "1030742367",
+          "poster": "images/recipe-4.webp",
+          "alt": "Moltobella recipe video"
+        }
+      ],
+      "layout": "grid-2"
+    },
+    {
+      "label": {
+        "en": "04. Social Media · 2016 – 2023",
+        "ar": "04. السوشيال ميديا · 2016 – 2023"
+      },
+      "heading": {
+        "en": "Engaging chocolate lovers through strategic, creative social content.",
+        "ar": "نتواصل مع عشّاق الشوكولاتة بمحتوى استراتيجي وإبداعي."
+      },
+      "media": [
+        {
+          "type": "image",
+          "src": "images/social-1.webp",
+          "alt": "Moltobella social post"
+        },
+        {
+          "type": "image",
+          "src": "images/social-2.webp",
+          "alt": "Moltobella social post"
+        },
+        {
+          "type": "image",
+          "src": "images/social-3.webp",
+          "alt": "Moltobella social post"
+        },
+        {
+          "type": "image",
+          "src": "images/social-4.webp",
+          "alt": "Moltobella social post"
+        },
+        {
+          "type": "image",
+          "src": "images/social-5.webp",
+          "alt": "Moltobella social post"
+        },
+        {
+          "type": "image",
+          "src": "images/social-6.webp",
+          "alt": "Moltobella social post"
+        }
+      ],
+      "layout": "grid-3"
+    },
+    {
+      "label": {
+        "en": "05. Video Production",
+        "ar": "05. إنتاج الفيديو"
+      },
+      "heading": {
+        "en": "Creating sweet stories through film.",
+        "ar": "قصص حلوة نرويها بالصورة."
+      },
+      "text": {
+        "en": [
+          "Our recipe series features renowned dessert chef Sally Fouad, capturing creative dessert preparations and new ways to use the chocolate spread in trending recipes.",
+          "Each episode starts with recipe development and testing so every creation shows Moltobella at its best. Professional food cinematography, lighting and camera angles make each step easy to follow, and tight editing and sound design turn every recipe into tutorial content that inspires home bakers."
+        ],
+        "ar": [
+          "تضم سلسلة الوصفات الشيف الشهيرة سالي فؤاد، وتلتقط تحضيرات حلويات مبتكرة وطرقًا جديدة لاستخدام كريمة الشوكولاتة في وصفات رائجة.",
+          "تبدأ كل حلقة بتطوير الوصفة وتجربتها لتظهر Moltobella في أفضل صورة. ويجعل التصوير الاحترافي للطعام والإضاءة وزوايا الكاميرا كل خطوة سهلة المتابعة، بينما يحوّل المونتاج الدقيق وتصميم الصوت كل وصفة إلى محتوى تعليمي يلهم محبي الخَبز في المنزل."
+        ]
+      },
+      "media": [
+        {
+          "type": "vimeo",
+          "id": "274710321",
+          "poster": "images/chef-series.webp",
+          "alt": "Moltobella recipe series with chef Sally Fouad"
+        }
+      ],
+      "layout": "wide"
+    }
+  ],
+  "credits": [
+    {
+      "role": {
+        "en": "Directing",
+        "ar": "الإخراج"
+      },
+      "people": [
+        {
+          "name": "Ahmed Halim",
+          "title": {
+            "en": "Director",
+            "ar": "مخرج"
+          }
+        },
+        {
+          "name": "Magdy Kishk",
+          "title": {
+            "en": "Assistant Director",
+            "ar": "مساعد مخرج"
+          }
+        }
+      ]
+    },
+    {
+      "role": {
+        "en": "Creative",
+        "ar": "الإبداع"
+      },
+      "people": [
+        {
+          "name": "Hisham Zakrya",
+          "title": {
+            "en": "Creative Director",
+            "ar": "مدير إبداعي"
+          }
+        }
+      ]
+    },
+    {
+      "role": {
+        "en": "Production",
+        "ar": "الإنتاج"
+      },
+      "people": [
+        {
+          "name": "Mostafa Shannah",
+          "title": {
+            "en": "Executive Producer",
+            "ar": "منتج منفذ"
+          }
+        },
+        {
+          "name": "Mohamed Mahran",
+          "title": {
+            "en": "Assistant Executive Producer",
+            "ar": "مساعد منتج منفذ"
+          }
+        }
+      ]
+    },
+    {
+      "role": {
+        "en": "Account Management",
+        "ar": "إدارة الحساب"
+      },
+      "people": [
+        {
+          "name": "Radwa Elbarbary",
+          "title": {
+            "en": "Account Director",
+            "ar": "مدير الحسابات"
+          }
+        }
+      ]
+    }
+  ],
+  "color": "#39322d",
+  "date": "2017-10-14"
+}

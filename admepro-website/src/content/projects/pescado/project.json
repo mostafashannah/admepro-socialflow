@@ -1,0 +1,83 @@
+{
+  "title": "Pescado",
+  "client": {
+    "en": "Pescado",
+    "ar": "Pescado"
+  },
+  "order": 13,
+  "published": true,
+  "featured": false,
+  "categories": [
+    "production"
+  ],
+  "tags": [
+    "egypt",
+    "fmcg",
+    "food-styling",
+    "packaging",
+    "photography"
+  ],
+  "cover": "images/cover.webp",
+  "seo": {
+    "title": {
+      "en": "Pescado: Seafood Brand Photography Egypt | admepro",
+      "ar": "Pescado: تصوير علامة مأكولات بحرية في مصر | admepro"
+    },
+    "description": {
+      "en": "admepro produced social media photography for Pescado, a premium seafood provider, highlighting the freshness of its new freshly frozen fish line.",
+      "ar": "أنتجت admepro صور السوشيال ميديا لـ Pescado، مزوّد المأكولات البحرية الفاخرة، مع إبراز جودة خط الأسماك المجمدة الطازجة الجديد."
+    }
+  },
+  "summary": {
+    "en": "Pescado has been a premium seafood provider for over two decades. Our collaboration enhanced their digital presence with expertly crafted social media photography that captures the quality and freshness of their products, especially their new line of freshly frozen fish.",
+    "ar": "Pescado مزوّد مأكولات بحرية فاخرة منذ أكثر من عقدين. عزّز تعاوننا حضورها الرقمي بصور احترافية للسوشيال ميديا تبرز جودة منتجاتها ونضارتها، وخاصة خطها الجديد من الأسماك المجمدة الطازجة."
+  },
+  "meta": {
+    "strategy": {
+      "en": "Digital Strategy",
+      "ar": "الاستراتيجية الرقمية"
+    },
+    "design": {
+      "en": "Social Media Designs",
+      "ar": "تصاميم السوشيال ميديا"
+    }
+  },
+  "sections": [
+    {
+      "label": {
+        "en": "Product Photography",
+        "ar": "تصوير المنتجات"
+      },
+      "media": [
+        {
+          "type": "image",
+          "src": "images/cover.webp",
+          "alt": "Pescado seafood photography"
+        },
+        {
+          "type": "image",
+          "src": "images/photo-1.webp",
+          "alt": "Pescado seafood photography"
+        },
+        {
+          "type": "image",
+          "src": "images/photo-2.webp",
+          "alt": "Pescado seafood photography"
+        },
+        {
+          "type": "image",
+          "src": "images/photo-3.webp",
+          "alt": "Pescado seafood photography"
+        },
+        {
+          "type": "image",
+          "src": "images/photo-4.webp",
+          "alt": "Pescado seafood photography"
+        }
+      ],
+      "layout": "grid-2"
+    }
+  ],
+  "color": "#39322d",
+  "date": "2024-11-01"
+}

@@ -1,0 +1,389 @@
+{
+  "_comment": "Blocks reused on several pages (home, services, GCC, about).",
+  "clientStrips": [
+    "strip-1",
+    "strip-2",
+    "strip-3",
+    "strip-4",
+    "strip-5",
+    "strip-6"
+  ],
+  "clientGrid": [
+    "asus",
+    "gold",
+    "emaar",
+    "bank-el-araby",
+    "crocs",
+    "dejavu",
+    "vodafone",
+    "tmg",
+    "edge",
+    "tank",
+    "doner",
+    "moltobella"
+  ],
+  "clientNames": {
+    "asus": "ASUS",
+    "gold": "Gold's Gym",
+    "emaar": "Emaar",
+    "bank-el-araby": "Bank El Araby",
+    "crocs": "Crocs",
+    "dejavu": "Dejavu",
+    "vodafone": "Vodafone",
+    "tmg": "Talaat Moustafa Group",
+    "edge": "Edge Holding",
+    "tank": "Tank",
+    "doner": "Döner & Gyros",
+    "moltobella": "Moltobella"
+  },
+  "serviceColumns": [
+    {
+      "key": "branding",
+      "title": {
+        "en": "Branding",
+        "ar": "الهوية والعلامة التجارية"
+      },
+      "items": {
+        "en": [
+          "Brand strategy",
+          "Brand content",
+          "Identity development",
+          "Packaging and design",
+          "AI-powered campaigns"
+        ],
+        "ar": [
+          "استراتيجية العلامة التجارية",
+          "محتوى العلامة التجارية",
+          "تطوير الهوية البصرية",
+          "تصميم التغليف",
+          "حملات مدعومة بالذكاء الاصطناعي"
+        ]
+      }
+    },
+    {
+      "key": "digital",
+      "title": {
+        "en": "Social Media",
+        "ar": "السوشيال ميديا"
+      },
+      "items": {
+        "en": [
+          "AI content strategy",
+          "AI-powered campaigns",
+          "Social media management",
+          "Influencer marketing",
+          "Media planning & buying"
+        ],
+        "ar": [
+          "استراتيجية محتوى بالذكاء الاصطناعي",
+          "حملات مدعومة بالذكاء الاصطناعي",
+          "إدارة حسابات التواصل الاجتماعي",
+          "التسويق عبر المؤثرين",
+          "تخطيط وشراء الإعلانات"
+        ]
+      }
+    },
+    {
+      "key": "production",
+      "title": {
+        "en": "Production",
+        "ar": "الإنتاج"
+      },
+      "items": {
+        "en": [
+          "AI video generation",
+          "Creative content production",
+          "Photography services",
+          "Reels production",
+          "Animation & 2D videos"
+        ],
+        "ar": [
+          "توليد الفيديو بالذكاء الاصطناعي",
+          "إنتاج المحتوى الإبداعي",
+          "خدمات التصوير الفوتوغرافي",
+          "إنتاج الريلز",
+          "الرسوم المتحركة وفيديوهات 2D"
+        ]
+      }
+    },
+    {
+      "key": "performance",
+      "title": {
+        "en": "Performance",
+        "ar": "الأداء"
+      },
+      "items": {
+        "en": [
+          "E-commerce web development",
+          "App development",
+          "AI performance marketing",
+          "E-commerce marketing",
+          "Answer engine optimization"
+        ],
+        "ar": [
+          "تطوير المتاجر الإلكترونية",
+          "تطوير التطبيقات",
+          "التسويق الأدائي بالذكاء الاصطناعي",
+          "تسويق المتاجر الإلكترونية",
+          "تحسين الظهور في محركات الإجابة (AEO)"
+        ]
+      }
+    }
+  ],
+  "serviceCtas": [
+    {
+      "title": {
+        "en": "Start a brand",
+        "ar": "ابدأ علامتك"
+      },
+      "href": "/branding/",
+      "items": {
+        "en": [
+          "Brand naming and content",
+          "Brand strategy",
+          "Identity development",
+          "Packaging and designs",
+          "Campaign development"
+        ],
+        "ar": [
+          "تسمية العلامة والمحتوى",
+          "استراتيجية العلامة",
+          "تطوير الهوية",
+          "التغليف والتصاميم",
+          "تطوير الحملات"
+        ]
+      }
+    },
+    {
+      "title": {
+        "en": "Get social",
+        "ar": "انطلق على السوشيال"
+      },
+      "href": "/digital/",
+      "items": {
+        "en": [
+          "Digital marketing strategy",
+          "Digital content & campaigns",
+          "Social media management",
+          "Influencer marketing",
+          "Media planning & buying"
+        ],
+        "ar": [
+          "استراتيجية التسويق الرقمي",
+          "المحتوى والحملات الرقمية",
+          "إدارة السوشيال ميديا",
+          "التسويق عبر المؤثرين",
+          "تخطيط وشراء الإعلانات"
+        ]
+      }
+    },
+    {
+      "title": {
+        "en": "Let's shoot",
+        "ar": "لنبدأ التصوير"
+      },
+      "href": "/production/",
+      "items": {
+        "en": [
+          "Creative content production",
+          "Video production",
+          "Photography services",
+          "Reels production",
+          "Animation & 2D videos"
+        ],
+        "ar": [
+          "إنتاج المحتوى الإبداعي",
+          "إنتاج الفيديو",
+          "خدمات التصوير",
+          "إنتاج الريلز",
+          "الرسوم المتحركة وفيديوهات 2D"
+        ]
+      }
+    },
+    {
+      "title": {
+        "en": "Go digital",
+        "ar": "تحوّل رقميًا"
+      },
+      "href": "/contact-us/",
+      "items": {
+        "en": [
+          "E-commerce web development",
+          "App development",
+          "Marketing strategy",
+          "E-commerce marketing"
+        ],
+        "ar": [
+          "تطوير المتاجر الإلكترونية",
+          "تطوير التطبيقات",
+          "الاستراتيجية التسويقية",
+          "تسويق المتاجر الإلكترونية"
+        ]
+      }
+    }
+  ],
+  "testimonials": [
+    {
+      "quote": {
+        "en": "Their team was incredibly talented and dedicated. They not only understood our brand but also brought fresh perspectives and creative solutions.",
+        "ar": "فريقهم موهوب ومتفانٍ بشكل استثنائي. لم يفهموا علامتنا التجارية فحسب، بل قدّموا أيضًا رؤى جديدة وحلولًا إبداعية."
+      },
+      "name": {
+        "en": "Ibrahem Heiba",
+        "ar": "إبراهيم هيبة"
+      },
+      "role": {
+        "en": "CEO, Gold's Gym Elite Sheikh Zayed",
+        "ar": "الرئيس التنفيذي، جولدز جيم إيليت الشيخ زايد"
+      }
+    },
+    {
+      "quote": {
+        "en": "The agency's expertise in social media marketing was invaluable. They helped us build a strong online presence and engage with our audience effectively.",
+        "ar": "خبرة الوكالة في التسويق عبر السوشيال ميديا كانت لا تُقدَّر بثمن. ساعدونا في بناء حضور قوي على الإنترنت والتفاعل مع جمهورنا بفعالية."
+      },
+      "name": {
+        "en": "Mahmoud Ali",
+        "ar": "محمود علي"
+      },
+      "role": {
+        "en": "Marketing Manager, Midestate",
+        "ar": "مدير التسويق، ميدإستيت"
+      }
+    },
+    {
+      "quote": {
+        "en": "admepro helped us revitalize our brand image. Their creative team developed a stunning new logo and marketing materials that perfectly captured our target audience.",
+        "ar": "ساعدتنا admepro في تجديد صورة علامتنا التجارية. صمّم فريقهم الإبداعي شعارًا جديدًا رائعًا ومواد تسويقية خاطبت جمهورنا المستهدف بدقة."
+      },
+      "name": {
+        "en": "Mohamed",
+        "ar": "محمد"
+      },
+      "role": {
+        "en": "Founder, Kohi Bar",
+        "ar": "المؤسس، كوهي بار"
+      }
+    }
+  ],
+  "stats": [
+    {
+      "value": 12,
+      "suffix": "+",
+      "label": {
+        "en": "Years of experience",
+        "ar": "عامًا من الخبرة"
+      }
+    },
+    {
+      "value": 7,
+      "suffix": "+",
+      "label": {
+        "en": "Countries, Egypt & GCC",
+        "ar": "دول في مصر والخليج"
+      }
+    },
+    {
+      "value": 100,
+      "suffix": "+",
+      "label": {
+        "en": "Successful campaigns",
+        "ar": "حملة ناجحة"
+      }
+    },
+    {
+      "value": 1000,
+      "suffix": "+",
+      "label": {
+        "en": "Satisfied clients",
+        "ar": "عميل راضٍ"
+      }
+    }
+  ],
+  "faq": [
+    {
+      "q": {
+        "en": "Why should I choose admepro?",
+        "ar": "لماذا أختار admepro؟"
+      },
+      "a": {
+        "en": [
+          "Because we focus on results, not just content. We combine 12+ years of agency experience with AI-powered tools to build growth systems that generate leads, increase sales, and deliver measurable ROI.",
+          "Unlike traditional agencies, every decision we make is backed by data, tested by AI, and built to grow your business across Egypt and the GCC markets."
+        ],
+        "ar": [
+          "لأننا نركّز على النتائج وليس على المحتوى فقط. نجمع بين أكثر من 12 عامًا من الخبرة وأدوات الذكاء الاصطناعي لبناء أنظمة نمو تجلب العملاء المحتملين، وتزيد المبيعات، وتحقق عائدًا قابلًا للقياس.",
+          "على عكس الوكالات التقليدية، كل قرار نتخذه مدعوم بالبيانات، ومُختبَر بالذكاء الاصطناعي، ومصمَّم لتنمية أعمالك في مصر وأسواق الخليج."
+        ]
+      }
+    },
+    {
+      "q": {
+        "en": "How does AI make your work better?",
+        "ar": "كيف يجعل الذكاء الاصطناعي عملكم أفضل؟"
+      },
+      "a": {
+        "en": [
+          "AI gives us a serious competitive advantage. We use it for audience targeting, content creation, campaign optimization, and market analysis, delivering smarter strategies and faster execution.",
+          "This means your campaigns learn and improve in real time, your content is produced faster without losing quality, and your budget works harder every single day."
+        ],
+        "ar": [
+          "يمنحنا الذكاء الاصطناعي ميزة تنافسية حقيقية. نستخدمه في استهداف الجمهور، وإنتاج المحتوى، وتحسين الحملات، وتحليل السوق، لنقدّم استراتيجيات أذكى وتنفيذًا أسرع.",
+          "هذا يعني أن حملاتك تتعلم وتتحسن لحظيًا، وأن المحتوى يُنتَج أسرع دون أن تقل جودته، وأن ميزانيتك تعمل بكفاءة أعلى كل يوم."
+        ]
+      }
+    },
+    {
+      "q": {
+        "en": "Who actually works on my project?",
+        "ar": "من سيعمل فعليًا على مشروعي؟"
+      },
+      "a": {
+        "en": [
+          "A dedicated in-house team, never outsourced freelancers. You get a strategist, designer, content creator, and media buyer all assigned specifically to your brand.",
+          "One senior account manager is your single point of contact from brief to delivery.",
+          "You always know who is working on your brand and what they are doing at every stage of the project."
+        ],
+        "ar": [
+          "فريق داخلي مخصص، وليس مستقلين من الخارج. تحصل على استراتيجي ومصمم وصانع محتوى ومشتري إعلانات مخصصين لعلامتك التجارية.",
+          "مدير حساب أول واحد هو نقطة تواصلك من الملخص الأول وحتى التسليم.",
+          "ستعرف دائمًا من يعمل على علامتك وماذا يفعل في كل مرحلة من مراحل المشروع."
+        ]
+      }
+    },
+    {
+      "q": {
+        "en": "How fast can you start?",
+        "ar": "متى يمكنكم البدء؟"
+      },
+      "a": {
+        "en": [
+          "Very fast. Once we align on the brief and scope, most projects are kicked off within 72 hours. Performance campaigns can go live in 5 to 7 business days. Branding and production timelines are always agreed upfront during the proposal stage.",
+          "No unnecessary delays, no long onboarding periods, just fast, focused execution."
+        ],
+        "ar": [
+          "بسرعة كبيرة. بمجرد الاتفاق على الملخص ونطاق العمل، تنطلق أغلب المشاريع خلال 72 ساعة. ويمكن إطلاق الحملات الأدائية خلال 5 إلى 7 أيام عمل. أما الجداول الزمنية للهوية والإنتاج فيُتفق عليها مسبقًا في مرحلة العرض.",
+          "بلا تأخير غير ضروري ولا فترات تهيئة طويلة، فقط تنفيذ سريع ومركّز."
+        ]
+      }
+    },
+    {
+      "q": {
+        "en": "How do I get started?",
+        "ar": "كيف أبدأ؟"
+      },
+      "a": {
+        "en": [
+          "Simple. Fill in the contact form or send us a WhatsApp message directly and we will respond within 2 hours during business hours.",
+          "Tell us your business type, what service you need, and your approximate budget.",
+          "We will send a tailored proposal within 24 hours: no pressure, no obligation, just a clear, honest plan."
+        ],
+        "ar": [
+          "الأمر بسيط. املأ نموذج التواصل أو أرسل لنا رسالة على واتساب مباشرة وسنرد خلال ساعتين في أوقات العمل.",
+          "أخبرنا بنوع نشاطك، والخدمة التي تحتاجها، وميزانيتك التقريبية.",
+          "سنرسل لك عرضًا مخصصًا خلال 24 ساعة: دون ضغط ودون التزام، فقط خطة واضحة وصادقة."
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,197 @@
+{
+  "title": "Autogate",
+  "client": {
+    "en": "Autogate",
+    "ar": "Autogate"
+  },
+  "order": 8,
+  "published": true,
+  "featured": true,
+  "categories": [
+    "digital",
+    "production"
+  ],
+  "tags": [
+    "automotive",
+    "egypt",
+    "reels-production",
+    "social-media"
+  ],
+  "cover": "images/cover.webp",
+  "heroVideo": {
+    "src": "/assets/video/horizontal.mp4",
+    "poster": "/assets/video/horizontal.webp"
+  },
+  "seo": {
+    "title": {
+      "en": "Automotive Digital Marketing Egypt: Autogate Case Study | admepro",
+      "ar": "التسويق الرقمي للسيارات في مصر: دراسة حالة Autogate | admepro"
+    },
+    "description": {
+      "en": "admepro ran digital marketing for Autogate: luxury car photography, reels, social content and media buying that delivered 10K+ qualified leads.",
+      "ar": "أدارت admepro التسويق الرقمي لـ Autogate: تصوير السيارات الفاخرة، والريلز، ومحتوى السوشيال ميديا، وشراء الإعلانات بأكثر من 10 آلاف عميل محتمل مؤهل."
+    }
+  },
+  "summary": {
+    "en": "Autogate represents the modern evolution of car dealerships, where digital presence meets automotive excellence. Their commitment to showcasing vehicles through engaging digital storytelling has positioned them as an innovative leader in automotive retail.",
+    "ar": "تمثل Autogate التطور الحديث لمعارض السيارات، حيث يلتقي الحضور الرقمي بالتميز في عالم السيارات. التزامها بعرض السيارات عبر سرد رقمي جذاب جعلها رائدة مبتكرة في تجارة السيارات."
+  },
+  "meta": {
+    "strategy": {
+      "en": "Digital Strategy",
+      "ar": "الاستراتيجية الرقمية"
+    },
+    "design": {
+      "en": "Social Media",
+      "ar": "السوشيال ميديا"
+    }
+  },
+  "sections": [
+    {
+      "label": {
+        "en": "01. Photo Editing",
+        "ar": "01. تعديل الصور"
+      },
+      "heading": {
+        "en": "Driving digital excellence.",
+        "ar": "قيادة التميّز الرقمي."
+      },
+      "text": {
+        "en": [
+          "Our photography series showcases Autogate's luxury vehicles through expert composition and dramatic angles.",
+          "Through carefully edited imagery, we highlight the premium details, elegant design, and exclusive offers that position Autogate as a distinguished luxury car dealership."
+        ],
+        "ar": [
+          "تعرض سلسلة صورنا سيارات Autogate الفاخرة بتكوينات احترافية وزوايا لافتة.",
+          "ومن خلال تعديل دقيق للصور نبرز التفاصيل الفاخرة والتصميم الأنيق والعروض الحصرية التي تجعل Autogate معرضًا مميزًا للسيارات الفاخرة."
+        ]
+      },
+      "media": [
+        {
+          "type": "beforeAfter",
+          "before": "images/jaguar-before.webp",
+          "after": "images/jaguar-after.webp",
+          "alt": "Jaguar photo before and after editing"
+        }
+      ],
+      "layout": "wide"
+    },
+    {
+      "label": {
+        "en": "02. Reels Production",
+        "ar": "02. إنتاج الريلز"
+      },
+      "heading": {
+        "en": "Creating engaging automotive stories.",
+        "ar": "قصص سيارات تجذب المشاهد."
+      },
+      "text": {
+        "en": [
+          "Our reel series takes viewers behind the scenes of Autogate's professional service experience, showcasing premium vehicles and the exclusive showroom experience that set Autogate apart."
+        ],
+        "ar": [
+          "تأخذ سلسلة الريلز المشاهد إلى كواليس خدمة Autogate الاحترافية، وتعرض السيارات الفاخرة وتجربة المعرض الحصرية التي تميزها."
+        ]
+      },
+      "media": [
+        {
+          "type": "vimeo",
+          "id": "1029317644",
+          "poster": "images/reel-1.webp",
+          "alt": "Autogate reel",
+          "ratio": "9/16"
+        },
+        {
+          "type": "vimeo",
+          "id": "1029313373",
+          "poster": "images/reel-2.webp",
+          "alt": "Autogate reel",
+          "ratio": "9/16"
+        },
+        {
+          "type": "vimeo",
+          "id": "1029310357",
+          "poster": "images/reel-3.webp",
+          "alt": "Autogate reel",
+          "ratio": "9/16"
+        }
+      ],
+      "layout": "grid-3"
+    },
+    {
+      "label": {
+        "en": "03. Social Media",
+        "ar": "03. السوشيال ميديا"
+      },
+      "heading": {
+        "en": "Social media posts, 2022 – 2024.",
+        "ar": "منشورات السوشيال ميديا، 2022 – 2024."
+      },
+      "text": {
+        "en": [
+          "The project combined professional photography and engaging reels, each piece crafted to highlight vehicle features while keeping audiences engaged through creative storytelling.",
+          "Our social strategy kept a steady flow of content, from detailed vehicle showcases to quick car facts, building a strong online community and meaningful engagement with potential buyers."
+        ],
+        "ar": [
+          "جمع المشروع بين التصوير الاحترافي والريلز الجذابة، وصُمّم كل عمل ليبرز مزايا السيارة ويحافظ على تفاعل الجمهور عبر سرد إبداعي.",
+          "حافظت استراتيجيتنا على تدفق منتظم للمحتوى، من عروض السيارات التفصيلية إلى المعلومات السريعة، لبناء مجتمع قوي وتفاعل حقيقي مع المشترين المحتملين."
+        ]
+      },
+      "media": [
+        {
+          "type": "image",
+          "src": "images/post-1.webp",
+          "alt": "Autogate social post"
+        },
+        {
+          "type": "image",
+          "src": "images/post-2.webp",
+          "alt": "Autogate social post"
+        },
+        {
+          "type": "image",
+          "src": "images/post-3.webp",
+          "alt": "Autogate social post"
+        },
+        {
+          "type": "image",
+          "src": "images/post-4.webp",
+          "alt": "Autogate social post"
+        },
+        {
+          "type": "image",
+          "src": "images/post-5.webp",
+          "alt": "Autogate social post"
+        },
+        {
+          "type": "image",
+          "src": "images/post-6.webp",
+          "alt": "Autogate social post"
+        }
+      ],
+      "layout": "grid-3"
+    }
+  ],
+  "stats": [
+    {
+      "value": 900,
+      "prefix": "+",
+      "suffix": "K",
+      "label": {
+        "en": "Media buying paid amount",
+        "ar": "حجم الإنفاق الإعلاني"
+      }
+    },
+    {
+      "value": 10,
+      "prefix": "+",
+      "suffix": "K",
+      "label": {
+        "en": "Qualified leads",
+        "ar": "عميل محتمل مؤهل"
+      }
+    }
+  ],
+  "color": "#3f2827",
+  "date": "2022-09-01"
+}

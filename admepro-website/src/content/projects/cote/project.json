@@ -1,0 +1,302 @@
+{
+  "title": "Cote",
+  "client": {
+    "en": "Elle Cosmetics",
+    "ar": "Elle Cosmetics"
+  },
+  "order": 1,
+  "published": true,
+  "featured": true,
+  "categories": [
+    "branding",
+    "creative",
+    "digital"
+  ],
+  "tags": [
+    "cosmetics",
+    "egypt",
+    "packaging"
+  ],
+  "cover": "images/cover.webp",
+  "seo": {
+    "title": {
+      "en": "Cote: Tanning Brand Identity & Packaging Design Egypt | admepro",
+      "ar": "Cote: هوية وتغليف علامة منتجات تسمير في مصر | admepro"
+    },
+    "description": {
+      "en": "admepro designed the Cote brand identity, a fresh, modern visual concept that communicates elegance and purpose. See the full project in our portfolio.",
+      "ar": "صمّمت admepro هوية Cote: مفهوم بصري عصري يعبّر عن الأناقة والغاية. شاهد المشروع كاملًا في أعمالنا."
+    }
+  },
+  "summary": {
+    "en": "Cotê, the ultimate tanning experience, blends the art of sun-kissed perfection with skin-loving care. Whether you choose the rich, nourishing tanning oil or the smooth, hydrating gel, Cotê delivers a natural, radiant glow, with luxurious ingredients designed to hydrate, protect, and enhance your skin while you soak up the sun.",
+    "ar": "Cotê هي تجربة التسمير المثالية التي تجمع بين فن اللون البرونزي والعناية بالبشرة. سواء اخترت الزيت المغذي أو الجل المرطب، تمنحك Cotê لمعة طبيعية مشرقة، بمكونات فاخرة ترطب بشرتك وتحميها وتبرز جمالها تحت الشمس."
+  },
+  "meta": {
+    "strategy": {
+      "en": "Brand Strategy, Digital Strategy",
+      "ar": "استراتيجية العلامة، الاستراتيجية الرقمية"
+    },
+    "design": {
+      "en": "Branding, Identity, Packaging",
+      "ar": "الهوية، التصميم البصري، التغليف"
+    }
+  },
+  "sections": [
+    {
+      "heading": {
+        "en": "Building a luxurious beauty experience through strategic branding and visual excellence.",
+        "ar": "بناء تجربة جمال فاخرة عبر هوية استراتيجية وتميّز بصري."
+      },
+      "text": {
+        "en": [
+          "We crafted Côte from its authentic roots, blending timeless elegance with the warmth of a private, intimate retreat. From brand identity to social media strategy, we brought this exclusive, sun-kissed experience to life, transforming a vision into a luxury tanning experience.",
+          "By combining stunning visuals, engaging content, and targeted campaigns, we ensured it not only shines in the marketplace but also fosters a loyal, sun-kissed community."
+        ],
+        "ar": [
+          "صنعنا Côte انطلاقًا من جذورها الأصيلة، فمزجنا الأناقة الخالدة بدفء الملاذ الخاص. من الهوية البصرية إلى استراتيجية السوشيال ميديا، أحيينا هذه التجربة الحصرية وحوّلنا الرؤية إلى تجربة تسمير فاخرة.",
+          "وبالجمع بين الصور المبهرة والمحتوى الجذاب والحملات الموجهة، لم تتألق العلامة في السوق فحسب، بل بنت مجتمعًا وفيًا من محبيها."
+        ]
+      },
+      "media": [
+        {
+          "type": "image",
+          "src": "images/tote-bag.webp",
+          "alt": "Cote tote bag mockup"
+        },
+        {
+          "type": "image",
+          "src": "images/brand-board.webp",
+          "alt": "Cote brand board"
+        }
+      ],
+      "layout": "grid-2"
+    },
+    {
+      "label": {
+        "en": "01. Packaging",
+        "ar": "01. التغليف"
+      },
+      "heading": {
+        "en": "Premium packaging design that elevates the tanning experience.",
+        "ar": "تصميم تغليف فاخر يرتقي بتجربة التسمير."
+      },
+      "text": {
+        "en": [
+          "Côte bursts with vibrant colors that evoke the warmth and energy of sun-kissed skin. Its packaging combines vibrant blue, soft pink, and rich brown for a perfect balance of elegance and energy.",
+          "The calming blue evokes the tranquil sea, the warm pink adds femininity and playfulness, and the deep brown grounds the design with luxury and sophistication."
+        ],
+        "ar": [
+          "تنبض Côte بألوان حيوية تستحضر دفء البشرة البرونزية وطاقتها. يجمع تغليفها بين الأزرق الحيوي والوردي الناعم والبني الغني في توازن مثالي بين الأناقة والحيوية.",
+          "يستحضر الأزرق الهادئ صفاء البحر، ويضيف الوردي الدافئ لمسة أنثوية مرحة، بينما يمنح البني العميق التصميم إحساسًا بالفخامة والرقي."
+        ]
+      },
+      "media": [
+        {
+          "type": "image",
+          "src": "images/pack-1.webp",
+          "alt": "Cote packaging"
+        },
+        {
+          "type": "image",
+          "src": "images/pack-2.webp",
+          "alt": "Cote packaging"
+        },
+        {
+          "type": "image",
+          "src": "images/pack-3.webp",
+          "alt": "Cote packaging"
+        }
+      ],
+      "layout": "grid-3"
+    },
+    {
+      "label": {
+        "en": "Colour story",
+        "ar": "قصة الألوان"
+      },
+      "palette": [
+        {
+          "image": "images/palette-sand.webp",
+          "name": {
+            "en": "Nature Sand",
+            "ar": "رمال الطبيعة"
+          },
+          "text": {
+            "en": "Earthy browns blend seamlessly with touches of gold, celebrating nature's grounding elements.",
+            "ar": "درجات بنية ترابية تمتزج بلمسات ذهبية احتفاءً بعناصر الطبيعة."
+          }
+        },
+        {
+          "image": "images/palette-sunset.webp",
+          "name": {
+            "en": "Skin Sunset",
+            "ar": "غروب البشرة"
+          },
+          "text": {
+            "en": "Warm pink hues dance with coral undertones, reflecting the sky's golden-hour radiance.",
+            "ar": "درجات وردية دافئة بلمسات مرجانية تعكس إشراقة السماء وقت الغروب."
+          }
+        },
+        {
+          "image": "images/palette-sea.webp",
+          "name": {
+            "en": "Tranquility Sea",
+            "ar": "بحر السكينة"
+          },
+          "text": {
+            "en": "Crystal-clear blues merge with gentle aqua tones, capturing the Mediterranean's serene waters.",
+            "ar": "أزرق صافٍ يمتزج بدرجات مائية هادئة تحاكي مياه المتوسط الساكنة."
+          }
+        }
+      ]
+    },
+    {
+      "label": {
+        "en": "02. Branding Materials",
+        "ar": "02. مواد الهوية"
+      },
+      "heading": {
+        "en": "Crafting Côte's luxe branding materials.",
+        "ar": "صناعة مواد هوية فاخرة لـ Côte."
+      },
+      "text": {
+        "en": [
+          "The signature jars feature a matte gradient finish, transitioning through sun-gradient colors that embody the brand's coastal essence. Custom embossed detailing adds sophisticated texture while golden accents elevate the luxury experience.",
+          "Each canvas beauty bag showcases delicate tonal embroidery featuring Côte's refined logo and patterns. Sustainably sourced materials and premium hardware reflect the brand's commitment to mindful luxury."
+        ],
+        "ar": [
+          "تتميز العبوات الأيقونية بلمسة نهائية مطفأة متدرجة بألوان الشمس تجسّد روح العلامة الساحلية، مع نقوش بارزة تضيف ملمسًا راقيًا ولمسات ذهبية ترفع مستوى الفخامة.",
+          "وتحمل كل حقيبة تجميل قماشية تطريزًا رقيقًا بشعار Côte ونقوشها، بخامات مستدامة وإكسسوارات فاخرة تعكس التزام العلامة بالفخامة الواعية."
+        ]
+      }
+    },
+    {
+      "label": {
+        "en": "03. Reels Production",
+        "ar": "03. إنتاج الريلز"
+      },
+      "heading": {
+        "en": "Crafting Mediterranean elegance by producing reels.",
+        "ar": "أناقة متوسطية في ريلز من إنتاجنا."
+      },
+      "text": {
+        "en": [
+          "Using Côte products and carefully chosen stock footage, we produced reels that capture the vibe of summer and daily tanning-oil rituals."
+        ],
+        "ar": [
+          "باستخدام منتجات Côte ولقطات مختارة بعناية، أنتجنا ريلز تنقل أجواء الصيف وطقوس استخدام زيت التسمير اليومية."
+        ]
+      }
+    },
+    {
+      "label": {
+        "en": "04. Social Media",
+        "ar": "04. السوشيال ميديا"
+      },
+      "heading": {
+        "en": "Engaging social media content that glows.",
+        "ar": "محتوى سوشيال ميديا يتوهّج."
+      },
+      "text": {
+        "en": [
+          "Côte's social media presence mirrors its branding: inviting, inspirational, and aspirational, with carefully curated imagery, engaging content, and a consistent tone."
+        ],
+        "ar": [
+          "يعكس حضور Côte على السوشيال ميديا هويتها: جذاب وملهم وطموح، بصور منتقاة بعناية ومحتوى تفاعلي ونبرة متسقة."
+        ]
+      },
+      "media": [
+        {
+          "type": "video",
+          "src": "/assets/video/comp-2-1-4.mp4",
+          "poster": "/assets/video/comp-2-1-4.webp",
+          "alt": "Cote reel",
+          "square": true
+        },
+        {
+          "type": "video",
+          "src": "/assets/video/cote-new-2.mp4",
+          "poster": "/assets/video/cote-new-2.webp",
+          "alt": "Cote reel",
+          "square": true
+        },
+        {
+          "type": "video",
+          "src": "/assets/video/cote-new-1.mp4",
+          "poster": "/assets/video/cote-new-1.webp",
+          "alt": "Cote reel",
+          "square": true
+        },
+        {
+          "type": "image",
+          "src": "images/social-01.webp",
+          "alt": "Cote social post"
+        },
+        {
+          "type": "image",
+          "src": "images/social-02.webp",
+          "alt": "Cote social post"
+        },
+        {
+          "type": "image",
+          "src": "images/social-03.webp",
+          "alt": "Cote social post"
+        },
+        {
+          "type": "image",
+          "src": "images/social-04.webp",
+          "alt": "Cote social post"
+        },
+        {
+          "type": "image",
+          "src": "images/social-05.webp",
+          "alt": "Cote social post"
+        },
+        {
+          "type": "image",
+          "src": "images/social-06.webp",
+          "alt": "Cote social post"
+        },
+        {
+          "type": "image",
+          "src": "images/social-07.webp",
+          "alt": "Cote social post"
+        },
+        {
+          "type": "image",
+          "src": "images/social-08.webp",
+          "alt": "Cote social post"
+        },
+        {
+          "type": "image",
+          "src": "images/social-09.webp",
+          "alt": "Cote social post"
+        },
+        {
+          "type": "image",
+          "src": "images/social-10.webp",
+          "alt": "Cote social post"
+        },
+        {
+          "type": "image",
+          "src": "images/social-11.webp",
+          "alt": "Cote social post"
+        },
+        {
+          "type": "image",
+          "src": "images/social-12.webp",
+          "alt": "Cote social post"
+        }
+      ],
+      "layout": "grid-3"
+    }
+  ],
+  "color": "#433123",
+  "date": "2024-10-01",
+  "displayTitle": "Côte",
+  "intro": {
+    "bg": "linear-gradient(105deg,#e98ba1 0%,#ebaab6 38%,#d4dfe9 72%,#b1e2fb 100%)",
+    "ghost": "rgba(150,40,75,.14)"
+  }
+}
