@@ -97,7 +97,7 @@ const nl2br = (s) => esc(s).replace(/\n/g, '<br>');
 const L = (p, lang) => (lang !== 'ar' || /^\/blog\/.+/.test(p) || /^https?:/.test(p) ? p : p === '/' ? '/ar/' : '/ar' + p);
 const abs = (p) => BASE + p;
 const minutes = (html) => Math.max(1, Math.round(html.replace(/<[^>]+>/g, ' ').split(/\s+/).length / 220));
-const fmtDate = (d, lang) => d ? new Date(d + 'T00:00:00Z').toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : '';
+const fmtDate = (d, lang) => d ? new Date(d + 'T00:00:00Z').toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : '';
 
 // read WebP/PNG/JPEG dimensions without dependencies (prevents layout shift)
 const dimCache = new Map();
@@ -208,6 +208,7 @@ const brandIco = {
   instagram: 'M12 2.16c3.2 0 3.58.01 4.85.07 1.17.05 1.8.25 2.23.41.56.22.96.48 1.38.9.42.42.68.82.9 1.38.16.42.36 1.06.41 2.23.06 1.27.07 1.65.07 4.85s-.01 3.58-.07 4.85c-.05 1.17-.25 1.8-.41 2.23-.22.56-.48.96-.9 1.38-.42.42-.82.68-1.38.9-.42.16-1.06.36-2.23.41-1.27.06-1.65.07-4.85.07s-3.58-.01-4.85-.07c-1.17-.05-1.8-.25-2.23-.41-.56-.22-.96-.48-1.38-.9-.42-.42-.68-.82-.9-1.38-.16-.42-.36-1.06-.41-2.23-.06-1.27-.07-1.65-.07-4.85s.01-3.58.07-4.85c.05-1.17.25-1.8.41-2.23.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.42-.16 1.06-.36 2.23-.41 1.27-.06 1.65-.07 4.85-.07M12 0C8.74 0 8.33.01 7.05.07 5.78.13 4.9.33 4.14.63c-.79.31-1.46.72-2.13 1.38C1.35 2.68.94 3.35.63 4.14.33 4.9.13 5.78.07 7.05.01 8.33 0 8.74 0 12s.01 3.67.07 4.95c.06 1.27.26 2.15.56 2.91.31.79.72 1.46 1.38 2.13.67.66 1.34 1.07 2.13 1.38.76.3 1.64.5 2.91.56C8.33 23.99 8.74 24 12 24s3.67-.01 4.95-.07c1.27-.06 2.15-.26 2.91-.56.79-.31 1.46-.72 2.13-1.38.66-.67 1.07-1.34 1.38-2.13.3-.76.5-1.64.56-2.91.06-1.28.07-1.69.07-4.95s-.01-3.67-.07-4.95c-.06-1.27-.26-2.15-.56-2.91-.31-.79-.72-1.46-1.38-2.13C21.32 1.35 20.65.94 19.86.63c-.76-.3-1.64-.5-2.91-.56C15.67.01 15.26 0 12 0z M12 5.84A6.16 6.16 0 1 0 12 18.16 6.16 6.16 0 0 0 12 5.84M12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8z M18.41 4.15a1.44 1.44 0 1 0 0 2.88 1.44 1.44 0 0 0 0-2.88z',
   facebook: 'M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07c0 6.02 4.39 11.01 10.13 11.93v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.49h-2.8V24C19.61 23.08 24 18.09 24 12.07z',
 };
+const shareIco = { fb: brandIco.facebook, x: 'M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z', in: 'M20.45 20.45h-3.56v-5.57c0-1.33-.03-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45z' };
 const logoImgs = (h) => `<img src="/assets/img/brand/mark-dark.webp" alt="admepro" width="${Math.round(h * 972 / 900)}" height="${h}" class="logo-on-light"><img src="/assets/img/brand/mark-light.webp" alt="" width="${Math.round(h * 972 / 900)}" height="${h}" class="logo-on-dark" aria-hidden="true">`;
 
 function header(lang, current, otherHref) {
@@ -749,10 +750,11 @@ function projectPage(p, lang) {
   const heroMedia = p.heroVideo
     ? `<video class="phero-bg" autoplay muted loop playsinline preload="metadata" poster="${esc(p.heroVideo.poster)}"><source src="${esc(p.heroVideo.src)}" type="video/mp4"></video>`
     : img(projImg(p, p.hero || p.cover), p.title, { cls: 'phero-bg', eager: true, sizes: '100vw' });
-  const sections = (p.sections || []).map((s) => `
+  const introSec = p.sections?.[0] && !p.sections[0].label && p.sections[0].heading && p.sections[0].text ? p.sections[0] : null;
+  const sections = (p.sections || []).filter((s) => s !== introSec || s.media?.length).map((s) => `
 <section class="psec reveal">
   <div class="wrap">
-    ${s.label || s.heading || s.text ? `<div class="psec-head${s.text ? ' split' : ''}">
+    ${s !== introSec && (s.label || s.heading || s.text) ? `<div class="psec-head${s.text ? ' split' : ''}">
       <div>${s.label ? `<p class="eyebrow">${esc(tx(s.label, lang))}</p>` : ''}${s.heading ? `<h2 class="h3 caps">${esc(tx(s.heading, lang))}</h2>` : ''}</div>
       ${s.text ? `<div class="prose">${tx(s.text, lang).map((x) => `<p>${esc(x)}</p>`).join('')}</div>` : ''}
     </div>` : ''}
@@ -761,6 +763,14 @@ function projectPage(p, lang) {
     ${s.media?.length ? `<div class="pmedia ${s.layout || 'grid-2'}">${s.media.map((m) => media(p, m, lang)).join('')}</div>` : ''}
   </div>
 </section>`).join('');
+  const introHtml = introSec ? `<section class="gintro" style="--nc:${esc(p.color || '#1f1e22')}">
+  <span class="ghost" aria-hidden="true" dir="ltr">${esc(p.title)}</span>
+  <div class="wrap gintro-in">
+    <p class="gintro-label">${esc(p.title)}<br>${esc(catLabels[0] || '')}</p>
+    <h2 class="gintro-h">${esc(tx(introSec.heading, lang))}</h2>
+    <div class="gintro-text">${tx(introSec.text, lang).map((x) => `<p>${esc(x)}</p>`).join('')}</div>
+  </div>
+</section>` : '';
   const stats = p.stats?.length ? `<section class="section-sm"><div class="wrap split reveal"><h2 class="h3">${esc(t('byNumbers', lang))}</h2><ul class="stats red-nums">${p.stats.map((s) => `<li><span class="stat-num"><sup>${esc(s.prefix || '')}</sup><span data-count="${s.value}">${s.value}</span><sup>${esc(s.suffix || '')}</sup></span><span class="stat-label">${esc(tx(s.label, lang))}</span></li>`).join('')}</ul></div></section>` : '';
   const credits = p.credits?.length ? `<section class="credits"><div class="wrap credits-in">
     <h2 class="h4">${esc(t('peopleBehind', lang))}</h2>
@@ -770,9 +780,10 @@ function projectPage(p, lang) {
 <section class="phero">
   ${heroMedia}
   <div class="wrap phero-in">
-    <p class="phero-cats">${esc(catLabels.join(', '))}</p>
+    <p class="phero-cats">${esc(catLabels.join(', '))}${p.date ? ` · ${esc(fmtDate(p.date, lang))}` : ''}</p>
     <h1 class="h1">${esc(p.title)}</h1>
   </div>
+  <div class="phero-share" aria-label="${lang === 'ar' ? 'مشاركة' : 'Share'}">${[['Facebook', `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(abs(L(`/project/${p.slug}/`, lang)))}`, shareIco.fb], ['X', `https://twitter.com/intent/tweet?url=${encodeURIComponent(abs(L(`/project/${p.slug}/`, lang)))}&text=${encodeURIComponent(p.title)}`, shareIco.x], ['LinkedIn', `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(abs(L(`/project/${p.slug}/`, lang)))}`, shareIco.in]].map(([n, u, d]) => `<a href="${u}" rel="noopener" target="_blank" aria-label="${n}"><svg class="i no-flip" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="${d}"/></svg></a>`).join('')}</div>
 </section>
 <section class="section-sm"><div class="wrap pintro reveal">
   <p class="pintro-text">${esc(tx(p.summary, lang))}</p>
@@ -780,17 +791,11 @@ function projectPage(p, lang) {
     ${p.tags?.length ? `<div><dt>${esc(t('tags', lang))}</dt><dd class="ptags">${p.tags.map((k) => `<a href="${L('/portfolio/', lang)}?tag=${k}">${esc(tx(tags[k], lang))}</a>`).join('')}</dd></div>` : ''}
   </dl>
 </div></section>
+${introHtml}
 ${sections}
 ${stats}
 ${credits}
-<section class="next-sec" style="--nc:${esc(p.color || '#1f1e22')}">
-  <div class="wrap">
-    <a class="next-card" href="${L(`/project/${next.slug}/`, lang)}" aria-label="${esc(t('nextProject', lang))}: ${esc(next.title)}">
-      <span class="next-img">${img(projImg(next, next.cover), '', { sizes: '(min-width: 900px) 544px, 100vw' })}</span>
-      <span class="next-body"><span class="next-label">${esc(t('nextProject', lang))}</span><span class="next-title">${esc(next.title)}</span></span>
-    </a>
-  </div>
-</section>
+<a class="next-fixed" data-next href="${L(`/project/${next.slug}/`, lang)}" aria-label="${esc(t('nextProject', lang))}: ${esc(next.title)}">${img(projImg(next, next.cover), '', { sizes: '260px' })}<span class="next-body"><span class="next-label">${esc(t('nextProject', lang))}</span><span class="next-title">${esc(next.title)}</span></span></a>
 <section class="section-sm tint"><div class="wrap cta-band-in">
   <div>${eyebrow(tx(PR.ctaEyebrow, lang))}<h2 class="h3">${nl2br(tx(PR.ctaTitle, lang))}</h2><p class="muted small">${esc(tx(PR.ctaText, lang))}</p></div>
   <a class="btn btn-dark" href="${L('/contact-us/', lang)}">${esc(t('getQuote', lang))} ${icon.arrow}</a>

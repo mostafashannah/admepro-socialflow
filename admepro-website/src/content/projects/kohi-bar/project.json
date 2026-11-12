@@ -18,7 +18,6 @@
     "packaging"
   ],
   "cover": "images/cover.webp",
-  "hero": "images/hero.webp",
   "seo": {
     "title": {
       "en": "Coffee Brand Identity Design Egypt: Kohi Bar Case Study | admepro",
@@ -46,7 +45,7 @@
   "sections": [
     {
       "heading": {
-        "en": "Our collaboration with Kohi Bar gave their coffee a distinctive presence.",
+        "en": "Our collaboration with Kohi Bar established their distinctive coffee with presence.",
         "ar": "منح تعاوننا مع Kohi Bar قهوتهم حضورًا مميزًا."
       },
       "text": {
@@ -58,17 +57,7 @@
           "شمل المشروع نظامًا بصريًا متكاملًا، من تصميم التغليف المميز إلى المواد المطبوعة. كل عنصر يعكس التزام Kohi Bar بحرفية القهوة، لتصبح التجربة قريبة من عشّاق القهوة الحقيقيين.",
           "وضعنا استراتيجية شاملة تموضع Kohi Bar في سوق القهوة المختصة، مع إبراز طرق التحضير الفريدة بهوية تخاطب محبي القهوة العصريين."
         ]
-      },
-      "media": [
-        {
-          "type": "video",
-          "src": "/assets/video/v2mp4-1.mp4",
-          "poster": "/assets/video/v2mp4-1.webp",
-          "alt": "Kohi Bar brand film",
-          "loop": true
-        }
-      ],
-      "layout": "wide"
+      }
     },
     {
       "label": {
@@ -124,5 +113,10 @@
       "layout": "grid-3"
     }
   ],
-  "color": "#2f3830"
+  "color": "#2f3830",
+  "date": "2023-12-15",
+  "heroVideo": {
+    "src": "/assets/video/v2mp4-1.mp4",
+    "poster": "/assets/video/v2mp4-1.webp"
+  }
 }

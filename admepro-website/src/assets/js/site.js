@@ -172,6 +172,13 @@
     });
   }
 
+  // floating "next project" card: hides when the footer area is on screen
+  const nextCard = $('[data-next]');
+  if (nextCard && 'IntersectionObserver' in window) {
+    const end = $('.cta-band, .cfooter');
+    if (end) new IntersectionObserver((e) => nextCard.classList.toggle('off', e.some((x) => x.isIntersecting))).observe(end);
+  }
+
   // search (bottom-left button). The index is loaded only when someone opens search.
   const sOpen = $('[data-search-open]'); const sBox = $('[data-search]');
   if (sOpen && sBox) {

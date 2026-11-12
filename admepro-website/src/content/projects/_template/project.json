@@ -1,34 +1,73 @@
 {
   "_help": "Template used by `npm run new-project`. Folders starting with _ are ignored by the build. See ADDING-A-PROJECT.md.",
   "title": "Project Name",
-  "client": { "en": "Client name", "ar": "اسم العميل" },
+  "client": {
+    "en": "Client name",
+    "ar": "اسم العميل"
+  },
   "order": 99,
   "published": true,
   "featured": false,
-  "categories": ["branding"],
-  "tags": ["egypt"],
+  "categories": [
+    "branding"
+  ],
+  "tags": [
+    "egypt"
+  ],
   "cover": "images/cover.webp",
   "seo": {
-    "title": { "en": "Project Name: what we did, where | admepro", "ar": "اسم المشروع: ماذا قدّمنا | admepro" },
-    "description": { "en": "One sentence (120–155 characters) describing the work and the result.", "ar": "جملة واحدة تصف العمل والنتيجة." }
+    "title": {
+      "en": "Project Name: what we did, where | admepro",
+      "ar": "اسم المشروع: ماذا قدّمنا | admepro"
+    },
+    "description": {
+      "en": "One sentence (120–155 characters) describing the work and the result.",
+      "ar": "جملة واحدة تصف العمل والنتيجة."
+    }
   },
   "summary": {
     "en": "Two or three sentences about the client and what we did for them.",
     "ar": "جملتان أو ثلاث عن العميل وما قدّمناه له."
   },
   "meta": {
-    "strategy": { "en": "Brand Strategy", "ar": "استراتيجية العلامة" },
-    "design": { "en": "Branding, Identity", "ar": "الهوية، التصميم البصري" }
+    "strategy": {
+      "en": "Brand Strategy",
+      "ar": "استراتيجية العلامة"
+    },
+    "design": {
+      "en": "Branding, Identity",
+      "ar": "الهوية، التصميم البصري"
+    }
   },
   "sections": [
     {
-      "label": { "en": "01. Section label", "ar": "01. عنوان القسم" },
-      "heading": { "en": "A short, bold headline for this part of the work.", "ar": "عنوان قصير وقوي لهذا الجزء من العمل." },
-      "text": { "en": ["Paragraph one.", "Paragraph two."], "ar": ["الفقرة الأولى.", "الفقرة الثانية."] },
+      "label": {
+        "en": "01. Section label",
+        "ar": "01. عنوان القسم"
+      },
+      "heading": {
+        "en": "A short, bold headline for this part of the work.",
+        "ar": "عنوان قصير وقوي لهذا الجزء من العمل."
+      },
+      "text": {
+        "en": [
+          "Paragraph one.",
+          "Paragraph two."
+        ],
+        "ar": [
+          "الفقرة الأولى.",
+          "الفقرة الثانية."
+        ]
+      },
       "media": [
-        { "type": "image", "src": "images/cover.webp", "alt": "Describe the image" }
+        {
+          "type": "image",
+          "src": "images/cover.webp",
+          "alt": "Describe the image"
+        }
       ],
       "layout": "grid-3"
     }
-  ]
+  ],
+  "date": "2026-01-01"
 }
