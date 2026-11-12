@@ -36,14 +36,14 @@ This creates the folder. It also converts every photo to WebP (max 2000 px) with
 | `cover` | yes | `images/cover.webp`: used on cards, in shares and as the hero |
 | `hero` | no | A different hero image, if the cover is a square crop |
 | `heroVideo` | no | Full-screen banner video: `{ "src": "/assets/video/x.mp4", "poster": "/assets/video/x.webp" }` (used by Kohi Bar, Skycorp, Autogate) |
-
-If the first section has no `label`, it is shown as the big coloured intro block (heading on the right, paragraphs on the left, the project name faintly down the edge).
 | `seo.title` / `seo.description` | recommended | 50–60 / 120–155 characters, EN + AR |
 | `summary` | yes | 2–3 sentences, EN + AR |
 | `meta.strategy` / `meta.design` | no | Short lists, EN + AR |
 | `sections[]` | no | Each one: optional `label`, `heading`, `text` (`{ "en": [paragraphs], "ar": [paragraphs] }`), `media[]` and `layout` |
 | `stats[]` | no | `{ "value": 2500, "prefix": "+", "suffix": "K", "label": {…} }` |
 | `credits[]` | no | `{ "role": {…}, "people": [{ "name": "…", "title": {…} }] }` |
+
+If the first section has no `label`, it is shown as the big coloured intro block (heading on the right, paragraphs on the left, the project name faintly down the edge).
 
 ### Media types (inside `sections[].media`)
 ```json
