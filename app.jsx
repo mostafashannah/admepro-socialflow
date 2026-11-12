@@ -4187,6 +4187,7 @@ const Icons = {
   paperclip:["M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"],
   chat: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
   // ── Brand glyphs (filled — render with fill=color, stroke=none via ChannelIcon) ──
+  liBrand: "M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z",
   fbBrand: "M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07c0 6.02 4.39 11.01 10.13 11.93v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.49h-2.8V24C19.61 23.08 24 18.09 24 12.07z",
   igBrand: "M12 2.16c3.2 0 3.58.01 4.85.07 1.17.05 1.8.25 2.23.41.56.22.96.48 1.38.9.42.42.68.82.9 1.38.16.42.36 1.06.41 2.23.06 1.27.07 1.65.07 4.85s-.01 3.58-.07 4.85c-.05 1.17-.25 1.8-.41 2.23-.22.56-.48.96-.9 1.38-.42.42-.82.68-1.38.9-.42.16-1.06.36-2.23.41-1.27.06-1.65.07-4.85.07s-3.58-.01-4.85-.07c-1.17-.05-1.8-.25-2.23-.41-.56-.22-.96-.48-1.38-.9-.42-.42-.68-.82-.9-1.38-.16-.42-.36-1.06-.41-2.23-.06-1.27-.07-1.65-.07-4.85s.01-3.58.07-4.85c.05-1.17.25-1.8.41-2.23.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.42-.16 1.06-.36 2.23-.41 1.27-.06 1.65-.07 4.85-.07M12 0C8.74 0 8.33.01 7.05.07 5.78.13 4.9.33 4.14.63c-.79.31-1.46.72-2.13 1.38C1.35 2.68.94 3.35.63 4.14.33 4.9.13 5.78.07 7.05.01 8.33 0 8.74 0 12s.01 3.67.07 4.95c.06 1.27.26 2.15.56 2.91.31.79.72 1.46 1.38 2.13.67.66 1.34 1.07 2.13 1.38.76.3 1.64.5 2.91.56C8.33 23.99 8.74 24 12 24s3.67-.01 4.95-.07c1.27-.06 2.15-.26 2.91-.56.79-.31 1.46-.72 2.13-1.38.66-.67 1.07-1.34 1.38-2.13.3-.76.5-1.64.56-2.91.06-1.28.07-1.69.07-4.95s-.01-3.67-.07-4.95c-.06-1.27-.26-2.15-.56-2.91-.31-.79-.72-1.46-1.38-2.13C21.32 1.35 20.65.94 19.86.63c-.76-.3-1.64-.5-2.91-.56C15.67.01 15.26 0 12 0z M12 5.84A6.16 6.16 0 1 0 12 18.16 6.16 6.16 0 0 0 12 5.84M12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8z M18.41 4.15a1.44 1.44 0 1 0 0 2.88 1.44 1.44 0 0 0 0-2.88z",
   msgrBrand: "M12 0C5.24 0 0 4.95 0 11.64c0 3.5 1.44 6.53 3.77 8.62.2.18.31.43.32.7l.07 2.13c.02.68.72 1.12 1.34.85l2.38-1.05c.21-.09.44-.11.66-.05 1.09.3 2.26.46 3.46.46 6.76 0 12-4.95 12-11.64C24 4.95 18.76 0 12 0zm7.2 8.94l-3.52 5.59c-.56.89-1.76 1.11-2.6.48l-2.8-2.1a.72.72 0 0 0-.86 0l-3.79 2.88c-.5.38-1.16-.22-.82-.76l3.52-5.59c.56-.89 1.76-1.11 2.6-.48l2.8 2.1c.26.19.6.19.86 0l3.79-2.88c.5-.38 1.16.22.82.76z",
@@ -26245,7 +26246,7 @@ const CAREERS_MORE_LINKS = [
   {label:"Digital", url:"https://admepro.com/digital/"},
   {label:"Production", url:"https://admepro.com/production/"},
   {label:"GCC & KSA", url:"https://admepro.com/gcc-ksa-ai-marketing-agency/"},
-  {label:"Blog", url:"https://admepro.com/blog/"},
+  {label:"Insights", url:"https://admepro.com/insights/"},
 ];
 
 // Full-screen menu overlay matching admepro.com's own site menu style —
@@ -26271,6 +26272,7 @@ function CareersFullMenu({onClose}) {
     {icon:Icons.vimeoBrand, url:"https://vimeo.com/admepro", label:"Vimeo"},
     {icon:Icons.igBrand, url:"https://www.instagram.com/admeproagency", label:"Instagram"},
     {icon:Icons.fbBrand, url:"https://facebook.com/admepro", label:"Facebook"},
+    {icon:Icons.liBrand, url:"https://www.linkedin.com/company/5040327/", label:"LinkedIn"},
   ];
   return (
     <div className={"sf-fullmenu"+(open?" open":"")} role="dialog" aria-modal="true" aria-label="Menu">
@@ -26280,7 +26282,7 @@ function CareersFullMenu({onClose}) {
         .sf-fullmenu .fullmenu-x{position:absolute;top:20px;right:20px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.1);color:#fff;display:grid;place-items:center;border:none;cursor:pointer;z-index:2}
         .sf-fullmenu .fullmenu-x:hover{color:#d90a2c}
         .sf-fullmenu .fullmenu-grid{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr);align-content:center;gap:56px;padding:110px max(24px,8vw) 60px}
-        @media (min-width:900px){.sf-fullmenu .fullmenu-grid{grid-template-columns:minmax(0,1fr) minmax(260px,22%);align-items:center;gap:40px;padding-block:60px}}
+        @media (min-width:900px){.sf-fullmenu .fullmenu-grid{grid-template-columns:minmax(0,1fr) minmax(300px,22.2vw);align-items:center;gap:40px;padding:60px 6.2vw 60px 19.2vw}}
         .sf-fullmenu .fm-left>*,.sf-fullmenu .fm-nav .flip,.sf-fullmenu .fm-info>*{opacity:0;transform:translateY(18px);transition:opacity .6s var(--ease),transform .7s var(--ease)}
         .sf-fullmenu.open .fm-nav .flip,.sf-fullmenu.open .fm-left>.fm-more,.sf-fullmenu.open .fm-info>*{opacity:1;transform:none}
         .sf-fullmenu.open .fm-nav .flip:nth-child(1){transition-delay:.12s}.sf-fullmenu.open .fm-nav .flip:nth-child(2){transition-delay:.18s}
@@ -26290,7 +26292,7 @@ function CareersFullMenu({onClose}) {
         .sf-fullmenu.open .fm-info>*:nth-child(3){transition-delay:.46s}.sf-fullmenu.open .fm-info>*:nth-child(4){transition-delay:.5s}
         .sf-fullmenu .fm-left>.fm-nav{opacity:1;transform:none}
         .sf-fullmenu .fm-nav{display:flex;flex-direction:column;justify-content:center}
-        .sf-fullmenu .flip{--fs:clamp(44px,5.6vw,82px);--lh:1.08;display:block;overflow:hidden;height:calc(var(--fs) * var(--lh));text-decoration:none}
+        .sf-fullmenu .flip{--fs:clamp(44px,5.9vw,92px);--lh:1.08;display:block;overflow:hidden;height:calc(var(--fs) * var(--lh));text-decoration:none}
         .sf-fullmenu .flip-inner{display:block;transition:transform .55s cubic-bezier(.7,0,.2,1);will-change:transform}
         .sf-fullmenu .flip:hover .flip-inner,.sf-fullmenu .flip:active .flip-inner,.sf-fullmenu .flip:focus-visible .flip-inner{transform:translateY(-50%)}
         .sf-fullmenu .flip-face{display:block;height:calc(var(--fs) * var(--lh));font:700 var(--fs)/var(--lh) var(--head);color:#fff;text-transform:uppercase;letter-spacing:-0.03em;white-space:nowrap}
@@ -26300,14 +26302,13 @@ function CareersFullMenu({onClose}) {
         .sf-fullmenu .mlink{color:rgba(255,255,255,.6);transition:color .2s;text-decoration:none}
         .sf-fullmenu .mlink:not(:last-child)::after{content:"·";margin-inline:.7em;color:rgba(255,255,255,.35)}
         .sf-fullmenu .mlink:hover,.sf-fullmenu .mlink:focus-visible,.sf-fullmenu .mlink[aria-current]{color:#fff}
-        .sf-fullmenu .fm-info{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:28px;color:rgba(255,255,255,.55);font:400 16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;text-align:start}
+        .sf-fullmenu .fm-info{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:28px;color:rgba(255,255,255,.55);font:300 16px/1.65 "Montserrat",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;text-align:start}
         .sf-fullmenu .fm-info p{margin:0}
         .sf-fullmenu .fm-h{font-weight:800;color:#fff;margin-bottom:8px !important}
-        .sf-fullmenu .fm-social{display:flex;gap:10px;margin-top:8px}
-        .sf-fullmenu .fm-social a{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.1);display:grid;place-items:center;color:#fff;transition:color .15s}
+        .sf-fullmenu .fm-social{display:flex;flex-wrap:nowrap;gap:clamp(8px,.75vw,15px);margin-top:8px}
+        .sf-fullmenu .fm-social a{width:clamp(40px,2.6vw,52px);height:clamp(40px,2.6vw,52px);flex-shrink:0;border-radius:50%;background:rgba(255,255,255,.1);display:grid;place-items:center;color:#fff;transition:color .15s}
         .sf-fullmenu .fm-social a:hover{color:#d90a2c}
-        .sf-fullmenu .fm-lang{font:700 15px "Montserrat",system-ui,sans-serif;color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:99px;padding:8px 18px;text-decoration:none}
-        .sf-fullmenu .fm-lang:hover{color:#d90a2c;border-color:#d90a2c}
+        .sf-fullmenu .fm-social .fm-lang{font:700 15px "Montserrat",system-ui,sans-serif;text-decoration:none}
         @media (prefers-reduced-motion: reduce){.sf-fullmenu,.sf-fullmenu *{transition:none !important}}
       `}</style>
       <button className="fullmenu-x" onClick={close} aria-label="Close"><Ico d={Icons.x} size={20}/></button>
@@ -26325,11 +26326,11 @@ function CareersFullMenu({onClose}) {
         </div>
         <div className="fm-info">
           <div><p className="fm-h">Get In Touch</p><p>145 El Banafsig 3, New Cairo, Cairo, Egypt</p><p>info@admepro.com</p><p dir="ltr">Ph: +20 100 037 0140</p></div>
-          <div><p className="fm-h">Work Inquiries</p><p>hello@admepro.com</p><p dir="ltr">Ph: +20 100 037 0140</p></div>
+          <div><p className="fm-h">Work inquiries</p><p>hello@admepro.com</p><p dir="ltr">Ph: +20 100 037 0140</p></div>
           <div className="fm-social">
-            {social.map(x=>(<a key={x.label} href={x.url} target="_blank" rel="noopener noreferrer" aria-label={x.label}><Ico d={x.icon} size={15} fill="currentColor" stroke="none"/></a>))}
+            {social.map(x=>(<a key={x.label} href={x.url} target="_blank" rel="noopener noreferrer" aria-label={x.label}><Ico d={x.icon} size={20} fill="currentColor" stroke="none"/></a>))}
+            <a className="fm-lang" href="https://admepro.com/ar/" hrefLang="ar" lang="ar" aria-label="العربية">AR</a>
           </div>
-          <a className="fm-lang" href="https://admepro.com/ar/" hrefLang="ar" lang="ar">AR</a>
         </div>
       </div>
     </div>

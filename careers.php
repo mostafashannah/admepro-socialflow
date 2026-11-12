@@ -95,7 +95,7 @@ if ($indexHtml && preg_match('/\/app\.js\?v=\d+/', $indexHtml, $m)) $appJsTag = 
 <link rel="apple-touch-icon" href="/careers-icons/apple-touch-icon.png"/>
 <link rel="manifest" href="/manifest.json"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&family=DM+Sans:wght@500;600;700&display=swap" rel="stylesheet">
 
 <!-- JSON-LD — one JobPosting per open role, the format Google for Jobs
      and AI answer engines/agents parse directly, without needing to
