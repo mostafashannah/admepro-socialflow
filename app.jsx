@@ -6121,14 +6121,15 @@ function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canF
             {/* Admin/AM only — sends this media straight into the
                 client-facing comment thread as a link, same hand-off as
                 forwarding a comment attachment. Always confirms first. */}
-            {canForward && post.client_id && (asset.url||asset.data) && (
-              <AddToClientAssetsButton url={asset.url||asset.data} name={asset.name} type={(asset.type||"").startsWith("video")?"video":(asset.type||"").startsWith("image")?"image":"file"} clientId={post.client_id} clientName={post.client_name}
-                style={{height:20,borderRadius:5,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",fontSize:9,fontWeight:700,cursor:"pointer"}}/>
-            )}
-            {canForward && onForward && (asset.url||asset.data) && (
-              <button onClick={()=>{ if(confirm(`Forward "${asset.name||"this file"}" to the client-facing comments?`)) onForward(asset); }} style={{height:20,borderRadius:5,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",fontSize:9,fontWeight:700,cursor:"pointer"}}>
-                Forward to Client
-              </button>
+            {canForward && (asset.url||asset.data) && (post.client_id || onForward) && (
+              <div style={{display:"flex",gap:4}}>
+                {post.client_id && <AddToClientAssetsButton url={asset.url||asset.data} name={asset.name} type={(asset.type||"").startsWith("video")?"video":(asset.type||"").startsWith("image")?"image":"file"} clientId={post.client_id} clientName={post.client_name}
+                  label={<><Ico d={Icons.folder2||Icons.upload} size={11} stroke="var(--text2)"/> Assets</>}
+                  style={{flex:1,height:22,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",fontSize:10,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:3}}/>}
+                {onForward && <button title="Forward to the client-facing comments" onClick={()=>{ if(confirm(`Forward "${asset.name||"this file"}" to the client-facing comments?`)) onForward(asset); }}
+                  style={{flex:1,height:22,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",fontSize:10,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>
+                  <Ico d={Icons.send||Icons.arrow} size={11} stroke="var(--text2)"/> Client</button>}
+              </div>
             )}
             {isCarousel&&(
               <div style={{display:"flex",gap:3}}>
@@ -7841,7 +7842,10 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
           {(()=>{
             const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
             const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
-            const media = designAssets.length ? designAssets : designUrls.map(url=>({url}));
+            // Files now live in one place — the Attachments card below. This read-only grid only
+            // remains for older posts that kept their files in design_urls.
+            if(designAssets.length) return null;
+            const media = designUrls.map(url=>({url}));
             if(!media.length) return null;
             const isVertical = ["reel","story"].includes(post.post_type);
             const aspect = isVertical ? "9/16" : "1/1";
@@ -7904,7 +7908,10 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
             add-controls (upload/link) are content-phase-only. */}
         {(post.stage==="content_creation" || isManager || (post.design_assets||[]).length>0)&&(
           <div style={{display:"flex",flexDirection:"column",gap:12,padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-            <h4 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:14}}>Attachments</h4>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+              <h4 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:14}}>Files{(post.design_assets||[]).length?<span style={{color:"var(--text3)",fontWeight:600}}> · {(post.design_assets||[]).length}</span>:null}</h4>
+              {(post.design_assets||[]).length>1&&<button onClick={()=>downloadAllMedia(post.design_assets, post.title||"media")} style={{fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:99,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",cursor:"pointer"}}>⬇ Download all</button>}
+            </div>
             {(()=>{
               const list = Array.isArray(post.design_assets) ? post.design_assets : [];
               const rounds = [...new Set(list.map(a=>Number(a?.round)||0).filter(Boolean))].sort((a,b)=>b-a);
@@ -8068,12 +8075,11 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
           <div style={{display:"flex",flexDirection:"column",gap:12,padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid #8b5cf6aa"}}>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <span style={{fontSize:16}}></span>
-              <h4 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:14}}>Design Assets</h4>
+              <h4 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:14}}>Add design files</h4>
               {assignee&&<span style={{fontSize:11,color:"var(--text3)",marginLeft:"auto"}}>Assigned to {assignee.name}</span>}
             </div>
 
-            {/* Display existing assets */}
-            <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset} onForward={forwardDesignAssetToClient} canForward={currentUser?.role==="admin"||["account_manager","account_director","account_executive"].includes(currentUser?.role)}/>
+            {/* Files show once, in the Attachments card (grouped by submission). */}
 
             {/* File picker — choose from assets or upload new */}
             <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
@@ -8488,16 +8494,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
           ) : activityTab==="internal" ? (
             <>
               <div style={{display:"flex",flexDirection:"column",gap:8,overflowY:"auto",flex:isMobile?"none":1,maxHeight:isMobile?220:undefined}}>
-                {internalComments.map((c,i)=>{
-                  // Stage moves and attachment removals are system events — shown as one quiet line so real comments stand out.
-                  const _sys = c.type==="stage_change" || /^🗑️ Removed attachment/.test(c.content||"");
-                  if(_sys) return (
-                    <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"2px 4px 2px 9px",fontSize:12,color:"var(--text3)",minWidth:0}}>
-                      <span style={{width:10,height:10,borderRadius:"50%",flexShrink:0,background:c.type==="stage_change"?(STAGE_MAP[(Object.keys(STAGE_MAP).find(k=>(c.content||"").includes(STAGE_MAP[k].label))||"")]?.color||"#94a3b8"):"#cbd5e1",boxShadow:"0 0 0 3px var(--surface)"}}/>
-                      <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><b style={{color:"var(--text2)",fontWeight:700}}>{(c.author_name||"System").split(" ")[0]}</b> {(c.content||"").replace(/^Moved to /,"→ ").replace(/^🗑️ /,"")}</span>
-                      <span style={{fontSize:10.5,flexShrink:0}}>{fmtDateTime(c.created_date||c.created_at)}</span>
-                    </div>);
-                  return (
+                {internalComments.map((c,i)=>(
                   <div key={i} style={{display:"flex",gap:10}}>
                     <Avatar name={c.author_name||"S"} size={28} photoUrl={commentAvatarUrl(c, team)}/>
                     <div style={{flex:1,background:c.type==="ai_reply"?"#10b98111":"var(--surface2)",borderRadius:"var(--rs)",padding:"9px 12px",border:`1px solid ${c.type==="ai_reply"?"#10b98155":"var(--border)"}`}}>
@@ -8547,7 +8544,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                       )}
                     </div>
                   </div>
-                );})}
+                ))}
                 {internalComments.length===0&&<p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:16}}>No activity yet</p>}
                 <div ref={commentsEndRef}/>
               </div>
@@ -15818,13 +15815,13 @@ function AddToClientAssetsModal({open, onClose, clientId, clientName, file}) {
   );
 }
 
-function AddToClientAssetsButton({url, name, type, size, clientId, clientName, style}) {
+function AddToClientAssetsButton({url, name, type, size, clientId, clientName, style, label}) {
   const [open, setOpen] = useState(false);
   if(!clientId || !url) return null;
   return (
     <>
       <button onClick={e=>{e.stopPropagation(); setOpen(true);}} title="Add to this client's shared Client Assets folder" style={style||{fontSize:11,color:"var(--text3)",fontWeight:600,background:"none",border:"none",cursor:"pointer",padding:0}}>
-        + Client Assets
+        {label||"+ Client Assets"}
       </button>
       <AddToClientAssetsModal open={open} onClose={()=>setOpen(false)} clientId={clientId} clientName={clientName} file={{url,name,type,size}}/>
     </>
