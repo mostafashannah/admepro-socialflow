@@ -26193,7 +26193,7 @@ function CareersChrome({isDark, setIsDark, children}) {
     <>
       <GStyle wallpaper={isDark?"dark":"light"} accentColor="#d90b2c" photoIsDark={isDark}/>
       <div style={{position:"fixed",top:20,left:20,zIndex:10}}>
-        <a href="https://admepro.com" target="_blank" rel="noreferrer" style={{display:"block"}}>
+        <a href="https://admepro.com" style={{display:"block"}}>
           <img src={isDark?ADMEPRO_LOGO_WHITE:ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:36,width:"auto",objectFit:"contain"}}/>
         </a>
       </div>
@@ -26251,99 +26251,87 @@ const CAREERS_MORE_LINKS = [
 // Full-screen menu overlay matching admepro.com's own site menu style —
 // big bold nav links on the left, contact info + social icons on the right.
 function CareersFullMenu({onClose}) {
-  const {isMobile} = useResponsive();
-  const navFontStyle = {fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:isMobile?"clamp(32px,11vw,44px)":"clamp(40px,8vw,80px)",lineHeight:1.1,color:"#fff",textTransform:"uppercase",letterSpacing:"-0.01em"};
-
-  // onTouchStart below is a no-op handler — iOS Safari silently ignores
-  // :active styles on links unless something in the ancestor chain has a
-  // touch listener attached. Without this, tapping never showed the flip
-  // on iPhone at all.
-  const navBlock = (
-    <div style={{display:"flex",flexDirection:"column",justifyContent:"center",marginLeft:isMobile?0:-100}}>
-      {CAREERS_NAV_LINKS.map(item=>(
-        <a key={item.label} href={item.url} className="careers-nav-flip" onTouchStart={()=>{}}>
-          <span className="careers-nav-flip-inner">
-            <span className="careers-nav-flip-face" style={navFontStyle}>{item.label}</span>
-            <span className="careers-nav-flip-face back" style={navFontStyle}>{item.label}</span>
-          </span>
-        </a>
-      ))}
-      <p role="group" aria-label="More pages" style={{display:"flex",flexWrap:"wrap",alignItems:"center",marginTop:"clamp(24px,3.4vw,40px)",maxWidth:640,fontFamily:"'Montserrat',sans-serif",fontSize:15,fontWeight:500,lineHeight:1.9}}>
-        {CAREERS_MORE_LINKS.map(item=>(
-          <a key={item.label} href={item.url} className="careers-more-link">{item.label}</a>
-        ))}
-        <a href="/careers" className="careers-more-link" aria-current="page">Career</a>
-      </p>
-    </div>
-  );
-
-  const infoBlock = (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:28,color:"rgba(255,255,255,0.6)",fontSize:15,textAlign:"left"}}>
-      <div>
-        <p style={{fontWeight:800,color:"#fff",marginBottom:8}}>Get In Touch</p>
-        <p>145 El Banafsig 3, New Cairo, Cairo, Egypt</p>
-        <p>info@admepro.com</p>
-        <p>Ph: +20 100 037 0140</p>
-      </div>
-      <div>
-        <p style={{fontWeight:800,color:"#fff",marginBottom:8}}>Work Inquiries</p>
-        <p>hello@admepro.com</p>
-        <p>Ph: +20 100 037 0140</p>
-      </div>
-      <div style={{display:"flex",gap:10,marginTop:8}}>
-        {[
-          {icon:Icons.vimeoBrand, url:"https://vimeo.com/admepro"},
-          {icon:Icons.igBrand, url:"https://instagram.com/admeproagency"},
-          {icon:Icons.fbBrand, url:"https://fb.com/admepro"},
-        ].map((s,i)=>(
-          <a key={i} href={s.url} target="_blank" rel="noreferrer"
-            onMouseEnter={e=>{e.currentTarget.style.color="#d90b2c";}}
-            onMouseLeave={e=>{e.currentTarget.style.color="#fff";}}
-            style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.1)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",transition:"color 0.15s"}}>
-            <Ico d={s.icon} size={15} fill="currentColor" stroke="none"/>
-          </a>
-        ))}
-      </div>
-      <a href="https://admepro.com/ar/" hrefLang="ar" lang="ar" className="careers-lang">AR</a>
-    </div>
-  );
-
+  // Same markup, styles and motion as the admepro.com menu: the layer fades + blurs in, the big
+  // links roll up to an outlined copy on hover, and every item rises in one after another.
+  const [open, setOpen] = useState(false);
+  const closingRef = useRef(null);
+  useEffect(()=>{
+    const r = requestAnimationFrame(()=>setOpen(true));
+    const k = e=>{ if(e.key==="Escape") close(); };
+    document.addEventListener("keydown", k);
+    return ()=>{ cancelAnimationFrame(r); document.removeEventListener("keydown", k); clearTimeout(closingRef.current); };
+  },[]); // eslint-disable-line react-hooks/exhaustive-deps
+  const close = () => {
+    const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setOpen(false);
+    closingRef.current = setTimeout(()=>onClose&&onClose(), reduced?0:520);
+  };
+  const face = label => (<><span className="flip-face">{label}</span><span className="flip-face back" aria-hidden="true">{label}</span></>);
+  const social = [
+    {icon:Icons.vimeoBrand, url:"https://vimeo.com/admepro", label:"Vimeo"},
+    {icon:Icons.igBrand, url:"https://www.instagram.com/admeproagency", label:"Instagram"},
+    {icon:Icons.fbBrand, url:"https://facebook.com/admepro", label:"Facebook"},
+  ];
   return (
-    <div style={{position:"fixed",inset:0,zIndex:100,background:"rgba(10,10,14,0.97)",backdropFilter:"blur(10px)",overflowY:"auto"}}>
-      {/* Two-layer flip: hovering rotates the inner wrapper 180deg so the
-          duplicate back-face label swaps in — a single-layer rotateX(360deg)
-          made the text vanish mid-spin (backface-visibility hidden with
-          nothing behind it), which read as flickering/"shaking". */}
+    <div className={"sf-fullmenu"+(open?" open":"")} role="dialog" aria-modal="true" aria-label="Menu">
       <style>{`
-        .careers-nav-flip{display:block;text-decoration:none;perspective:600px}
-        .careers-nav-flip-inner{position:relative;transition:transform 0.5s cubic-bezier(.4,0,.2,1);transform-style:preserve-3d}
-        .careers-nav-flip:hover .careers-nav-flip-inner,.careers-nav-flip:active .careers-nav-flip-inner{transform:rotateX(180deg)}
-        .careers-nav-flip-face{display:block;backface-visibility:hidden}
-        .careers-nav-flip-face.back{position:absolute;inset:0;transform:rotateX(180deg);color:#d90b2c}
-        .careers-more-link{color:rgba(255,255,255,0.6);text-decoration:none;transition:color .2s}
-        .careers-more-link:not(:last-child)::after{content:"·";margin-inline:.7em;color:rgba(255,255,255,0.35)}
-        .careers-more-link:hover,.careers-more-link[aria-current]{color:#fff}
-        .careers-lang{font:700 15px 'Montserrat',sans-serif;color:#fff;border:1px solid rgba(255,255,255,0.25);border-radius:99px;padding:8px 18px;text-decoration:none;transition:color .15s,border-color .15s}
-        .careers-lang:hover{color:#d90b2c;border-color:#d90b2c}
+        .sf-fullmenu{--ease:cubic-bezier(.2,.7,.2,1);--head:"DM Sans","Montserrat",system-ui,sans-serif;position:fixed;inset:0;z-index:100;background:rgba(17,16,19,.96);backdrop-filter:blur(0);-webkit-backdrop-filter:blur(0);overflow-y:auto;opacity:0;visibility:hidden;transition:opacity .5s var(--ease),backdrop-filter .5s,-webkit-backdrop-filter .5s,visibility 0s .5s}
+        .sf-fullmenu.open{opacity:1;visibility:visible;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);transition-delay:0s}
+        .sf-fullmenu .fullmenu-x{position:absolute;top:20px;right:20px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.1);color:#fff;display:grid;place-items:center;border:none;cursor:pointer;z-index:2}
+        .sf-fullmenu .fullmenu-x:hover{color:#d90a2c}
+        .sf-fullmenu .fullmenu-grid{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr);align-content:center;gap:56px;padding:110px max(24px,8vw) 60px}
+        @media (min-width:900px){.sf-fullmenu .fullmenu-grid{grid-template-columns:minmax(0,1fr) minmax(260px,22%);align-items:center;gap:40px;padding-block:60px}}
+        .sf-fullmenu .fm-left>*,.sf-fullmenu .fm-nav .flip,.sf-fullmenu .fm-info>*{opacity:0;transform:translateY(18px);transition:opacity .6s var(--ease),transform .7s var(--ease)}
+        .sf-fullmenu.open .fm-nav .flip,.sf-fullmenu.open .fm-left>.fm-more,.sf-fullmenu.open .fm-info>*{opacity:1;transform:none}
+        .sf-fullmenu.open .fm-nav .flip:nth-child(1){transition-delay:.12s}.sf-fullmenu.open .fm-nav .flip:nth-child(2){transition-delay:.18s}
+        .sf-fullmenu.open .fm-nav .flip:nth-child(3){transition-delay:.24s}.sf-fullmenu.open .fm-nav .flip:nth-child(4){transition-delay:.3s}
+        .sf-fullmenu.open .fm-left>.fm-more{transition-delay:.4s}
+        .sf-fullmenu.open .fm-info>*:nth-child(1){transition-delay:.3s}.sf-fullmenu.open .fm-info>*:nth-child(2){transition-delay:.38s}
+        .sf-fullmenu.open .fm-info>*:nth-child(3){transition-delay:.46s}.sf-fullmenu.open .fm-info>*:nth-child(4){transition-delay:.5s}
+        .sf-fullmenu .fm-left>.fm-nav{opacity:1;transform:none}
+        .sf-fullmenu .fm-nav{display:flex;flex-direction:column;justify-content:center}
+        .sf-fullmenu .flip{--fs:clamp(44px,5.6vw,82px);--lh:1.08;display:block;overflow:hidden;height:calc(var(--fs) * var(--lh));text-decoration:none}
+        .sf-fullmenu .flip-inner{display:block;transition:transform .55s cubic-bezier(.7,0,.2,1);will-change:transform}
+        .sf-fullmenu .flip:hover .flip-inner,.sf-fullmenu .flip:active .flip-inner,.sf-fullmenu .flip:focus-visible .flip-inner{transform:translateY(-50%)}
+        .sf-fullmenu .flip-face{display:block;height:calc(var(--fs) * var(--lh));font:700 var(--fs)/var(--lh) var(--head);color:#fff;text-transform:uppercase;letter-spacing:-0.03em;white-space:nowrap}
+        .sf-fullmenu .flip-face.back{color:#131215;-webkit-text-stroke:2px #fff;paint-order:stroke fill}
+        .sf-fullmenu:focus,.sf-fullmenu .flip:focus,.sf-fullmenu .flip:focus-visible{outline:none}
+        .sf-fullmenu .fm-more{display:flex;flex-wrap:wrap;align-items:center;margin:clamp(24px,3.4vw,40px) 0 0;max-width:640px;font:500 15px/1.9 var(--head)}
+        .sf-fullmenu .mlink{color:rgba(255,255,255,.6);transition:color .2s;text-decoration:none}
+        .sf-fullmenu .mlink:not(:last-child)::after{content:"·";margin-inline:.7em;color:rgba(255,255,255,.35)}
+        .sf-fullmenu .mlink:hover,.sf-fullmenu .mlink:focus-visible,.sf-fullmenu .mlink[aria-current]{color:#fff}
+        .sf-fullmenu .fm-info{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:28px;color:rgba(255,255,255,.55);font:400 16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;text-align:start}
+        .sf-fullmenu .fm-info p{margin:0}
+        .sf-fullmenu .fm-h{font-weight:800;color:#fff;margin-bottom:8px !important}
+        .sf-fullmenu .fm-social{display:flex;gap:10px;margin-top:8px}
+        .sf-fullmenu .fm-social a{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.1);display:grid;place-items:center;color:#fff;transition:color .15s}
+        .sf-fullmenu .fm-social a:hover{color:#d90a2c}
+        .sf-fullmenu .fm-lang{font:700 15px "Montserrat",system-ui,sans-serif;color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:99px;padding:8px 18px;text-decoration:none}
+        .sf-fullmenu .fm-lang:hover{color:#d90a2c;border-color:#d90a2c}
+        @media (prefers-reduced-motion: reduce){.sf-fullmenu,.sf-fullmenu *{transition:none !important}}
       `}</style>
-      <button onClick={onClose} style={{position:"absolute",top:20,right:20,width:44,height:44,borderRadius:"50%",background:"rgba(255,255,255,0.1)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff"}}>
-        <Ico d={Icons.x} size={20}/>
-      </button>
-      {isMobile ? (
-        <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",justifyContent:"center",gap:48,padding:"100px 24px 60px"}}>
-          {navBlock}
-          {infoBlock}
+      <button className="fullmenu-x" onClick={close} aria-label="Close"><Ico d={Icons.x} size={20}/></button>
+      <div className="fullmenu-grid">
+        <div className="fm-left">
+          <nav className="fm-nav" aria-label="Main">
+            {CAREERS_NAV_LINKS.map(item=>(
+              <a key={item.label} className="flip" href={item.url} onTouchStart={()=>{}}><span className="flip-inner">{face(item.label)}</span></a>
+            ))}
+          </nav>
+          <p className="fm-more" role="group" aria-label="More pages">
+            {CAREERS_MORE_LINKS.map(item=>(<a key={item.label} className="mlink" href={item.url}>{item.label}</a>))}
+            <a className="mlink" href="/careers" aria-current="page">Career</a>
+          </p>
         </div>
-      ) : (
-        <div style={{minHeight:"100vh",display:"grid",gridTemplateColumns:"repeat(4,1fr)",padding:"40px",gap:24}}>
-          <div/>
-          {navBlock}
-          <div/>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"flex-start",marginLeft:-50}}>
-            {infoBlock}
+        <div className="fm-info">
+          <div><p className="fm-h">Get In Touch</p><p>145 El Banafsig 3, New Cairo, Cairo, Egypt</p><p>info@admepro.com</p><p dir="ltr">Ph: +20 100 037 0140</p></div>
+          <div><p className="fm-h">Work Inquiries</p><p>hello@admepro.com</p><p dir="ltr">Ph: +20 100 037 0140</p></div>
+          <div className="fm-social">
+            {social.map(x=>(<a key={x.label} href={x.url} target="_blank" rel="noopener noreferrer" aria-label={x.label}><Ico d={x.icon} size={15} fill="currentColor" stroke="none"/></a>))}
           </div>
+          <a className="fm-lang" href="https://admepro.com/ar/" hrefLang="ar" lang="ar">AR</a>
         </div>
-      )}
+      </div>
     </div>
   );
 }
