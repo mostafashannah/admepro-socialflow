@@ -6087,7 +6087,7 @@ function FoldCard({id, title, sub, color="var(--accent)", defaultOpen=false, fla
   );
 }
 
-function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canForward, only=null}) {
+function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canForward, only=null, locked=false}) {
   const [dragIdx, setDragIdx] = useState(null);
   if(!post.design_assets || post.design_assets.length===0) return null;
 
@@ -6135,11 +6135,11 @@ function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canF
                   ? <button onClick={()=>onView({url:asset.url, name:asset.name})} style={{fontSize:9,color:"var(--accent)",background:"none",border:"none",cursor:"pointer",padding:0,textDecoration:"underline"}}>View</button>
                   : <a href={asset.url} target="_blank" rel="noreferrer" style={{fontSize:9,color:"var(--accent)"}}>View</a>)}
               </div>}
-              <button onClick={()=>{
+              {!locked&&<button onClick={()=>{
                 if(onRemove) { onRemove(asset, i); return; }
                 const newAssets = post.design_assets.filter((_,idx)=>idx!==i);
                 onStageChange({...post,design_assets:newAssets},post.stage);
-              }} style={{position:"absolute",top:3,right:3,width:20,height:20,borderRadius:99,background:"#ef4444",border:"none",color:"#fff",cursor:"pointer",fontSize:12,fontWeight:700,padding:0,lineHeight:"20px"}}>×</button>
+              }} style={{position:"absolute",top:3,right:3,width:20,height:20,borderRadius:99,background:"#ef4444",border:"none",color:"#fff",cursor:"pointer",fontSize:12,fontWeight:700,padding:0,lineHeight:"20px"}}>×</button>}
               {asset.upscaledTo&&<span style={{position:"absolute",bottom:3,left:3,padding:"1px 6px",borderRadius:99,background:"rgba(16,185,129,0.9)",color:"#fff",fontSize:9,fontWeight:700}}>{asset.upscaledTo}</span>}
             </div>
             {/* Admin/AM only — sends this media straight into the
@@ -6155,7 +6155,7 @@ function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canF
                   <Ico d={Icons.send||Icons.arrow} size={11} stroke="var(--text2)"/> Client</button>}
               </div>
             )}
-            {isCarousel&&(
+            {isCarousel&&!locked&&(
               <div style={{display:"flex",gap:3}}>
                 <button onClick={()=>moveAsset(i,i-1)} disabled={i===0} style={{flex:1,height:20,borderRadius:5,border:"1px solid var(--border2)",background:"var(--surface)",color:i===0?"var(--text3)":"var(--text2)",fontSize:10,fontWeight:700,cursor:i===0?"default":"pointer",opacity:i===0?0.4:1}}>← Slide</button>
                 <button onClick={()=>moveAsset(i,i+1)} disabled={i===post.design_assets.length-1} style={{flex:1,height:20,borderRadius:5,border:"1px solid var(--border2)",background:"var(--surface)",color:i===post.design_assets.length-1?"var(--text3)":"var(--text2)",fontSize:10,fontWeight:700,cursor:i===post.design_assets.length-1?"default":"pointer",opacity:i===post.design_assets.length-1?0.4:1}}>Slide →</button>
@@ -7939,21 +7939,29 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
             {(()=>{
               const list = Array.isArray(post.design_assets) ? post.design_assets : [];
               const rounds = [...new Set(list.map(a=>Number(a?.round)||0).filter(Boolean))].sort((a,b)=>b-a);
-              const grid = only => <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset} onForward={forwardDesignAssetToClient} canForward={currentUser?.role==="admin"||["account_manager","account_director","account_executive"].includes(currentUser?.role)} only={only}/>;
+              const grid = (only, locked=false) => <DesignAssetGrid locked={locked} post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset} onForward={forwardDesignAssetToClient} canForward={currentUser?.role==="admin"||["account_manager","account_director","account_executive"].includes(currentUser?.role)} only={only}/>;
               if(!rounds.length) return list.length ? <FoldCard id={`sub_${post.id}_all`} title={`All files · ${list.length}`} color="#6366f1" defaultOpen={true}><div style={{padding:"0 4px"}}>{grid(null)}</div></FoldCard> : null;
               const pending = new Set(list.map((a,k)=>(!a||!a.round)?k:-1).filter(k=>k>=0));
-              const card = (key, title, sub, color, set, open) => (
-                <FoldCard key={key} id={`sub_${post.id}_${key}`} title={`${title} · ${set.size} file${set.size>1?"s":""}`} sub={sub} color={color} defaultOpen={open}>
-                  <div style={{padding:"0 4px"}}>{grid(set)}</div>
+              // Submitted rounds are locked (only an admin can still remove/reorder them).
+              const lockOld = currentUser?.role!=="admin";
+              const card = (key, title, sub, color, set, open, locked=false, extra=null) => (
+                <FoldCard key={key} id={`sub_${post.id}_${key}`} title={`${title} · ${set.size} file${set.size!==1?"s":""}`} sub={sub} color={color} defaultOpen={open}>
+                  <div style={{padding:"0 4px",display:"flex",flexDirection:"column",gap:10}}>{set.size>0&&grid(set, locked)}{extra}</div>
                 </FoldCard>);
+              const nextN = rounds[0]+1;
+              const uploadHere = post.stage==="design" ? (
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
+                  <p style={{fontSize:11,color:"var(--text3)"}}>New files go into Submission {nextN}. Earlier submissions are locked.</p>
+                </div>) : null;
               return (<>
-                {pending.size>0&&card("new", "New — not submitted yet", "", "#6366f1", pending, true)}
+                {(pending.size>0||post.stage==="design")&&card("new", post.stage==="design"?`Submission ${nextN} — upload here`:"New — not submitted yet", "", "#6366f1", pending, true, false, uploadHere)}
                 {rounds.map((r,ix)=>{
                   const set = new Set(list.map((a,k)=>(Number(a?.round)||0)===r?k:-1).filter(k=>k>=0));
                   const first = list.find(a=>(Number(a?.round)||0)===r);
                   const when = first?.submitted_at ? fmtDateTime(first.submitted_at) : "";
                   const who = (team||[]).find(m=>m.email===first?.submitted_by)?.name?.split(" ")[0];
-                  return card(r, `Submission ${r}${ix===0?" · latest":""}`, [who, when].filter(Boolean).join(" · "), ix===0?"#10b981":"#94a3b8", set, ix===0 && pending.size===0);
+                  return card(r, `Submission ${r}${ix===0?" · latest":""}${lockOld?" 🔒":""}`, [who, when].filter(Boolean).join(" · "), ix===0?"#10b981":"#94a3b8", set, ix===0 && pending.size===0 && post.stage!=="design", lockOld);
                 })}
               </>);
             })()}
@@ -8081,8 +8089,10 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
 
             {/* Files show once, in the Attachments card (grouped by submission). */}
 
-            {/* File picker — choose from assets or upload new */}
-            <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
+            {/* File picker — once there are earlier submissions, uploading happens inside the new "Submission N" card above. */}
+            {(post.design_assets||[]).some(a=>a&&a.round)
+              ? <p style={{fontSize:12,color:"var(--text2)"}}>⬆ Upload your new files in the <b>Submission {Math.max(0,...(post.design_assets||[]).map(a=>Number(a?.round)||0))+1} — upload here</b> card above.</p>
+              : <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>}
 
             <p style={{fontSize:11,color:"var(--text3)"}}> Choose from your existing assets or upload a new file.</p>
 
