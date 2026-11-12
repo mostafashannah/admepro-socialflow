@@ -7940,24 +7940,20 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
               const list = Array.isArray(post.design_assets) ? post.design_assets : [];
               const rounds = [...new Set(list.map(a=>Number(a?.round)||0).filter(Boolean))].sort((a,b)=>b-a);
               const grid = only => <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset} onForward={forwardDesignAssetToClient} canForward={currentUser?.role==="admin"||["account_manager","account_director","account_executive"].includes(currentUser?.role)} only={only}/>;
-              if(!rounds.length) return grid(null);
+              if(!rounds.length) return list.length ? <FoldCard id={`sub_${post.id}_all`} title={`All files · ${list.length}`} color="#6366f1" defaultOpen={true}><div style={{padding:"0 4px"}}>{grid(null)}</div></FoldCard> : null;
               const pending = new Set(list.map((a,k)=>(!a||!a.round)?k:-1).filter(k=>k>=0));
-              const card = (key, title, sub, color, set) => (
-                <div key={key} style={{border:`1px solid ${color}44`,borderLeft:`3px solid ${color}`,borderRadius:10,padding:10,background:"var(--surface)",display:"flex",flexDirection:"column",gap:8}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
-                    <span style={{fontSize:12,fontWeight:800,color}}>{title}</span>
-                    {sub&&<span style={{fontSize:11,color:"var(--text3)"}}>{sub}</span>}
-                  </div>
-                  {grid(set)}
-                </div>);
+              const card = (key, title, sub, color, set, open) => (
+                <FoldCard key={key} id={`sub_${post.id}_${key}`} title={`${title} · ${set.size} file${set.size>1?"s":""}`} sub={sub} color={color} defaultOpen={open}>
+                  <div style={{padding:"0 4px"}}>{grid(set)}</div>
+                </FoldCard>);
               return (<>
-                {pending.size>0&&card("new", "New — not submitted yet", `${pending.size} file${pending.size>1?"s":""}`, "#6366f1", pending)}
+                {pending.size>0&&card("new", "New — not submitted yet", "", "#6366f1", pending, true)}
                 {rounds.map((r,ix)=>{
                   const set = new Set(list.map((a,k)=>(Number(a?.round)||0)===r?k:-1).filter(k=>k>=0));
                   const first = list.find(a=>(Number(a?.round)||0)===r);
                   const when = first?.submitted_at ? fmtDateTime(first.submitted_at) : "";
                   const who = (team||[]).find(m=>m.email===first?.submitted_by)?.name?.split(" ")[0];
-                  return card(r, `Submission ${r}${ix===0?" · latest":""}`, [who, when].filter(Boolean).join(" · "), ix===0?"#10b981":"#94a3b8", set);
+                  return card(r, `Submission ${r}${ix===0?" · latest":""}`, [who, when].filter(Boolean).join(" · "), ix===0?"#10b981":"#94a3b8", set, ix===0 && pending.size===0);
                 })}
               </>);
             })()}
@@ -8080,11 +8076,8 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
 
         {/* DESIGN PHASE - File Upload for Photos/Videos */}
         {post.stage==="design"&&(
-          <div className="sf-card" style={{display:"flex",flexDirection:"column",gap:12,padding:16,borderTop:"3px solid #8b5cf6"}}>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <h4 className="sf-sec-title">Add design files</h4>
-              {assignee&&<span style={{fontSize:11,color:"var(--text3)",marginLeft:"auto"}}>Assigned to {assignee.name}</span>}
-            </div>
+          <FoldCard id="addfiles" title="📤 Add design files" sub={assignee?`Upload, pick from assets, or design with Yahia · ${assignee.name}`:"Upload, pick from assets, or design with Yahia"} color="#8b5cf6" defaultOpen={true}>
+          <div className="sf-card" style={{display:"flex",flexDirection:"column",gap:12,padding:16}}>
 
             {/* Files show once, in the Attachments card (grouped by submission). */}
 
@@ -8104,6 +8097,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                 manually-uploaded/picked file. */}
             <FoldCard id="yahia" title="🎨 Design with Yahia" sub="AI image / video generator" color="#8b5cf6" defaultOpen={false} flat><DesignAIGenerator post={post} project={project} onAddAsset={onAddAsset} onStageChange={onStageChange}/></FoldCard>
           </div>
+          </FoldCard>
         )}
 
         {/* Full timeline jump — admin/AM only. The buttons above/below only
