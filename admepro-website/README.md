@@ -59,6 +59,7 @@ The English pages keep the **same URLs as today**, so Google rankings carry over
   - a sitemap with hreflang and image entries
   - 301 redirects for every old URL (`src/content/redirects.json`, plus automatic rules for portfolio categories and tags)
 - **Forms:** a quote form (contact page) and a "book a call" form (home and GCC). They have validation, spam protection and UTM capture, and are ready for SocialFlow (see [INTEGRATION.md](INTEGRATION.md)).
+- **Same chrome as the careers page:** the header (fixed logo and round menu button), the full-screen flip menu, the right rail (dark/light switch, language button, Fb. / Ig. / Li. / Vm.) and the footer are copied from `socialflow.admepro.com/careers` (`CareersChrome`, `CareersFullMenu`, `CareersFooter` in SocialFlow's `app.jsx`, read only). Dark mode uses the careers dark palette, follows the visitor's device setting and remembers their choice.
 - **Accessibility:** a skip link, keyboard-friendly menus and accordions, alt text, and reduced-motion support.
 
 ## Content notes for the owner

@@ -9,17 +9,35 @@
 
   // header shadow on scroll
   const header = $('[data-header]');
-  const onScroll = () => header && header.classList.toggle('scrolled', scrollY > 24);
+  const onScroll = () => header && header.classList.toggle('scrolled', scrollY > (document.body.classList.contains('page-home') ? innerHeight * 0.8 : 24));
   addEventListener('scroll', onScroll, { passive: true }); onScroll();
 
-  // mobile menu
-  const burger = $('[data-burger]'); const menu = $('#menu');
+  // full-screen menu (same as the SocialFlow careers page)
+  const burger = $('[data-burger]'); const menu = $('[data-menu]');
   if (burger && menu) {
-    const set = (open) => { burger.setAttribute('aria-expanded', open); menu.hidden = !open; document.body.classList.toggle('menu-open', open); header.classList.toggle('scrolled', open || scrollY > 24); };
-    burger.addEventListener('click', () => set(burger.getAttribute('aria-expanded') !== 'true'));
-    addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { set(false); burger.focus(); } });
-    $$('a', menu).forEach((a) => a.addEventListener('click', () => set(false)));
+    const set = (open) => {
+      burger.setAttribute('aria-expanded', open); menu.hidden = !open; document.body.classList.toggle('menu-open', open);
+      if (open) $('.flip', menu)?.focus(); else burger.focus();
+    };
+    burger.addEventListener('click', () => set(true));
+    $('[data-menu-close]', menu).addEventListener('click', () => set(false));
+    addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) set(false); });
+    $$('.flip', menu).forEach((a) => a.addEventListener('touchstart', () => {}, { passive: true })); // iOS :active
   }
+
+  // dark / light switch on the right rail. Follows the device setting until the visitor picks one.
+  const root = document.documentElement;
+  const paint = () => $$('[data-theme-set]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.themeSet === root.dataset.theme));
+  $$('[data-theme-set]').forEach((b) => b.addEventListener('click', () => {
+    root.dataset.theme = b.dataset.themeSet; try { localStorage.setItem('theme', b.dataset.themeSet); } catch (e) {}
+    paint();
+  }));
+  try {
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+      if (!localStorage.getItem('theme')) { root.dataset.theme = e.matches ? 'dark' : 'light'; paint(); }
+    });
+  } catch (e) {}
+  paint();
 
   // reveal + count-up when visible
   const count = (el) => {

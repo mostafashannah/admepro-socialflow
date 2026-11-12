@@ -169,7 +169,7 @@ function head({ lang, title, description, pathEn, pathAr, image, type = 'website
   const robots = ENV === 'staging' ? '<meta name="robots" content="noindex, nofollow">' : '<meta name="robots" content="index, follow, max-image-preview:large">';
   const fonts = lang === 'ar'
     ? ['ibm-plex-sans-arabic-arabic-400-normal.woff2', 'ibm-plex-sans-arabic-arabic-600-normal.woff2']
-    : ['dm-sans-latin-400-normal.woff2', 'dm-sans-latin-600-normal.woff2'];
+    : ['dm-sans-latin-400-normal.woff2', 'dm-sans-latin-600-normal.woff2', 'montserrat-latin-700-normal.woff2'];
   return `<!doctype html>
 <html lang="${lang}" dir="${lang === 'ar' ? 'rtl' : 'ltr'}">
 <head>
@@ -195,46 +195,57 @@ ${fonts.map((f) => `<link rel="preload" href="/assets/fonts/${f}" as="font" type
 <meta property="og:locale:alternate" content="${lang === 'ar' ? 'en_US' : 'ar_EG'}">
 <meta name="twitter:card" content="summary_large_image">
 ${schema.filter(Boolean).map((s) => `<script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', ...s }).replace(/</g, '\\u003c')}</script>`).join('\n')}
-<script>document.documentElement.classList.add('js')</script>
+<script>(function(d){d.classList.add('js');var t;try{t=localStorage.getItem('theme')}catch(e){}if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.dataset.theme=t})(document.documentElement)</script>
+<meta name="color-scheme" content="light dark">
 </head>`;
 }
 
+// Header, full-screen menu, right rail and footer copy the SocialFlow careers page
+// (socialflow.admepro.com/careers → CareersChrome / CareersFullMenu / CareersFooter in app.jsx),
+// so the website and the careers page look like one site.
+const brandIco = {
+  vimeo: 'M22.396 7.164c-.093 2.026-1.507 4.799-4.245 8.317-2.828 3.675-5.223 5.512-7.184 5.512-1.215 0-2.24-1.123-3.078-3.369-.559-2.052-1.118-4.104-1.677-6.156-.622-2.246-1.29-3.369-2.004-3.369-.156 0-.7.328-1.634.98l-.978-1.26c1.027-.902 2.04-1.804 3.037-2.708C6.03 4.04 6.977 3.505 7.6 3.447c1.484-.143 2.398.871 2.74 3.042.37 2.343.626 3.799.769 4.368.427 1.938.897 2.907 1.41 2.907.4 0 .999-.633 1.799-1.899.797-1.266 1.225-2.229 1.28-2.891.111-1.093-.316-1.64-1.28-1.64-.457 0-.925.104-1.409.313.936-3.066 2.724-4.556 5.365-4.469 1.958.06 2.883 1.324 2.771 3.986',
+  instagram: 'M12 2.16c3.2 0 3.58.01 4.85.07 1.17.05 1.8.25 2.23.41.56.22.96.48 1.38.9.42.42.68.82.9 1.38.16.42.36 1.06.41 2.23.06 1.27.07 1.65.07 4.85s-.01 3.58-.07 4.85c-.05 1.17-.25 1.8-.41 2.23-.22.56-.48.96-.9 1.38-.42.42-.82.68-1.38.9-.42.16-1.06.36-2.23.41-1.27.06-1.65.07-4.85.07s-3.58-.01-4.85-.07c-1.17-.05-1.8-.25-2.23-.41-.56-.22-.96-.48-1.38-.9-.42-.42-.68-.82-.9-1.38-.16-.42-.36-1.06-.41-2.23-.06-1.27-.07-1.65-.07-4.85s.01-3.58.07-4.85c.05-1.17.25-1.8.41-2.23.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.42-.16 1.06-.36 2.23-.41 1.27-.06 1.65-.07 4.85-.07M12 0C8.74 0 8.33.01 7.05.07 5.78.13 4.9.33 4.14.63c-.79.31-1.46.72-2.13 1.38C1.35 2.68.94 3.35.63 4.14.33 4.9.13 5.78.07 7.05.01 8.33 0 8.74 0 12s.01 3.67.07 4.95c.06 1.27.26 2.15.56 2.91.31.79.72 1.46 1.38 2.13.67.66 1.34 1.07 2.13 1.38.76.3 1.64.5 2.91.56C8.33 23.99 8.74 24 12 24s3.67-.01 4.95-.07c1.27-.06 2.15-.26 2.91-.56.79-.31 1.46-.72 2.13-1.38.66-.67 1.07-1.34 1.38-2.13.3-.76.5-1.64.56-2.91.06-1.28.07-1.69.07-4.95s-.01-3.67-.07-4.95c-.06-1.27-.26-2.15-.56-2.91-.31-.79-.72-1.46-1.38-2.13C21.32 1.35 20.65.94 19.86.63c-.76-.3-1.64-.5-2.91-.56C15.67.01 15.26 0 12 0z M12 5.84A6.16 6.16 0 1 0 12 18.16 6.16 6.16 0 0 0 12 5.84M12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8z M18.41 4.15a1.44 1.44 0 1 0 0 2.88 1.44 1.44 0 0 0 0-2.88z',
+  facebook: 'M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07c0 6.02 4.39 11.01 10.13 11.93v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.49h-2.8V24C19.61 23.08 24 18.09 24 12.07z',
+};
+const logoImgs = (h) => `<img src="/assets/img/brand/mark-dark.webp" alt="admepro" width="${Math.round(h * 167 / 160)}" height="${h}" class="logo-on-light"><img src="/assets/img/brand/mark-light.webp" alt="" width="${Math.round(h * 167 / 160)}" height="${h}" class="logo-on-dark" aria-hidden="true">`;
+
 function header(lang, current, otherHref) {
-  const navItems = site.nav.map((n) => {
-    const active = current === n.key || (n.children || []).includes(current) ? ' aria-current="page"' : '';
-    if (n.children) {
-      return `<li class="has-sub"><a href="${L(n.path, lang)}"${active}>${esc(t(n.key, lang))}</a>
-        <ul class="sub">${n.children.map((c) => `<li><a href="${L('/' + c + '/', lang)}"${current === c ? ' aria-current="page"' : ''}>${esc(t(c, lang))}</a></li>`).join('')}</ul></li>`;
-    }
-    return `<li><a href="${L(n.path, lang)}"${active}>${esc(t(n.key, lang))}</a></li>`;
-  }).join('');
+  const links = [
+    ...site.nav.map((n) => ({ label: t(n.key, lang), href: L(n.path, lang), active: current === n.key || (n.children || []).includes(current) })),
+    { label: t('career', lang), href: site.careersUrl },
+  ];
+  const face = (s) => `<span class="flip-face">${esc(s)}</span><span class="flip-face back" aria-hidden="true">${esc(s)}</span>`;
   return `<a class="skip" href="#main">${esc(t('skip', lang))}</a>
 ${ENV === 'staging' ? `<div class="ribbon" role="note">TEST SITE · ${lang === 'ar' ? 'نسخة تجريبية' : 'not live'}</div>` : ''}
-<header class="site-header" data-header>
-  <div class="wrap header-in">
-    <a class="logo" href="${L('/', lang)}" aria-label="admepro, ${esc(t('home', lang))}">
-      <img src="/assets/img/brand/mark-dark.webp" alt="" width="44" height="42" class="logo-mark">
-      <span class="logo-word" dir="ltr">admepro<span class="dot">.</span></span>
-    </a>
-    <nav class="main-nav" aria-label="${lang === 'ar' ? 'القائمة الرئيسية' : 'Main'}"><ul>${navItems}</ul></nav>
-    <div class="header-actions">
-      <a class="lang" href="${otherHref}" hreflang="${lang === 'ar' ? 'en' : 'ar'}" lang="${lang === 'ar' ? 'en' : 'ar'}" aria-label="${esc(t('langSwitchLabel', lang))}">${esc(t('langSwitch', lang))}</a>
-      <a class="btn btn-red btn-sm hide-sm" href="${L('/contact-us/', lang)}">${esc(t('getQuote', lang))}</a>
-      <button class="burger" type="button" aria-expanded="false" aria-controls="menu" data-burger><span></span><span></span><span class="sr">${esc(t('menu', lang))}</span></button>
-    </div>
-  </div>
-  <div class="menu" id="menu" hidden>
-    <div class="wrap">
-      <ul class="menu-list">${site.nav.map((n) => `<li><a href="${L(n.path, lang)}">${esc(t(n.key, lang))}</a>${n.children ? `<ul>${n.children.map((c) => `<li><a href="${L('/' + c + '/', lang)}">${esc(t(c, lang))}</a></li>`).join('')}</ul>` : ''}</li>`).join('')}</ul>
-      <div class="menu-foot">
-        <a href="mailto:${site.email}">${site.email}</a>
-        <a href="tel:${site.phoneHref}" dir="ltr">${site.phone}</a>
-        <div class="menu-social">${site.social.map((s) => `<a href="${s.url}" rel="noopener" target="_blank">${s.label}</a>`).join('')}</div>
-      </div>
-    </div>
-  </div>
+<header class="chrome" data-header>
+  <a class="chrome-logo" href="${L('/', lang)}" aria-label="admepro, ${esc(t('home', lang))}">${logoImgs(36)}</a>
+  <button class="chrome-burger" type="button" aria-expanded="false" aria-controls="menu" data-burger><svg class="i no-flip" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h18M3 16h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="sr">${esc(t('menu', lang))}</span></button>
 </header>
-<aside class="rail" aria-label="Social">${site.social.map((s) => `<a href="${s.url}" rel="noopener" target="_blank" aria-label="${s.label}">${s.short}</a>`).join('<span>/</span>')}</aside>`;
+<div class="fullmenu" id="menu" hidden data-menu>
+  <button class="fullmenu-x" type="button" data-menu-close aria-label="${esc(t('close', lang))}">${icon.close}</button>
+  <div class="fullmenu-grid">
+    <div class="fm-spacer"></div>
+    <nav class="fm-nav" aria-label="${lang === 'ar' ? 'القائمة الرئيسية' : 'Main'}">
+      ${links.map((l) => `<a class="flip" href="${l.href}"${l.active ? ' aria-current="page"' : ''}><span class="flip-inner">${face(l.label)}</span></a>`).join('\n      ')}
+    </nav>
+    <div class="fm-spacer"></div>
+    <div class="fm-info">
+      <div><p class="fm-h">${lang === 'ar' ? 'تواصل معنا' : 'Get In Touch'}</p><p>${esc(tx(site.offices[0].address, lang))}</p><p>${site.infoEmail}</p><p dir="ltr">Ph: ${site.phone}</p></div>
+      <div><p class="fm-h">${esc(t('workInquiries', lang))}</p><p>${site.email}</p><p dir="ltr">Ph: ${site.phone}</p></div>
+      <div class="fm-social">${['vimeo', 'instagram', 'facebook'].map((k) => { const s = site.social.find((x) => x.key === k); return `<a href="${s.url}" rel="noopener" target="_blank" aria-label="${s.label}"><svg class="i no-flip" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="${brandIco[k]}"/></svg></a>`; }).join('')}</div>
+      <a class="fm-lang" href="${otherHref}" hreflang="${lang === 'ar' ? 'en' : 'ar'}" lang="${lang === 'ar' ? 'en' : 'ar'}">${esc(t('langSwitch', lang))}</a>
+    </div>
+  </div>
+</div>
+<aside class="rail" aria-label="${lang === 'ar' ? 'الإعدادات والروابط' : 'Settings and social links'}">
+  <div class="rail-pill" role="group" aria-label="${lang === 'ar' ? 'المظهر' : 'Theme'}">
+    <button type="button" data-theme-set="dark" title="${lang === 'ar' ? 'الوضع الداكن' : 'Dark mode'}" aria-label="${lang === 'ar' ? 'الوضع الداكن' : 'Dark mode'}"><svg class="i no-flip" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <button type="button" data-theme-set="light" title="${lang === 'ar' ? 'الوضع الفاتح' : 'Light mode'}" aria-label="${lang === 'ar' ? 'الوضع الفاتح' : 'Light mode'}"><svg class="i no-flip" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  </div>
+  <a class="rail-lang" href="${otherHref}" hreflang="${lang === 'ar' ? 'en' : 'ar'}" lang="${lang === 'ar' ? 'en' : 'ar'}" title="${esc(t('langSwitchLabel', lang))}" aria-label="${esc(t('langSwitchLabel', lang))}">${lang === 'ar' ? 'EN' : 'ع'}</a>
+  <div class="rail-social">${site.social.filter((s) => s.short).sort((a, b) => (a.railOrder ?? 9) - (b.railOrder ?? 9)).map((s) => `<a href="${s.url}" rel="noopener" target="_blank" aria-label="${s.label}">${s.short}</a>`).join('<span>/</span>')}</div>
+</aside>`;
 }
 
 function footer(lang) {
@@ -242,32 +253,29 @@ function footer(lang) {
   const wa = `https://wa.me/${site.whatsapp}?text=${encodeURIComponent(tx(site.whatsappText, lang))}`;
   return `<section class="cta-band">
   <div class="wrap cta-band-in reveal">
-    <div><h2 class="h2">${nl2br(t('footerCta', lang).replace(', ', ',\n'))}</h2><p class="muted small">${esc(t('footerCtaSub', lang))}</p></div>
+    <div><h2 class="h2">${nl2br(t('footerCta', lang).replace(', ', ',\n').replace('، ', '،\n'))}</h2><p class="muted small">${esc(t('footerCtaSub', lang))}</p></div>
     <a class="btn btn-red" href="${L('/contact-us/', lang)}">${esc(t('getQuote', lang))}</a>
   </div>
 </section>
-<footer class="site-footer">
-  <div class="wrap footer-grid">
-    <div class="footer-brand"><img src="/assets/img/brand/wordmark.webp" alt="admepro" width="285" height="60" loading="lazy"></div>
-    <div class="footer-col">
-      <h3 class="fh">${esc(tx(cairo.city, lang).split('،')[0].split(',')[0])}</h3>
-      <p>${esc(tx(cairo.address, lang))}</p>
-      <h3 class="fh">${esc(t('call', lang))}</h3>
-      <p><a href="tel:${site.phoneHref}" dir="ltr">${site.phone}</a></p>
-      <h3 class="fh">${esc(t('gps', lang))}</h3>
-      <p dir="ltr"><a href="https://maps.google.com/?q=${cairo.geo.join(',')}" rel="noopener" target="_blank">${cairo.geo[0]}°<br>${cairo.geo[1]}°</a></p>
+<footer class="cfooter">
+  <div class="cfooter-in">
+    <div class="cfooter-top">
+      <a class="cfooter-logo" href="${L('/', lang)}" aria-label="admepro">${logoImgs(32)}</a>
+      <div class="cfooter-cols">
+        <div class="cfooter-col">
+          <div><p class="cf-h">${lang === 'ar' ? 'القاهرة' : 'Cairo'}</p><p class="cf-t">${lang === 'ar' ? '145 البنفسج 3<br>القاهرة الجديدة، القاهرة' : '145 El Banafsig 3<br>New Cairo, Cairo'}</p></div>
+          <div><p class="cf-h">${esc(t('call', lang))}</p><p class="cf-t"><a href="tel:${site.phoneHref}" dir="ltr">+2 0100 037 0140</a></p></div>
+          <div><p class="cf-h">${esc(t('gps', lang))}</p><p class="cf-t" dir="ltr"><a href="https://maps.google.com/?q=${cairo.geo.join(',')}" rel="noopener" target="_blank">${cairo.geo[0]}"<br>${cairo.geo[1]}"</a></p></div>
+        </div>
+        <div class="cfooter-col">
+          <div><p class="cf-h">${esc(t('workInquiries', lang))}</p><p class="cf-t">${esc(t('workInquiriesText', lang))}</p><a class="cf-strong" href="mailto:${site.email}">${site.email}</a></div>
+          <div><p class="cf-h">${esc(t('career', lang))}</p><p class="cf-t">${esc(t('careerText', lang))}</p><a class="cf-accent" href="${site.careersUrl}">${esc(t('seePositions', lang))}</a></div>
+          <div class="cf-social">${['facebook', 'instagram', 'vimeo'].map((k) => { const s = site.social.find((x) => x.key === k); return `<a href="${s.url}" rel="noopener" target="_blank">${s.label}</a>`; }).join('')}<a href="${wa}" rel="noopener" target="_blank">WhatsApp</a></div>
+        </div>
+      </div>
     </div>
-    <div class="footer-col">
-      <h3 class="fh">${esc(t('workInquiries', lang))}</h3>
-      <p>${esc(t('workInquiriesText', lang))}<br><a class="strong" href="mailto:${site.email}">${site.email}</a></p>
-      <h3 class="fh">${esc(t('career', lang))}</h3>
-      <p>${esc(t('careerText', lang))}<br><a class="strong" href="${site.careersUrl}">${esc(t('seePositions', lang))}</a></p>
-      <p class="footer-social">${site.social.map((s) => `<a href="${s.url}" rel="noopener" target="_blank">${s.label}</a>`).join('<br>')}<br><a href="${wa}" rel="noopener" target="_blank">WhatsApp</a></p>
-    </div>
-  </div>
-  <div class="wrap footer-bottom">
-    <a href="#top" class="to-top" data-top><span class="circle">${icon.up}</span>${esc(t('scrollTop', lang))}</a>
-    <p class="small">© ${site.foundingYear}–${new Date().getFullYear()} admepro. ${esc(t('rights', lang))}</p>
+    <a href="#top" class="cf-top" data-top><span class="cf-top-ico"><svg class="i no-flip" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>${esc(t('scrollTop', lang))}</a>
+    <div class="cf-bottom"><p>© ${site.foundingYear}-${new Date().getFullYear()} admepro . ${esc(t('rights', lang))}</p></div>
   </div>
 </footer>
 <div class="chat-pill" data-chat hidden>

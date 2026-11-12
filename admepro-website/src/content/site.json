@@ -20,22 +20,32 @@
   },
   "social": [
     {
-      "key": "vimeo",
-      "short": "Vm.",
-      "label": "Vimeo",
-      "url": "https://vimeo.com/admepro"
+      "key": "facebook",
+      "short": "Fb.",
+      "label": "Facebook",
+      "url": "https://facebook.com/admepro",
+      "railOrder": 1
     },
     {
       "key": "instagram",
       "short": "Ig.",
       "label": "Instagram",
-      "url": "https://www.instagram.com/admeproagency"
+      "url": "https://www.instagram.com/admeproagency",
+      "railOrder": 2
     },
     {
-      "key": "facebook",
-      "short": "Fb.",
-      "label": "Facebook",
-      "url": "https://facebook.com/admepro"
+      "key": "linkedin",
+      "short": "Li.",
+      "label": "LinkedIn",
+      "url": "https://www.linkedin.com/company/5040327/",
+      "railOrder": 3
+    },
+    {
+      "key": "vimeo",
+      "short": "Vm.",
+      "label": "Vimeo",
+      "url": "https://vimeo.com/admepro",
+      "railOrder": 4
     }
   ],
   "offices": [
