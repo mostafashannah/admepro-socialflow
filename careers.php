@@ -90,7 +90,9 @@ if ($indexHtml && preg_match('/\/app\.js\?v=\d+/', $indexHtml, $m)) $appJsTag = 
 <meta name="twitter:title" content="<?= htmlspecialchars($pageTitle) ?>"/>
 <meta name="twitter:description" content="<?= htmlspecialchars($pageDescription) ?>"/>
 
-<link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
+<link rel="icon" href="/careers-icons/favicon-32.png" sizes="32x32" type="image/png"/>
+<link rel="icon" href="/careers-icons/icon-192.png" sizes="192x192" type="image/png"/>
+<link rel="apple-touch-icon" href="/careers-icons/apple-touch-icon.png"/>
 <link rel="manifest" href="/manifest.json"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">

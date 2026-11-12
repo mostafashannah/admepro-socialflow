@@ -15,6 +15,13 @@
 <link rel="apple-touch-icon" href="/icon-180.png"/>
 <link rel="icon" sizes="192x192" href="/icon-192.png"/>
 <link rel="icon" sizes="512x512" href="/icon-512.png"/>
+<script>
+// Careers pages (socialflow.admepro.com/careers…) use the admepro.com tab icon, like the website.
+(function(){try{if(!/^\/careers(\/|$)/.test(location.pathname))return;
+document.querySelectorAll('link[rel~="icon"],link[rel="apple-touch-icon"]').forEach(function(l){l.parentNode.removeChild(l);});
+[["icon","/careers-icons/favicon-32.png","32x32","image/png"],["icon","/careers-icons/icon-192.png","192x192","image/png"],["apple-touch-icon","/careers-icons/apple-touch-icon.png","180x180",""]].forEach(function(d){var l=document.createElement("link");l.rel=d[0];l.href=d[1];l.sizes=d[2];if(d[3])l.type=d[3];document.head.appendChild(l);});
+}catch(e){}})();
+</script>
 <!-- Per-device splash images: without these, iOS can fall back to a generic
      default canvas size (e.g. the iPhone X's 375x812pt) for the standalone
      home-screen app's native container, instead of sizing to the real
