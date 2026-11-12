@@ -3768,6 +3768,11 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c", photoIsDark=true}) => 
   const shadowLg = isLight ? "0 8px 28px rgba(0,0,0,0.1)" : "0 8px 32px rgba(0,0,0,0.18)";
   return (
   <style>{`
+.sf-tile{transition:transform .15s ease, box-shadow .15s ease}
+.sf-tile:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,0.12)}
+.sf-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 1px 2px rgba(0,0,0,0.04),0 4px 14px rgba(0,0,0,0.03)}
+.sf-sec-title{display:flex;align-items:center;gap:8px;font-family:Montserrat,sans-serif;font-weight:800;font-size:14px}
+.sf-sec-title::before{content:"";width:4px;height:16px;border-radius:4px;background:var(--accent)}
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Bricolage+Grotesque:wght@600;700;800&display=swap');
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     .client-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
@@ -6088,7 +6093,7 @@ function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canF
             onDragOver={e=>e.preventDefault()}
             onDrop={e=>{e.preventDefault(); if(dragIdx!==null) moveAsset(dragIdx,i); setDragIdx(null);}}
             style={{display:"flex",flexDirection:"column",gap:4,opacity:dragIdx===i?0.4:1,cursor:isCarousel?"grab":"default"}}>
-            <div style={{position:"relative",aspectRatio:"1/1",background:"var(--surface)",borderRadius:"var(--rs)",border:"1px solid var(--border)",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <div className="sf-tile" style={{position:"relative",aspectRatio:"1/1",background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
               {/* Slide order — a carousel publishes in exactly this array
                   order, so it needs to be obvious (and adjustable, via
                   drag or the arrows below) which image goes where. */}
@@ -7470,7 +7475,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
           )}
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}>
             <div onClick={()=>{if(isManager&&!dueEdit) setDueEdit({date:post.due_date||"",time:post.due_time||""});}}
-              style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",cursor:isManager?"pointer":"default"}}>
+              className="sf-card" style={{padding:"12px 14px",cursor:isManager?"pointer":"default"}}>
               <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Due Date <span style={{fontWeight:400,textTransform:"none"}}>(work deadline)</span></p>
               {dueEdit ? (
                 <div onClick={e=>e.stopPropagation()} style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -7500,7 +7505,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                 published, only client-approved, so a "Publish Date" field
                 for it is always empty and meaningless. */}
             {post.platform && <div onClick={()=>{if(isManager&&!pubEdit) setPubEdit({date:post.scheduled_date||"",time:post.scheduled_time||""});}}
-              style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",cursor:isManager?"pointer":"default"}}>
+              className="sf-card" style={{padding:"12px 14px",cursor:isManager?"pointer":"default"}}>
               <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Publish Date</p>
               {pubEdit ? (
                 <div onClick={e=>e.stopPropagation()} style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -7907,9 +7912,9 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
             only a mention of it buried in the Activity feed. Only the
             add-controls (upload/link) are content-phase-only. */}
         {(post.stage==="content_creation" || isManager || (post.design_assets||[]).length>0)&&(
-          <div style={{display:"flex",flexDirection:"column",gap:12,padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+          <div className="sf-card" style={{display:"flex",flexDirection:"column",gap:12,padding:16}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-              <h4 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:14}}>Files{(post.design_assets||[]).length?<span style={{color:"var(--text3)",fontWeight:600}}> · {(post.design_assets||[]).length}</span>:null}</h4>
+              <h4 className="sf-sec-title">Files{(post.design_assets||[]).length?<span style={{color:"var(--text3)",fontWeight:600}}> · {(post.design_assets||[]).length}</span>:null}</h4>
               {(post.design_assets||[]).length>1&&<button onClick={()=>downloadAllMedia(post.design_assets, post.title||"media")} style={{fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:99,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",cursor:"pointer"}}>⬇ Download all</button>}
             </div>
             {(()=>{
@@ -8072,10 +8077,9 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
 
         {/* DESIGN PHASE - File Upload for Photos/Videos */}
         {post.stage==="design"&&(
-          <div style={{display:"flex",flexDirection:"column",gap:12,padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid #8b5cf6aa"}}>
+          <div className="sf-card" style={{display:"flex",flexDirection:"column",gap:12,padding:16,borderTop:"3px solid #8b5cf6"}}>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <span style={{fontSize:16}}></span>
-              <h4 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:14}}>Add design files</h4>
+              <h4 className="sf-sec-title">Add design files</h4>
               {assignee&&<span style={{fontSize:11,color:"var(--text3)",marginLeft:"auto"}}>Assigned to {assignee.name}</span>}
             </div>
 
