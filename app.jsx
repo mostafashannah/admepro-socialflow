@@ -27590,7 +27590,9 @@ function CareersPage({appSettings}) {
   const sf = (k,v) => setForm(p=>({...p,[k]:v}));
 
   useEffect(()=>{
-    qe("JobOpening",{status:"open"},"-created_date",100).then(res=>{
+    // careers.php already put the open jobs in the page — show them straight away, no extra round trip.
+    const pre = Array.isArray(window.__SF_OPENINGS) ? window.__SF_OPENINGS : null;
+    (pre ? Promise.resolve({entities:pre}) : qe("JobOpening",{status:"open"},"-created_date",100)).then(res=>{
       const list = res.entities||[];
       setOpenings(list);
       setLoading(false);
@@ -27625,6 +27627,7 @@ function CareersPage({appSettings}) {
   };
 
   const handleSubmit = async () => {
+    if(window.__sfGuestReady) { try { await window.__sfGuestReady; } catch(e) {} }
     if(form.website) return; // honeypot tripped — silently drop
     if(!form.name.trim()||!form.email.trim()) { alert("Name and email are required."); return; }
     if(!form.phone.trim()) { alert("Phone number is required."); return; }
@@ -28023,10 +28026,13 @@ function RequestAccessPage({onBack}) {
 // Public link pages run on a "guest pass" (auth.php?action=guest): it only opens the one record the
 // link points to. Fetched before the page renders; window.__sfGuestToken is then sent with its calls.
 function GuestGate({kind, token, children}) {
-  const [ready, setReady] = useState(false);
+  // The careers list needs no pass to show (its jobs come with the page), so it renders at once and
+  // the pass is fetched in the background; applying waits for it (window.__sfGuestReady).
+  const instant = kind==="careers" && Array.isArray(window.__SF_OPENINGS);
+  const [ready, setReady] = useState(instant);
   useEffect(()=>{
     let done = false;
-    fetch(window.location.origin+"/auth.php?action=guest", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({kind, token:token||""})})
+    window.__sfGuestReady = fetch(window.location.origin+"/auth.php?action=guest", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({kind, token:token||""})})
       .then(r=>r.ok?r.json():null).then(d=>{ if(d&&d.token) window.__sfGuestToken = d.token; })
       .catch(()=>{}).finally(()=>{ if(!done) setReady(true); });
     return ()=>{ done = true; };
