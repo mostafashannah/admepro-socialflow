@@ -783,9 +783,14 @@ function projectPage(p, lang) {
 ${sections}
 ${stats}
 ${credits}
-<section class="section-sm"><div class="wrap">
-  <a class="next-project" href="${L(`/project/${next.slug}/`, lang)}"><span class="eyebrow">${esc(t('nextProject', lang))}</span><span class="h2">${esc(next.title)} ${icon.arrow}</span></a>
-</div></section>
+<section class="next-sec" style="--nc:${esc(p.color || '#1f1e22')}">
+  <div class="wrap">
+    <a class="next-card" href="${L(`/project/${next.slug}/`, lang)}" aria-label="${esc(t('nextProject', lang))}: ${esc(next.title)}">
+      <span class="next-img">${img(projImg(next, next.cover), '', { sizes: '(min-width: 900px) 544px, 100vw' })}</span>
+      <span class="next-body"><span class="next-label">${esc(t('nextProject', lang))}</span><span class="next-title">${esc(next.title)}</span></span>
+    </a>
+  </div>
+</section>
 <section class="section-sm tint"><div class="wrap cta-band-in">
   <div>${eyebrow(tx(PR.ctaEyebrow, lang))}<h2 class="h3">${nl2br(tx(PR.ctaTitle, lang))}</h2><p class="muted small">${esc(tx(PR.ctaText, lang))}</p></div>
   <a class="btn btn-dark" href="${L('/contact-us/', lang)}">${esc(t('getQuote', lang))} ${icon.arrow}</a>
