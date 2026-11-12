@@ -46,6 +46,13 @@ if (!$phone_id || !$wa_token) {
     exit;
 }
 
+// Team member outside WhatsApp's 24h window → send as the approved team template right away.
+require_once __DIR__ . '/wa-lib.php';
+if (waIsTeamNumber(authPdo(), $to) && !waWindowOpen(authPdo(), $to)) {
+    [$tok, $tstatus, $tres] = waSendTeamTemplate($to, $body);
+    if ($tok) { http_response_code($tstatus); echo $tres; exit; }
+}
+
 $endpoint = "https://graph.facebook.com/v19.0/{$phone_id}/messages";
 $payload  = json_encode([
     "messaging_product" => "whatsapp",
@@ -75,6 +82,15 @@ if ($curl_err) {
     http_response_code(502);
     echo json_encode(["error" => "cURL error: {$curl_err}"]);
     exit;
+}
+
+// Outside WhatsApp's 24h window: resend to TEAM members as the approved template.
+if (($http_code < 200 || $http_code >= 300)) {
+    require_once __DIR__ . '/wa-lib.php';
+    if (waIsWindowError($http_code, $response) && waIsTeamNumber(authPdo(), $to)) {
+        [$tok, $tstatus, $tres] = waSendTeamTemplate($to, $body);
+        if ($tok) { $http_code = $tstatus; $response = $tres; }
+    }
 }
 
 http_response_code($http_code);

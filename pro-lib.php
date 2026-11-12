@@ -2600,6 +2600,19 @@ function sendWhatsAppReply($to, $body) {
     if (str_starts_with($digits, '00')) $digits = substr($digits, 2);
     elseif (preg_match('/^0\d{10}$/', $digits)) $digits = '20' . substr($digits, 1);
     $to = '+' . $digits;
+    // Team member who hasn't messaged in the last 24h: WhatsApp would drop free text,
+    // so send it inside the approved team template straight away.
+    require_once __DIR__ . '/wa-lib.php';
+    try {
+        $wp = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4', DB_USER, DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        if (waIsTeamNumber($wp, $to) && !waWindowOpen($wp, $to)) {
+            [$tok, $tstatus, $tres] = waSendTeamTemplate($to, $body);
+            if ($tok) {
+                try { $wp->prepare("INSERT INTO whatsapp_send_log (to_number, body_preview, status, http_status, error_message) VALUES (?, ?, 'sent', ?, NULL)")->execute([$to, mb_substr('[template] ' . $body, 0, 300), $tstatus]); } catch (Throwable $e) {}
+                return true;
+            }
+        }
+    } catch (Throwable $e) {}
     $endpoint = 'https://graph.facebook.com/v19.0/' . WA_PHONE_ID . '/messages';
     $payload = json_encode([
         'messaging_product' => 'whatsapp',
@@ -2624,6 +2637,19 @@ function sendWhatsAppReply($to, $body) {
     $err = curl_error($ch);
     curl_close($ch);
     $ok = $status >= 200 && $status < 300;
+    // Outside WhatsApp's 24h window: resend to TEAM members as the approved template.
+    if (!$ok && !$err) {
+        require_once __DIR__ . '/wa-lib.php';
+        if (waIsWindowError($status, $res)) {
+            try {
+                $tp = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4', DB_USER, DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+                if (waIsTeamNumber($tp, $to)) {
+                    [$tok, $tstatus, $tres] = waSendTeamTemplate($to, $body);
+                    if ($tok) { $ok = true; $status = $tstatus; $res = $tres; $body = '[template] ' . $body; }
+                }
+            } catch (Throwable $e) {}
+        }
+    }
     if (!$ok) {
         error_log('[wa-webhook] sendWhatsAppReply failed: HTTP ' . $status . ' ' . ($err ?: $res));
     }
