@@ -6063,7 +6063,7 @@ function DesignFilePicker({post, assets, onAddAsset, project, onStageChange}) {
 // Design assets grid — its own component (rather than inline JSX in
 // PostDetail) purely so it can hold its own per-asset "upscaling" state
 // without adding more hooks to PostDetail's own hook list.
-function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canForward}) {
+function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canForward, only=null}) {
   const [dragIdx, setDragIdx] = useState(null);
   if(!post.design_assets || post.design_assets.length===0) return null;
 
@@ -6080,6 +6080,7 @@ function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canF
     <div style={{display:"flex",flexDirection:"column",gap:6}}>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8}}>
         {post.design_assets.map((asset,i)=>{
+          if(only && !only.has(i)) return null;
           const isImage = (asset.url||asset.data||"").match(/\.(jpg|jpeg|png|gif|webp|svg)/i)||(asset.type||"").startsWith("image");
           const isVideo = (asset.url||asset.data||"").match(/\.(mp4|mov|webm|m4v)/i)||(asset.type||"").startsWith("video");
           return (
@@ -7904,7 +7905,31 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
         {(post.stage==="content_creation" || isManager || (post.design_assets||[]).length>0)&&(
           <div style={{display:"flex",flexDirection:"column",gap:12,padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
             <h4 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:14}}>Attachments</h4>
-            <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset} onForward={forwardDesignAssetToClient} canForward={currentUser?.role==="admin"||["account_manager","account_director","account_executive"].includes(currentUser?.role)}/>
+            {(()=>{
+              const list = Array.isArray(post.design_assets) ? post.design_assets : [];
+              const rounds = [...new Set(list.map(a=>Number(a?.round)||0).filter(Boolean))].sort((a,b)=>b-a);
+              const grid = only => <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset} onForward={forwardDesignAssetToClient} canForward={currentUser?.role==="admin"||["account_manager","account_director","account_executive"].includes(currentUser?.role)} only={only}/>;
+              if(!rounds.length) return grid(null);
+              const pending = new Set(list.map((a,k)=>(!a||!a.round)?k:-1).filter(k=>k>=0));
+              const card = (key, title, sub, color, set) => (
+                <div key={key} style={{border:`1px solid ${color}44`,borderLeft:`3px solid ${color}`,borderRadius:10,padding:10,background:"var(--surface)",display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
+                    <span style={{fontSize:12,fontWeight:800,color}}>{title}</span>
+                    {sub&&<span style={{fontSize:11,color:"var(--text3)"}}>{sub}</span>}
+                  </div>
+                  {grid(set)}
+                </div>);
+              return (<>
+                {pending.size>0&&card("new", "New — not submitted yet", `${pending.size} file${pending.size>1?"s":""}`, "#6366f1", pending)}
+                {rounds.map((r,ix)=>{
+                  const set = new Set(list.map((a,k)=>(Number(a?.round)||0)===r?k:-1).filter(k=>k>=0));
+                  const first = list.find(a=>(Number(a?.round)||0)===r);
+                  const when = first?.submitted_at ? fmtDateTime(first.submitted_at) : "";
+                  const who = (team||[]).find(m=>m.email===first?.submitted_by)?.name?.split(" ")[0];
+                  return card(r, `Submission ${r}${ix===0?" · latest":""}`, [who, when].filter(Boolean).join(" · "), ix===0?"#10b981":"#94a3b8", set);
+                })}
+              </>);
+            })()}
             {(post.stage==="content_creation"||isManager)&&(
               <>
                 <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
@@ -53691,6 +53716,10 @@ Return ONLY valid JSON (no markdown, no explanation):
       [isContent?"content_completed_at":"design_completed_at"]: null,
       [histField]: JSON.stringify(hist),
     };
+    // The files from that push go back to "not submitted yet".
+    { const list = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
+      const top = Math.max(0, ...list.map(x=>Number(x?.round)||0));
+      if(top) patch.design_assets = list.map(x=>{ if((Number(x?.round)||0)!==top) return x; const {round, submitted_at, submitted_by, ...rest} = x; return rest; }); }
     setData(d=>({...d, posts:d.posts.map(p=>p.id===post.id?{...p,...patch}:p)}));
     setSelectedPost(sp=>sp&&sp.id===post.id?{...sp,...patch}:sp);
     try { await ue("Post", post.id, patch); } catch(e) { alert("Couldn't move it back — please try again."); return; }
@@ -53845,6 +53874,17 @@ Return ONLY valid JSON (no markdown, no explanation):
       // one Trello list and a plain list→stage lookup can't tell them
       // apart. Cleared once consumed (or once the task moves on normally).
       pre_approval_stage: (newStage==="client_approval" && priorStage!=="client_approval") ? priorStage : (newStage==="client_approval" ? post.pre_approval_stage : null),
+      // Each push to Review / Design Review stamps the files submitted in that round,
+      // so the Attachments card can show one card per submission.
+      design_assets: (()=>{
+        const isPush = (priorStage==="design" && newStage==="design_review") || (priorStage==="content_creation" && newStage==="internal_review");
+        const list = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
+        if(!isPush || !list.some(a=>a && !a.round)) return post.design_assets;
+        const round = Math.max(0, ...list.map(a=>Number(a?.round)||0)) + 1;
+        const at = overrides.completed_at || new Date().toISOString();
+        const by = (priorStage==="design" ? (post.design_assigned_to||post.assigned_to) : (post.content_assigned_to||post.assigned_to)) || "";
+        return list.map(a=>a && !a.round ? {...a, round, submitted_at:at, submitted_by:by} : a);
+      })(),
       project_id: overrides.project_id || post.project_id,
       revision_count: revisionCount,
       was_rejected: wasRejected,
