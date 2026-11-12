@@ -6133,9 +6133,12 @@ function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canF
                 <span style={{position:"absolute",top:3,left:3,minWidth:18,height:18,padding:"0 4px",borderRadius:9,background:"rgba(0,0,0,0.65)",color:"#fff",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",zIndex:1}}>{i+1}</span>
               )}
               {isImage?
-                <img src={asset.url||asset.data} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={asset.name}/>
+                <img src={asset.url||asset.data} onClick={()=>onView&&onView({url:asset.url||asset.data, name:asset.name})} style={{width:"100%",height:"100%",objectFit:"cover",cursor:onView?"zoom-in":"default"}} alt={asset.name}/>
               :isVideo?
-                <video src={asset.url||asset.data} controls playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                <div onClick={()=>onView&&onView({url:asset.url||asset.data, name:asset.name})} style={{position:"relative",width:"100%",height:"100%",cursor:onView?"pointer":"default"}}>
+                  <video src={(asset.url||asset.data)+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover",pointerEvents:"none"}}/>
+                  <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.15)"}}><div style={{width:34,height:34,borderRadius:"50%",background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"}}><Ico d={Icons.play} size={14} stroke="#fff"/></div></div>
+                </div>
               :asset.type==="link"?<a href={asset.url} target="_blank" rel="noreferrer" style={{textAlign:"center",padding:8,textDecoration:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
                 <Ico d={Icons.globe} size={22} stroke="#8b5cf6"/>
                 <span style={{fontSize:9,fontWeight:700,color:"#8b5cf6"}}>LINK</span>
