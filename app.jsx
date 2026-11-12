@@ -7955,8 +7955,8 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
               const grid = (only, locked=false) => <DesignAssetGrid locked={locked} post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset} onForward={forwardDesignAssetToClient} canForward={currentUser?.role==="admin"||["account_manager","account_director","account_executive"].includes(currentUser?.role)} only={only}/>;
               if(!rounds.length) return list.length ? <FoldCard id={`sub_${post.id}_all`} title={`All files · ${list.length}`} color="#6366f1" defaultOpen={true}><div style={{padding:"0 4px"}}>{grid(null)}</div></FoldCard> : null;
               const pending = new Set(list.map((a,k)=>(!a||!a.round)?k:-1).filter(k=>k>=0));
-              // Submitted rounds are locked (only an admin can still remove/reorder them).
-              const lockOld = currentUser?.role!=="admin";
+              // Submitted rounds are locked for designers / writers; admin and the account team can still edit them.
+              const lockOld = !isManager;
               const card = (key, title, sub, color, set, open, locked=false, extra=null) => (
                 <FoldCard key={key} id={`sub_${post.id}_${key}`} title={`${title} · ${set.size} file${set.size!==1?"s":""}`} sub={sub} color={color} defaultOpen={open}>
                   <div style={{padding:"0 4px",display:"flex",flexDirection:"column",gap:10}}>{set.size>0&&grid(set, locked)}{extra}</div>
