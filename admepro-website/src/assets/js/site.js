@@ -61,6 +61,22 @@
     $$('[data-count]').forEach((el) => { if (!el.closest('.reveal')) io.observe(el); });
   } else $$('.reveal').forEach((el) => el.classList.add('in'));
 
+  // progress bars (Client Satisfaction, conversion rate): fill from 0 to the target when seen
+  $$('.bar').forEach((bar) => {
+    const track = $('.bar-track', bar); const fill = $('i', track); const tag = $('b', track); if (!track || !fill) return;
+    const target = parseFloat(fill.style.getPropertyValue('--v')) || 100;
+    const fmt = (n) => Math.round(n).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US') + '%';
+    const set = (v) => { track.style.setProperty('--cur', v); if (tag) tag.textContent = fmt(v); };
+    set(0);
+    const run = () => {
+      if (reduced) return set(target);
+      const t0 = performance.now(), d = 2000;
+      const step = (t) => { const p = Math.min(1, (t - t0) / d); set(target * (1 - Math.pow(1 - p, 3))); if (p < 1) requestAnimationFrame(step); };
+      requestAnimationFrame(step);
+    };
+    if ('IntersectionObserver' in window) { const o = new IntersectionObserver((e) => { if (e[0].isIntersecting) { o.disconnect(); run(); } }, { threshold: 0.6 }); o.observe(bar); } else set(target);
+  });
+
   // testimonial sliders
   $$('[data-slider]').forEach((s) => {
     const slides = $$('.tslide', s); let i = 0; const cur = $('[data-current]', s);

@@ -521,7 +521,7 @@ ${clientMarquee(lang)}
     <div class="reveal">
       ${eyebrow(tx(H.proof.eyebrow, lang))}
       <h2 class="h3">${esc(tx(H.proof.title, lang))} <span class="muted">${esc(tx(H.proof.titleMuted, lang))}</span></h2>
-      <div class="bar"><span>${esc(tx(H.proof.barLabel, lang))}</span><div class="bar-track"><i style="--v:100%"></i><b>100%</b></div></div>
+      <div class="bar"><span>${esc(tx(H.proof.barLabel, lang))}</span><div class="bar-track"><i style="--v:100%;--vn:1"></i><b>100%</b></div></div>
       <p>${esc(tx(H.proof.text, lang))}</p>
       <a class="link-strong" href="${L('/portfolio/', lang)}">${esc(tx(H.proof.cta, lang))}</a>
     </div>
@@ -577,7 +577,7 @@ function aboutPage(lang) {
   <div class="wrap split-3">
     <div class="reveal">${eyebrow(tx(A.numbersEyebrow, lang))}<h2 class="h3">${esc(tx(A.numbersTitle, lang))}</h2></div>
     <div class="reveal">${statsRow(A.numbers, lang, 'compact')}
-      <div class="bar gradient"><span>${esc(tx(A.conversion.label, lang))}</span><div class="bar-track"><i style="--v:${A.conversion.value}%"></i><b>${A.conversion.value}%</b></div></div></div>
+      <div class="bar gradient"><span>${esc(tx(A.conversion.label, lang))}</span><div class="bar-track"><i style="--v:${A.conversion.value}%;--vn:${A.conversion.value / 100}"></i><b>${A.conversion.value}%</b></div></div></div>
   </div>
 </section>
 <section class="studios">
