@@ -6068,6 +6068,25 @@ function DesignFilePicker({post, assets, onAddAsset, project, onStageChange}) {
 // Design assets grid — its own component (rather than inline JSX in
 // PostDetail) purely so it can hold its own per-asset "upscaling" state
 // without adding more hooks to PostDetail's own hook list.
+// A card that folds into one line (open/closed is remembered per browser).
+function FoldCard({id, title, sub, color="var(--accent)", defaultOpen=false, flat=false, children}) {
+  const key = "sf_fold_"+id;
+  const [open, setOpen] = useState(()=>{ try{ const v=localStorage.getItem(key); if(v!==null) return v==="1"; }catch(e){} return defaultOpen; });
+  const toggle = () => setOpen(o=>{ try{ localStorage.setItem(key, o?"0":"1"); }catch(e){} return !o; });
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:open?10:0}}>
+      <button onClick={toggle} style={{display:"flex",alignItems:"center",gap:10,width:"100%",textAlign:"left",padding:flat?"8px 2px":"12px 14px",borderRadius:12,border:flat?"none":"1px solid var(--border)",borderLeft:flat?"none":`3px solid ${color}`,background:flat?"transparent":"var(--surface)",cursor:"pointer",color:"var(--text)"}}>
+        <span style={{flex:1,minWidth:0}}>
+          <span style={{display:"block",fontSize:14,fontWeight:800}}>{title}</span>
+          {!open&&sub&&<span style={{display:"block",fontSize:11,color:"var(--text3)",marginTop:1}}>{sub}</span>}
+        </span>
+        <span style={{fontSize:11,fontWeight:700,color,whiteSpace:"nowrap"}}>{open?"Hide ▲":"Open ▼"}</span>
+      </button>
+      {open&&children}
+    </div>
+  );
+}
+
 function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canForward, only=null}) {
   const [dragIdx, setDragIdx] = useState(null);
   if(!post.design_assets || post.design_assets.length===0) return null;
@@ -7974,7 +7993,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
             from any other stage is just editing in place, the task stays
             exactly where it already was. */}
         {(post.stage==="content_creation"||isManager)&&(
-          <ContentPhaseGenerator
+          <FoldCard id="sara" title="✨ Sara — Caption generator" sub="Generate or write the caption" color="#d90b2c" defaultOpen={post.stage==="content_creation"}><ContentPhaseGenerator
             post={post}
             project={project}
             clientKnowledge={clientKnowledge}
@@ -7995,7 +8014,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
               try{ localStorage.removeItem(`sf_content_${post.id}`); }catch(e){}
               if(wasContentStage) { onStageChange({...post,...updatedPost}, "internal_review"); onClose(); }
             }}
-          />
+          /></FoldCard>
         )}
 
         {/* Waiting for the team leader */}
@@ -8099,7 +8118,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                 openai-proxy.php (key stays server-side in config.php).
                 Generates straight into Design Assets, same shape as a
                 manually-uploaded/picked file. */}
-            <DesignAIGenerator post={post} project={project} onAddAsset={onAddAsset} onStageChange={onStageChange}/>
+            <FoldCard id="yahia" title="🎨 Design with Yahia" sub="AI image / video generator" color="#8b5cf6" defaultOpen={false} flat><DesignAIGenerator post={post} project={project} onAddAsset={onAddAsset} onStageChange={onStageChange}/></FoldCard>
           </div>
         )}
 
