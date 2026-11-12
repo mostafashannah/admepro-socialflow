@@ -18,7 +18,7 @@
     let closing;
     const set = (open) => {
       burger.setAttribute('aria-expanded', open); document.body.classList.toggle('menu-open', open); clearTimeout(closing);
-      if (open) { menu.hidden = false; void menu.offsetWidth; menu.classList.add('open'); $('.flip', menu)?.focus({ preventScroll: true }); }
+      if (open) { menu.hidden = false; void menu.offsetWidth; menu.classList.add('open'); menu.setAttribute('tabindex', '-1'); menu.focus({ preventScroll: true }); }
       else { menu.classList.remove('open'); closing = setTimeout(() => { menu.hidden = true; }, reduced ? 0 : 520); burger.focus(); }
     };
     burger.addEventListener('click', () => set(true));

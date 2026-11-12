@@ -173,9 +173,10 @@ h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6 { font-family: var(--head);
 .flip-inner { display: block; transition: transform .55s cubic-bezier(.7, 0, .2, 1); will-change: transform; }
 .flip:hover .flip-inner, .flip:active .flip-inner, .flip:focus-visible .flip-inner { transform: translateY(-50%); }
 .flip-face { display: block; height: calc(var(--fs) * var(--lh)); font: 700 var(--fs)/var(--lh) var(--head); color: #fff; text-transform: uppercase; letter-spacing: -0.03em; white-space: nowrap; }
-.flip-face.back { color: transparent; -webkit-text-stroke: clamp(1.5px, .16vw, 2.5px) #fff; }
+.flip-face.back { color: #131215; -webkit-text-stroke: 2px #fff; paint-order: stroke fill; } /* fill hides the inner seams, leaving a thin 1px outline */
+.fullmenu:focus, .flip:focus, .flip:focus-visible { outline: none; } /* the roll is the focus indicator */
 :lang(ar) .flip-face { text-transform: none; letter-spacing: 0; }
-:lang(ar) .flip-face.back { -webkit-text-stroke-width: 1.2px; }
+:lang(ar) .flip-face.back { -webkit-text-stroke-width: 1.6px; }
 /* the other pages: small plain links separated by dots */
 .fm-more { display: flex; flex-wrap: wrap; align-items: center; margin: clamp(24px, 3.4vw, 40px) 0 0; max-width: 640px; font: 500 15px/1.9 var(--head); }
 .mlink { color: rgba(255, 255, 255, .6); transition: color .2s; }
