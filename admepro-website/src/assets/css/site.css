@@ -702,10 +702,10 @@ a.rev-card:hover .h5, a.rev-card:focus-visible .h5, a.rev-card:hover .rev-text, 
 /* custom cursor: red dot + thin trailing ring (mouse only); over projects a grey circle with an arrow */
 .cursor { position: fixed; top: 0; left: 0; z-index: 2000; pointer-events: none; opacity: 0; transition: opacity .25s; }
 .cursor.on { opacity: 1; }
-.c-dot { position: absolute; top: -7px; left: -7px; width: 14px; height: 14px; border-radius: 50%; background: #c8283a; transition: opacity .2s; }
-.c-ring { position: absolute; top: -31px; left: -31px; width: 62px; height: 62px; border-radius: 50%; border: 2px solid rgba(200, 40, 58, .45); display: grid; place-items: center; color: #fff; transition: width .4s var(--ease), height .4s var(--ease), top .4s var(--ease), left .4s var(--ease), background .3s, border-color .3s, backdrop-filter .3s; }
-.c-arrow { width: 44px; height: 44px; opacity: 0; transform: scale(.5); transition: opacity .25s, transform .35s var(--ease); }
-.is-view .c-ring { top: -52px; left: -52px; width: 104px; height: 104px; background: rgba(105, 105, 113, .55); border-color: transparent; -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); }
+.c-dot { position: absolute; top: -4px; left: -4px; width: 8px; height: 8px; border-radius: 50%; background: #c8283a; transition: opacity .2s; }
+.c-ring { position: absolute; top: -16px; left: -16px; width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid rgba(200, 40, 58, .5); display: grid; place-items: center; color: #fff; transition: width .4s var(--ease), height .4s var(--ease), top .4s var(--ease), left .4s var(--ease), background .3s, border-color .3s, backdrop-filter .3s; }
+.c-arrow { width: 26px; height: 26px; opacity: 0; transform: scale(.5); transition: opacity .25s, transform .35s var(--ease); }
+.is-view .c-ring { top: -30px; left: -30px; width: 60px; height: 60px; background: rgba(105, 105, 113, .55); border-color: transparent; -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); }
 .is-view .c-arrow { opacity: 1; transform: none; }
 .is-view .c-dot { opacity: 0; }
 @media (hover: none), (pointer: coarse) { .cursor { display: none; } }
