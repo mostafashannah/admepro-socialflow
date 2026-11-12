@@ -15,13 +15,15 @@
   // full-screen menu (same as the SocialFlow careers page)
   const burger = $('[data-burger]'); const menu = $('[data-menu]');
   if (burger && menu) {
+    let closing;
     const set = (open) => {
-      burger.setAttribute('aria-expanded', open); menu.hidden = !open; document.body.classList.toggle('menu-open', open);
-      if (open) $('.flip', menu)?.focus(); else burger.focus();
+      burger.setAttribute('aria-expanded', open); document.body.classList.toggle('menu-open', open); clearTimeout(closing);
+      if (open) { menu.hidden = false; void menu.offsetWidth; menu.classList.add('open'); $('.flip', menu)?.focus({ preventScroll: true }); }
+      else { menu.classList.remove('open'); closing = setTimeout(() => { menu.hidden = true; }, reduced ? 0 : 520); burger.focus(); }
     };
     burger.addEventListener('click', () => set(true));
     $('[data-menu-close]', menu).addEventListener('click', () => set(false));
-    addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) set(false); });
+    addEventListener('keydown', (e) => { if (e.key === 'Escape' && menu.classList.contains('open')) set(false); });
     $$('.flip', menu).forEach((a) => a.addEventListener('touchstart', () => {}, { passive: true })); // iOS :active
   }
 

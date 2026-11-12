@@ -213,8 +213,13 @@ const wordmarkImgs = (eager = false) => `${img('/assets/img/brand/wordmark.webp'
 const logoImgs = (h) => `<img src="/assets/img/brand/mark-dark.webp" alt="admepro" width="${Math.round(h * 972 / 900)}" height="${h}" class="logo-on-light"><img src="/assets/img/brand/mark-light.webp" alt="" width="${Math.round(h * 972 / 900)}" height="${h}" class="logo-on-dark" aria-hidden="true">`;
 
 function header(lang, current, otherHref) {
-  const links = [
-    ...site.nav.map((n) => ({ label: t(n.key, lang), href: L(n.path, lang), active: current === n.key || (n.children || []).includes(current) })),
+  // menu = the four main pages (big). Every other page is a small button under them.
+  const main = ['home', 'about', 'portfolio', 'contact'];
+  const links = main.map((k) => { const n = site.nav.find((x) => x.key === k); return { label: t(k, lang), href: L(n.path, lang), active: current === k }; });
+  const more = [
+    ...['branding', 'creative', 'digital', 'production'].map((k) => ({ label: t(k, lang), href: L('/' + k + '/', lang), active: current === k })),
+    { label: t('gcc', lang), href: L(P.gcc.path, lang), active: current === 'gcc' },
+    { label: t('blog', lang), href: L('/blog/', lang), active: current === 'blog' },
     { label: t('career', lang), href: site.careersUrl },
   ];
   const face = (s) => `<span class="flip-face">${esc(s)}</span><span class="flip-face back" aria-hidden="true">${esc(s)}</span>`;
@@ -227,11 +232,15 @@ ${ENV === 'staging' ? `<div class="ribbon" role="note">TEST SITE · ${lang === '
 <div class="fullmenu" id="menu" hidden data-menu>
   <button class="fullmenu-x" type="button" data-menu-close aria-label="${esc(t('close', lang))}">${icon.close}</button>
   <div class="fullmenu-grid">
-    <div class="fm-spacer"></div>
-    <nav class="fm-nav" aria-label="${lang === 'ar' ? 'القائمة الرئيسية' : 'Main'}">
-      ${links.map((l) => `<a class="flip" href="${l.href}"${l.active ? ' aria-current="page"' : ''}><span class="flip-inner">${face(l.label)}</span></a>`).join('\n      ')}
-    </nav>
-    <div class="fm-spacer"></div>
+    <div class="fm-left">
+      <nav class="fm-nav" aria-label="${lang === 'ar' ? 'القائمة الرئيسية' : 'Main'}">
+        ${links.map((l) => `<a class="flip" href="${l.href}"${l.active ? ' aria-current="page"' : ''}><span class="flip-inner">${face(l.label)}</span></a>`).join('\n        ')}
+      </nav>
+      <div class="fm-more" role="group" aria-label="${lang === 'ar' ? 'المزيد من الصفحات' : 'More pages'}">
+        <p class="fm-more-h">${lang === 'ar' ? 'المزيد' : 'More'}</p>
+        ${more.map((l) => `<a class="pill" href="${l.href}"${l.active ? ' aria-current="page"' : ''}>${esc(l.label)}</a>`).join('')}
+      </div>
+    </div>
     <div class="fm-info">
       <div><p class="fm-h">${lang === 'ar' ? 'تواصل معنا' : 'Get In Touch'}</p><p>${esc(tx(site.offices[0].address, lang))}</p><p>${site.infoEmail}</p><p dir="ltr">Ph: ${site.phone}</p></div>
       <div><p class="fm-h">${esc(t('workInquiries', lang))}</p><p>${site.email}</p><p dir="ltr">Ph: ${site.phone}</p></div>
