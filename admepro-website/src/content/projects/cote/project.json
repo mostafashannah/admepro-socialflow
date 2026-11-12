@@ -187,28 +187,7 @@
         "ar": [
           "باستخدام منتجات Côte ولقطات مختارة بعناية، أنتجنا ريلز تنقل أجواء الصيف وطقوس استخدام زيت التسمير اليومية."
         ]
-      },
-      "media": [
-        {
-          "type": "video",
-          "src": "/assets/video/comp-2-1-4.mp4",
-          "poster": "/assets/video/comp-2-1-4.webp",
-          "alt": "Cote reel"
-        },
-        {
-          "type": "video",
-          "src": "/assets/video/cote-new-2.mp4",
-          "poster": "/assets/video/cote-new-2.webp",
-          "alt": "Cote reel"
-        },
-        {
-          "type": "video",
-          "src": "/assets/video/cote-new-1.mp4",
-          "poster": "/assets/video/cote-new-1.webp",
-          "alt": "Cote reel"
-        }
-      ],
-      "layout": "grid-3"
+      }
     },
     {
       "label": {
@@ -228,6 +207,27 @@
         ]
       },
       "media": [
+        {
+          "type": "video",
+          "src": "/assets/video/comp-2-1-4.mp4",
+          "poster": "/assets/video/comp-2-1-4.webp",
+          "alt": "Cote reel",
+          "square": true
+        },
+        {
+          "type": "video",
+          "src": "/assets/video/cote-new-2.mp4",
+          "poster": "/assets/video/cote-new-2.webp",
+          "alt": "Cote reel",
+          "square": true
+        },
+        {
+          "type": "video",
+          "src": "/assets/video/cote-new-1.mp4",
+          "poster": "/assets/video/cote-new-1.webp",
+          "alt": "Cote reel",
+          "square": true
+        },
         {
           "type": "image",
           "src": "images/social-01.webp",
@@ -289,12 +289,11 @@
           "alt": "Cote social post"
         }
       ],
-      "layout": "grid-4"
+      "layout": "grid-3"
     }
   ],
   "color": "#433123",
   "date": "2024-10-01",
-  "hero": "images/tote-bag.webp",
   "displayTitle": "Côte",
   "intro": {
     "bg": "linear-gradient(105deg,#e98ba1 0%,#ebaab6 38%,#d4dfe9 72%,#b1e2fb 100%)",

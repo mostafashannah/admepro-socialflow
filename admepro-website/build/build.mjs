@@ -445,7 +445,7 @@ function media(p, m, lang) {
 ${m.poster ? img(projImg(p, m.poster), alt, { sizes: '(min-width: 900px) 66vw, 100vw' }) : ''}<span class="vplay">${icon.play}</span></button></figure>`;
   }
   if (m.type === 'video') {
-    return `<figure class="m"><video class="lazy-video" muted playsinline loop preload="none" ${m.poster ? `poster="${esc(projImg(p, m.poster))}"` : ''} data-src="${esc(projImg(p, m.src))}" aria-label="${esc(alt)}"></video></figure>`;
+    return `<figure class="m${m.square ? ' sq' : ''}"><video class="lazy-video" muted playsinline loop preload="none" ${m.poster ? `poster="${esc(projImg(p, m.poster))}"` : ''} data-src="${esc(projImg(p, m.src))}" aria-label="${esc(alt)}"></video></figure>`;
   }
   if (m.type === 'beforeAfter') {
     return `<figure class="m ba" data-ba style="--pos:50%">${img(projImg(p, m.after), `${alt}: ${t('after', lang)}`, { sizes: '(min-width: 900px) 66vw, 100vw' })}
