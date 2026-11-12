@@ -227,7 +227,7 @@ body.menu-open { overflow: hidden; }
 .hero-link:hover { color: rgba(255, 255, 255, .7); }
 
 /* clients marquee */
-.clients { padding-block: 20px 8px; border-bottom: 1px solid var(--border2); }
+.clients { padding-block: 20px 8px; }
 .clients .row-between { margin-bottom: 8px; }
 .marquee { overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); }
 .marquee-track { display: flex; width: max-content; animation: marquee 50s linear infinite; }
