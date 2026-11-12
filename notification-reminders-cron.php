@@ -143,7 +143,7 @@ if ($mode === 'reminders') {
                   <p style="margin:6px 0 0;font-size:13px;color:#92400e">Due: <strong>'.htmlspecialchars($post['scheduled_date']).'</strong></p>
                 </div>' .
                 email_card([['Client', htmlspecialchars($post['client_name'] ?: '—')], ['Due', htmlspecialchars($post['scheduled_date']), '#f59e0b']]) .
-                email_btn('https://socialflow.admepro.com', 'Open Task')
+                email_btn('https://socialflow.admepro.com/?task=' . rawurlencode($post['id']), 'Open Task')
             );
             [$ok, $raw] = send_via_resend($m['email'], '[SocialFlow] Task due soon: '.$post['title'], $html);
             log_email($insertLog, $m['email'], '[SocialFlow] Task due soon: '.$post['title'], $ok, $raw, $now);

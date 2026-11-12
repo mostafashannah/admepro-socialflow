@@ -2673,14 +2673,26 @@ const DEFAULT_NOTIF_PREFS = {
 // instead of the generic "<subject>\n\nView: <site homepage>" fallback,
 // which was just the bare app URL, not a link to the actual task, and
 // didn't show what was actually said.
+// Direct links for notifications: open the exact task / page the message is about.
+const sfLink = (kind, id) => {
+  const base = (typeof window!=="undefined" && window.location?.origin) || APP_URL;
+  if(kind==="task" && id) return `${base}/?task=${encodeURIComponent(id)}`;
+  if(kind==="app" && id) return `${base}/?page=recruitment&app=${encodeURIComponent(id)}`;
+  if(kind) return `${base}/?page=${encodeURIComponent(kind)}`;
+  return base;
+};
+let __sfNextLink = null;
+const withLink = (link) => { __sfNextLink = link; return sendNotification; };
 async function sendNotification(eventType, toEmail, subject, html, userPrefs, waNumber=null, waBody=null) {
+  const _link = __sfNextLink; __sfNextLink = null;
   const prefs = {...DEFAULT_NOTIF_PREFS, ...(userPrefs||{})};
   if(prefs.all_disabled) return false;
   if(prefs.mentions_only && eventType !== "task_mention") return false;
   if(prefs[eventType] === false) return false;
   const emailOk = sendEmail(toEmail, subject, html);
   if(waNumber) {
-    sendWhatsApp(waNumber, waBody || `${subject}\n\nView: ${window.location.origin}`).catch(()=>{});
+    const _open = _link || window.location.origin;
+    sendWhatsApp(waNumber, waBody ? (/https?:\/\//.test(waBody) ? waBody : `${waBody}\n\nOpen: ${_open}`) : `${subject}\n\nOpen: ${_open}`).catch(()=>{});
   }
   return emailOk;
 }
@@ -27651,7 +27663,7 @@ function CareersPage({appSettings}) {
               if(prefs?.all_disabled) continue;
               const notifPayload = {recipient_email:staffer.email, title:"New job application", message:`${form.name.trim()} just applied for "${selected.title}"`, type:"comment", is_read:false, link_type:"job_application", link_id:created.id};
               ce("Notification",[notifPayload]).catch(()=>{});
-              sendNotification("recruitment_new_application", staffer.email,
+              withLink(sfLink("recruitment"))("recruitment_new_application", staffer.email,
                 `[SocialFlow] New application: ${selected.title}`,
                 EMAIL_TEMPLATES.commentAdded(staffer.name, form.name.trim(), candidateLabel, "New application received — review it in Recruitment.", ""),
                 prefs
@@ -51390,7 +51402,7 @@ function App() {
       if(assignee) {
         const project = data.projects.find(p=>p.id===postData.project_id);
         const prefs = getNotifPrefs(assignee.email);
-        sendNotification("task_assigned", assignee.email,
+        withLink(sfLink("my_timeline"))("task_assigned", assignee.email,
           `[SocialFlow] You've been assigned: ${postData.title}`,
           EMAIL_TEMPLATES.taskAssigned(assignee.name, postData.title, project?.title||postData.project_name, postData.client_name, postData.scheduled_date, currentUser?.name),
           prefs, assignee.whatsapp_number||null
@@ -51407,7 +51419,7 @@ function App() {
             const m = data.team.find(t=>t.email===email);
             if(m) {
               const mprefs = getNotifPrefs(email);
-              sendNotification("project_task_added", email,
+              withLink(sfLink("tasks"))("project_task_added", email,
                 `[SocialFlow] New task added to ${project.title}`,
                 EMAIL_TEMPLATES.taskAddedToProject(m.name, postData.title, project.title, postData.client_name, postData.scheduled_date, assignee.name),
                 mprefs
@@ -51548,7 +51560,7 @@ function App() {
       const m = data.team.find(t=>t.email===email);
       if(m) {
         const prefs = getNotifPrefs(email);
-        sendNotification("project_created", email,
+        withLink(sfLink("projects"))("project_created", email,
           `[SocialFlow] New project: ${formData.name}`,
           EMAIL_TEMPLATES.projectCreated(m.name, formData.name, formData.client_name, formData.end_date?fmtDate(formData.end_date):"TBD", currentUser?.name),
           prefs
@@ -51852,7 +51864,7 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
       // approve/reject instruction). Email still goes through sendNotification
       // normally; WhatsApp is sent directly here instead, mirroring that same
       // format (same reqId-based short id decide_pending_request expects).
-      sendNotification("wa_leave_requests", manager.email, `New request: ${member.name} — ${label}`,
+      withLink(sfLink("users"))("wa_leave_requests", manager.email, `New request: ${member.name} — ${label}`,
         `<div style="font-family:sans-serif;font-size:14px;color:#111827;line-height:1.6"><p>${msg.replace(/\n/g,"<br>")}</p><p>Log in to SocialFlow → Team → Leave & WFH to approve or reject it.</p></div>`,
         prefs
       ).catch(()=>{});
@@ -52685,7 +52697,7 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
           if(!assignee) continue;
           const proj=data.projects.find(pr=>pr.id===p.project_id);
           const prefs=getNotifPrefs(assignee.email);
-          await sendNotification("task_overdue", assignee.email,
+          await withLink(sfLink("task", p.id))("task_overdue", assignee.email,
             `[SocialFlow] Overdue: ${p.title}`,
             EMAIL_TEMPLATES.taskOverdue(assignee.name, p.title, p.scheduled_date, proj?.title||"", p.client_name||""),
             prefs
@@ -53098,7 +53110,7 @@ Return ONLY the JSON array, no markdown.`;
     setToast(`Invoice ${invData.invoice_number} created`);
     data.team.filter(m=>["admin","accountant"].includes(m.role)&&m.email!==currentUser?.email).forEach(m=>{
       const prefs = getNotifPrefs(m.email);
-      sendNotification("invoice_created", m.email,
+      withLink(sfLink("invoices"))("invoice_created", m.email,
         `[SocialFlow] New invoice — ${invData.invoice_number}`,
         EMAIL_TEMPLATES.invoiceCreated(m.name, invData.invoice_number, fmtMoney(invData.total,invData.currency), invData.currency, invData.client_name),
         prefs
@@ -53121,7 +53133,7 @@ Return ONLY the JSON array, no markdown.`;
     // Notify admins/accountants of payment
     data.team.filter(m=>["admin","accountant"].includes(m.role)&&m.email!==currentUser?.email).forEach(m=>{
       const prefs = getNotifPrefs(m.email);
-      sendNotification("payment_received", m.email,
+      withLink(sfLink("invoices"))("payment_received", m.email,
         `[SocialFlow] Payment recorded — ${invoice.invoice_number}`,
         EMAIL_TEMPLATES.paymentReceived(m.name, invoice.invoice_number, fmtMoney(payData.amount,invoice.currency||"USD"), invoice.currency||"USD", invoice.client_name),
         prefs
@@ -53559,7 +53571,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       if(!assignee) return;
       const prefs = getNotifPrefs(email);
       const taskList = assignedTasks.slice(0,5).map(t=>t.title).join(", ")+(assignedTasks.length>5?` and ${assignedTasks.length-5} more`:"");
-      sendNotification("task_assigned", email,
+      withLink(sfLink("my_timeline"))("task_assigned", email,
         `[SocialFlow] ${assignedTasks.length} task${assignedTasks.length>1?"s":""} assigned to you — ${planForm.campaign}`,
         EMAIL_TEMPLATES.taskAssigned(assignee.name, `${assignedTasks.length} task${assignedTasks.length>1?"s":""}: ${taskList}`, planForm.campaign, calClient?.name||"", "", currentUser?.name),
         prefs, assignee.whatsapp_number||null
@@ -53685,6 +53697,24 @@ Return ONLY valid JSON (no markdown, no explanation):
     else entries = [...entries, {date:today, duration_mins, by, at:deliveredAt, ...snap}];
     return JSON.stringify(entries);
   };
+  // Direct links from notifications: ?task=ID opens that task, ?page=X opens a page, ?page=recruitment&app=ID opens an application.
+  const _deepDone = useRef(false);
+  useEffect(()=>{
+    if(_deepDone.current || !currentUser || loading) return;
+    let q; try { q = new URLSearchParams(window.location.search); } catch(e) { return; }
+    const task = q.get("task"), pg = q.get("page"), app = q.get("app");
+    if(!task && !pg) { _deepDone.current = true; return; }
+    if(task) {
+      const p = (data.posts||[]).find(x=>x.id===task);
+      if(!p) { if((data.posts||[]).length) _deepDone.current = true; else return; }
+      else { setPage("tasks"); setSelectedPost(p); _deepDone.current = true; }
+    } else {
+      if(app) { try{ localStorage.setItem("sf_recruitment_open_app", app); }catch(e){} }
+      setPage(pg); _deepDone.current = true;
+    }
+    try { ["task","page","app"].forEach(k=>q.delete(k)); const rest=q.toString(); history.replaceState(null,"",window.location.pathname+(rest?"?"+rest:"")+window.location.hash); } catch(e) {}
+  },[currentUser, loading, data.posts]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Admin / account team: a task was pushed to Review / Design Review before the
   // work was actually finished. Put it straight back where it was, as if it was
   // never pushed: same owner, same due date/time/duration, no "done" credit for
@@ -53709,7 +53739,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       setData(d=>({...d, posts:d.posts.map(p=>p.id===post.id?{...p,...patch}:p)}));
       setSelectedPost(sp=>sp&&sp.id===post.id?{...sp,...patch}:sp);
       try { await ue("Post", post.id, patch); } catch(e) { setToast(" Couldn't save — try again."); return; }
-      if(ownerM) sendNotification("task_sent_back", ownerM.email, `[SocialFlow] Not approved yet: ${post.title}`,
+      if(ownerM) withLink(sfLink("task", post.id))("task_sent_back", ownerM.email, `[SocialFlow] Not approved yet: ${post.title}`,
         `<div style="font-family:sans-serif;font-size:14px;color:#111827;line-height:1.6"><p>${currentUser?.name||"Your team leader"} didn't approve "${post.title}" yet${note?`:</p><p style="color:#555">${note}</p><p>`:"."} It's back on your timeline — continue and push again when ready.</p></div>`,
         getNotifPrefs(ownerM.email), ownerM.whatsapp_number||null).catch(()=>{});
       setToast(" Sent back to keep working");
@@ -53769,7 +53799,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         setSelectedPost(sp=>sp&&sp.id===post.id?{...sp,...patch}:sp);
         try { await ue("Post", post.id, patch); } catch(e) { setToast(" Couldn't send for approval — try again."); return; }
         try { await pauseTimer(post.id); } catch(e) {}
-        sendNotification("task_stage_changed", leader.email, `[SocialFlow] Waiting your approval: ${post.title}`,
+        withLink(sfLink("task", post.id))("task_stage_changed", leader.email, `[SocialFlow] Waiting your approval: ${post.title}`,
           `<div style="font-family:sans-serif;font-size:14px;color:#111827;line-height:1.6"><p><b>${me.name}</b> finished "${post.title}"${post.client_name?` (${post.client_name})`:""} and is waiting for your approval before it goes to ${STAGE_MAP[newStage]?.label||newStage}.</p><p>Open SocialFlow → My Timeline → Tasks to approve.</p></div>`,
           getNotifPrefs(leader.email), leader.whatsapp_number||null).catch(()=>{});
         setToast(` Sent to ${leader.name.split(" ")[0]} for approval — timer paused`);
@@ -53968,7 +53998,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         const returnee = data.team.find(m=>m.email===returnEmail);
         if(returnee && returnEmail !== currentUser?.email) {
           const returnPrefs = getNotifPrefs(returnEmail);
-          sendNotification("task_sent_back", returnEmail,
+          withLink(sfLink("task", post.id))("task_sent_back", returnEmail,
             `[SocialFlow] Sent back for revision: ${post.title}`,
             `<div style="font-family:sans-serif;font-size:14px;color:#111827;line-height:1.6">` +
             `<p>"${post.title}"${post.client_name?` (${post.client_name})`:""} was sent back to ${STAGE_MAP[newStage]?.label||newStage} for revision${post.rejection_reason?`:</p><p style="color:#555">${post.rejection_reason}</p><p>`:"."}</p>` +
@@ -54061,7 +54091,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     // Notify the new assignee if different from current user
     if(assignee && assignee.email !== currentUser?.email) {
       const prefs = getNotifPrefs(assignee.email);
-      sendNotification("task_assigned", assignee.email,
+      withLink(sfLink("task", post.id))("task_assigned", assignee.email,
         `[SocialFlow] Task assigned to you: ${post.title}`,
         EMAIL_TEMPLATES.taskAssigned(assignee.name, post.title, project?.title||post.project_name, post.client_name, post.scheduled_date, currentUser?.name),
         prefs, assignee.whatsapp_number||null
@@ -54073,7 +54103,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       if(prevAssignee) {
         const prefs = getNotifPrefs(prevAssignee.email);
         const fromLabel = STAGE_MAP[post.stage]?.label||post.stage;
-        sendNotification("task_stage_changed", prevAssignee.email,
+        withLink(sfLink("task", post.id))("task_stage_changed", prevAssignee.email,
           `[SocialFlow] Task moved: ${post.title}`,
           EMAIL_TEMPLATES.taskStageChanged(prevAssignee.name, post.title, fromLabel, stageLabel, project?.title||"", post.client_name),
           prefs, prevAssignee.whatsapp_number||null
@@ -54097,7 +54127,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       const originalAssignee = data.team.find(m=>m.email===post.assigned_to);
       if(originalAssignee && originalAssignee.email !== currentUser?.email) {
         const prefs = getNotifPrefs(originalAssignee.email);
-        sendNotification("post_approved", originalAssignee.email,
+        withLink(sfLink("task", post.id))("post_approved", originalAssignee.email,
           `[SocialFlow] Post approved: ${post.title}`,
           EMAIL_TEMPLATES.postApproved(originalAssignee.name, post.title, post.client_name||"Client"),
           prefs, originalAssignee.whatsapp_number||null
@@ -54108,7 +54138,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       const originalAssignee = data.team.find(m=>m.email===post.assigned_to);
       if(originalAssignee && originalAssignee.email !== currentUser?.email) {
         const prefs = getNotifPrefs(originalAssignee.email);
-        sendNotification("post_rejected", originalAssignee.email,
+        withLink(sfLink("task", post.id))("post_rejected", originalAssignee.email,
           `[SocialFlow] Post needs revision: ${post.title}`,
           EMAIL_TEMPLATES.postRejected(originalAssignee.name, post.title, post.client_name||"Client", post.rejection_reason||""),
           prefs, originalAssignee.whatsapp_number||null
@@ -54289,7 +54319,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         ce("Notification",[notifPayload]).catch(()=>{});
         // Send mention email
         const prefs = getNotifPrefs(mentioned.email);
-        sendNotification("task_mention", mentioned.email,
+        withLink(sfLink("task", postId))("task_mention", mentioned.email,
           `[SocialFlow] ${user?.name||"Someone"} mentioned you`,
           EMAIL_TEMPLATES.mentionNotification(mentioned.name, user?.name||"A colleague", postTitle, content.slice(0,200), project?.title||""),
           prefs, mentioned.whatsapp_number||null,
@@ -54302,7 +54332,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       const assigneeMember = data.team.find(m=>m.email===post.assigned_to);
       if(assigneeMember) {
         const prefs = getNotifPrefs(assigneeMember.email);
-        sendNotification("task_comment", assigneeMember.email,
+        withLink(sfLink("task", postId))("task_comment", assigneeMember.email,
           `[SocialFlow] New comment on: ${post.title}`,
           EMAIL_TEMPLATES.commentAdded(assigneeMember.name, user?.name||"A colleague", post.title, content.slice(0,200), project?.title||""),
           prefs, assigneeMember.whatsapp_number||null,
@@ -54324,7 +54354,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         setData(d=>({...d, notifications:[localNotif,...d.notifications]}));
         ce("Notification",[notifPayload]).catch(()=>{});
         const prefs = getNotifPrefs(participant.email);
-        sendNotification("task_comment", participant.email,
+        withLink(sfLink("task", postId))("task_comment", participant.email,
           `[SocialFlow] New comment on: ${postTitle}`,
           EMAIL_TEMPLATES.commentAdded(participant.name, user?.name||"A colleague", postTitle, content.slice(0,200), project?.title||""),
           prefs, participant.whatsapp_number||null,
@@ -54399,7 +54429,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       setData(d=>({...d, notifications:[localNotif, ...d.notifications]}));
       ce("Notification",[notifPayload]).catch(()=>{});
       const prefs = getNotifPrefs(mentioned.email);
-      sendNotification("task_mention", mentioned.email,
+      withLink(sfLink("app", application.id))("task_mention", mentioned.email,
         `[SocialFlow] ${user?.name||"Someone"} mentioned you`,
         EMAIL_TEMPLATES.mentionNotification(mentioned.name, user?.name||"A colleague", candidateLabel, content.slice(0,200), ""),
         prefs
@@ -54424,7 +54454,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         setData(d=>({...d, notifications:[localNotif, ...d.notifications]}));
         ce("Notification",[notifPayload]).catch(()=>{});
         const prefs = getNotifPrefs(participant.email);
-        sendNotification("task_comment", participant.email,
+        withLink(sfLink("app", application.id))("task_comment", participant.email,
           `[SocialFlow] New comment on ${candidateLabel}`,
           EMAIL_TEMPLATES.commentAdded(participant.name, user?.name||"A colleague", candidateLabel, content.slice(0,200), ""),
           prefs
