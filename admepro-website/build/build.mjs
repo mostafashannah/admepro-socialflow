@@ -236,10 +236,7 @@ ${ENV === 'staging' ? `<div class="ribbon" role="note">TEST SITE · ${lang === '
       <nav class="fm-nav" aria-label="${lang === 'ar' ? 'القائمة الرئيسية' : 'Main'}">
         ${links.map((l) => `<a class="flip" href="${l.href}"${l.active ? ' aria-current="page"' : ''}><span class="flip-inner">${face(l.label)}</span></a>`).join('\n        ')}
       </nav>
-      <div class="fm-more" role="group" aria-label="${lang === 'ar' ? 'المزيد من الصفحات' : 'More pages'}">
-        <p class="fm-more-h">${lang === 'ar' ? 'المزيد' : 'More'}</p>
-        ${more.map((l) => `<a class="pill" href="${l.href}"${l.active ? ' aria-current="page"' : ''}>${esc(l.label)}</a>`).join('')}
-      </div>
+      <p class="fm-more" role="group" aria-label="${lang === 'ar' ? 'المزيد من الصفحات' : 'More pages'}">${more.map((l) => `<a class="mlink" href="${l.href}"${l.active ? ' aria-current="page"' : ''}>${esc(l.label)}</a>`).join('')}</p>
     </div>
     <div class="fm-info">
       <div><p class="fm-h">${lang === 'ar' ? 'تواصل معنا' : 'Get In Touch'}</p><p>${esc(tx(site.offices[0].address, lang))}</p><p>${site.infoEmail}</p><p dir="ltr">Ph: ${site.phone}</p></div>
