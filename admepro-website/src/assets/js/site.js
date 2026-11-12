@@ -323,3 +323,46 @@
     } finally { btn.disabled = false; }
   }));
 })();
+
+/* WebMCP: lets in-browser AI agents use the site through three read-only tools
+   (search, list projects, contact details). Nothing is sent anywhere and no form is ever submitted. */
+(() => {
+  const mc = navigator.modelContext;
+  if (!mc || !mc.registerTool) return;
+  const ar = document.documentElement.lang === 'ar';
+  const get = (u) => fetch(u).then((r) => r.json());
+  const out = (o) => ({ content: [{ type: 'text', text: JSON.stringify(o) }] });
+  try {
+    mc.registerTool({
+      name: 'search_admepro',
+      description: 'Search admepro pages, portfolio projects and blog posts by keyword.',
+      inputSchema: { type: 'object', properties: { query: { type: 'string', description: 'Words to look for' } }, required: ['query'] },
+      annotations: { readOnlyHint: true },
+      execute: async ({ query }) => {
+        const q = String(query || '').toLowerCase();
+        const idx = await get(ar ? '/ar/search.json' : '/search.json');
+        return out(idx.items.filter((i) => `${i.t} ${i.d || ''} ${i.x || ''}`.toLowerCase().includes(q)).slice(0, 10).map((i) => ({ title: i.t, url: location.origin + i.u, summary: i.d })));
+      },
+    });
+    mc.registerTool({
+      name: 'list_admepro_projects',
+      description: 'List admepro portfolio projects, optionally filtered by category (branding, creative, digital, production).',
+      inputSchema: { type: 'object', properties: { category: { type: 'string' } } },
+      annotations: { readOnlyHint: true },
+      execute: async ({ category } = {}) => {
+        const d = await get('/api/projects.json');
+        return out(d.projects.filter((p) => !category || p.categories.includes(category)).map((p) => ({ title: p.title, url: p.url[ar ? 'ar' : 'en'], categories: p.categories })));
+      },
+    });
+    mc.registerTool({
+      name: 'get_admepro_contact',
+      description: 'Get admepro office addresses, email and phone, and the contact page URL.',
+      inputSchema: { type: 'object', properties: {} },
+      annotations: { readOnlyHint: true },
+      execute: async () => {
+        const d = JSON.parse(document.querySelector('script[type="application/ld+json"]')?.textContent || '{}');
+        return out({ contactPage: location.origin + (ar ? '/ar/contact-us/' : '/contact-us/'), email: d.email, telephone: d.telephone, address: d.address });
+      },
+    });
+  } catch (e) { /* WebMCP not available */ }
+})();

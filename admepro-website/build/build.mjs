@@ -161,6 +161,8 @@ function emitAsset(rel, outName) {
 // ---------------------------------------------------------------- page shell
 function head({ lang, title, description, pathEn, pathAr, image, type = 'website', schema = [], noAlt = false }) {
   const canonical = abs(lang === 'ar' ? pathAr : pathEn);
+  const mdPath = (lang === 'ar' ? pathAr : pathEn);
+  const mdLink = mdPath.endsWith('.html') ? '' : `<link rel="alternate" type="text/markdown" href="${abs(mdPath.replace(/\/?$/, '/') + 'index.md')}">\n<link rel="api-catalog" href="/.well-known/api-catalog">\n<link rel="describedby" type="text/plain" href="/llms.txt">`;
   const ogImg = abs(image || '/assets/img/brand/og-default.jpg');
   const alts = noAlt ? '' : `
 <link rel="alternate" hreflang="en" href="${abs(pathEn)}">
@@ -179,6 +181,7 @@ function head({ lang, title, description, pathEn, pathAr, image, type = 'website
 <meta name="description" content="${esc(description)}">
 ${robots}
 <link rel="canonical" href="${canonical}">${alts}
+${mdLink}
 ${fonts.map((f) => `<link rel="preload" href="/assets/fonts/${f}" as="font" type="font/woff2" crossorigin>`).join('\n')}
 <link rel="stylesheet" href="${assetMap['assets/css/site.css']}">
 <link rel="icon" href="/assets/img/brand/favicon-32.png" sizes="32x32">
@@ -355,10 +358,12 @@ const faqSchema = (lang) => ({
 const eyebrow = (s) => (s ? `<p class="eyebrow">${esc(s)}</p>` : '');
 
 function clientMarquee(lang) {
-  const items = shared.clientStrips.map((k) => img(siteImg('clients/' + k), '', { sizes: '320px' })).join('');
+  const alt = (i) => (lang === 'ar' ? `شعارات علامات تجارية تثق في admepro (${i + 1})` : `Logos of brands that trust admepro (${i + 1})`);
+  const items = shared.clientStrips.map((k, i) => img(siteImg('clients/' + k), alt(i), { sizes: '320px' })).join('');
+  const dup = shared.clientStrips.map((k) => img(siteImg('clients/' + k), '', { sizes: '320px' })).join('');
   return `<section class="clients" aria-label="${esc(tx(P.home.clientsTitle, lang))}">
   <div class="wrap-wide row-between"><p class="eyebrow">${esc(tx(P.home.clientsTitle, lang))}</p><a class="link-sm" href="${L('/portfolio/', lang)}">${esc(t('seeMoreProjects', lang))}</a></div>
-  <div class="marquee" aria-hidden="true"><div class="marquee-track">${items}${items}</div></div>
+  <div class="marquee"><div class="marquee-track">${items}<span class="marquee-dup" aria-hidden="true" style="display:contents">${dup}</span></div></div>
 </section>`;
 }
 
@@ -581,7 +586,7 @@ function aboutPage(lang) {
   </div>
 </section>
 <section class="studios">
-  <div class="studios-img">${img(siteImg(A.studioImage), '', { sizes: '(min-width: 900px) 50vw, 100vw' })}</div>
+  <div class="studios-img">${img(siteImg(A.studioImage), lang === 'ar' ? 'استوديو admepro الإبداعي في القاهرة' : 'The admepro creative studio team at work in Cairo', { sizes: '(min-width: 900px) 50vw, 100vw' })}</div>
   <div class="studios-text reveal"><h2 class="h3">${esc(tx(A.studiosTitle, lang))}</h2>
     ${A.studios.map((s, i) => `<details class="faq-item plain"${i === 0 ? ' open' : ''}><summary>${esc(tx(s.title, lang))}<span class="plus">${icon.plus}</span></summary><div><p>${esc(tx(s.text, lang))}</p></div></details>`).join('')}</div>
 </section>
@@ -634,7 +639,7 @@ function servicePage(S, lang) {
 <section class="section-sm">
   <div class="wrap svc-body">
     <div class="svc-list">${S.items.map((it, i) => `<details class="svc-item reveal"${i === 0 ? ' open' : ''}><summary><span class="plus">${icon.plus}</span><span class="h6">${esc(tx(it.title, lang))}</span></summary><p>${esc(tx(it.text, lang))}</p></details>`).join('')}</div>
-    <div class="svc-img reveal">${img(siteImg(c.image), '', { sizes: '(min-width: 900px) 45vw, 100vw' })}</div>
+    <div class="svc-img reveal">${img(siteImg(c.image), `${tx(S.title, lang)} | admepro`, { sizes: '(min-width: 900px) 45vw, 100vw' })}</div>
   </div>
 </section>
 <section class="section-sm">
@@ -645,7 +650,7 @@ function servicePage(S, lang) {
 </section>
 <section class="section-sm">
   <div class="wrap svc-testi">
-    <div class="svc-testi-img">${img(siteImg(c.image2), '', { sizes: '(min-width: 900px) 60vw, 100vw' })}</div>
+    <div class="svc-testi-img">${img(siteImg(c.image2), `${tx(S.title, lang)} | admepro`, { sizes: '(min-width: 900px) 60vw, 100vw' })}</div>
     <div class="svc-testi-card reveal">${testimonials(lang)}</div>
   </div>
 </section>
@@ -707,7 +712,7 @@ function gccPage(lang) {
   <div class="call-card reveal">${eyebrow(tx(H.contact.eyebrow, lang))}<h2 class="h2">${nl2br(tx(H.contact.title, lang))}</h2>${leadForm(lang, 'call')}</div>
   <div class="reveal">${faqBlock(lang)}</div>
 </div></section>
-<section class="logo-grid-wrap"><div class="wrap"><ul class="logo-grid five">${['gcc-1', 'gcc-2', 'gcc-3', 'gcc-4', 'gcc-5'].map((k) => `<li>${img(siteImg('clients/' + k), '', { sizes: '160px' })}</li>`).join('')}</ul></div></section>`;
+<section class="logo-grid-wrap"><div class="wrap"><ul class="logo-grid five">${['gcc-1', 'gcc-2', 'gcc-3', 'gcc-4', 'gcc-5'].map((k) => `<li>${img(siteImg('clients/' + k), lang === 'ar' ? 'شعار عميل من عملاء admepro في الخليج' : 'Logo of an admepro client in the GCC', { sizes: '160px' })}</li>`).join('')}</ul></div></section>`;
   return page({
     lang, key: 'gcc', pathEn: G.path, pathAr: '/ar' + G.path, title: tx(G.seo.title, lang), description: tx(G.seo.description, lang),
     schema: [orgSchema(), faqSchema(lang), crumbs(lang, [{ name: t('gcc', lang), path: G.path }])], body,
@@ -810,7 +815,7 @@ ${credits}
   const url = `/project/${p.slug}/`;
   return page({
     lang, noCta: true, key: 'portfolio', pathEn: url, pathAr: '/ar' + url,
-    title: tx(p.seo?.title, lang) || `${p.title} | admepro`,
+    title: ((tt) => (tt.length > 60 ? tt.replace(/ \| admepro$/, '') : tt))(tx(p.seo?.title, lang) || `${p.title} | admepro`),
     description: tx(p.seo?.description, lang) || tx(p.summary, lang).slice(0, 155),
     image: projImg(p, p.cover), type: 'article',
     schema: [
@@ -861,7 +866,7 @@ function postPage(p) {
   <a class="post-card" href="/blog/${r.slug}/">${img(r.cover, r.title, { sizes: '(min-width: 900px) 33vw, 100vw' })}<span class="post-meta">${esc(fmtDate(r.date, lang))}</span><span class="h5">${esc(r.title)}</span></a>`).join('')}</div></div></section>`;
   return page({
     lang, key: 'blog', pathEn: url, pathAr: '/ar/blog/', otherHref: '/ar/blog/', noAlt: true,
-    title: `${p.title} | admepro`, description: p.description, image: p.cover, type: 'article',
+    title: `${p.seoTitle || p.title} | admepro`, description: p.seoDescription || p.description, image: p.cover, type: 'article',
     schema: [{ '@type': 'BlogPosting', headline: p.title, description: p.description, datePublished: p.date, dateModified: p.date, image: abs(p.cover),
       url: abs(url), mainEntityOfPage: abs(url), inLanguage: 'en', author: { '@id': orgId }, publisher: { '@id': orgId } },
       crumbs(lang, [{ name: t('blog', lang), path: '/blog/' }, { name: p.title, path: url }])],
@@ -977,6 +982,11 @@ DirectoryIndex index.html
 ErrorDocument 404 /404.html
 <IfModule mod_rewrite.c>
 RewriteEngine On
+# Markdown for agents: same URL, Accept: text/markdown returns the page as Markdown
+RewriteCond %{HTTP:Accept} text/markdown [NC]
+RewriteCond %{REQUEST_URI} ^/((?:[^.]+/)?)$
+RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI}index.md -f
+RewriteRule ^((?:[^.]+/)?)$ /$1index.md [L]
 ${ENV === 'production' ? `RewriteCond %{HTTPS} off [OR]
 RewriteCond %{HTTP_HOST} ^www\\. [NC]
 RewriteRule ^ https://${new URL(BASE).host}%{REQUEST_URI} [L,R=301]` : '# (staging: no https/www redirect)'}
@@ -992,6 +1002,15 @@ Header set Cache-Control "public, max-age=31536000, immutable"
 <FilesMatch "\\.(html|xml|txt|json)$">
 Header set Cache-Control "public, max-age=300"
 </FilesMatch>
+SetEnvIf Request_URI "^/$" IS_HOME=1
+Header always set Link "</.well-known/api-catalog>; rel=\\"api-catalog\\", </llms.txt>; rel=\\"describedby\\"; type=\\"text/plain\\", </api/openapi.json>; rel=\\"service-desc\\"" env=IS_HOME
+Header append Vary "Accept"
+<FilesMatch "\\.md$">
+Header set Content-Type "text/markdown; charset=utf-8"
+</FilesMatch>
+<Files "api-catalog">
+Header set Content-Type "application/linkset+json"
+</Files>
 Header always set X-Content-Type-Options "nosniff"
 Header always set Referrer-Policy "strict-origin-when-cross-origin"
 Header always set X-Frame-Options "SAMEORIGIN"
@@ -1010,6 +1029,123 @@ ${rules.map(([from, to]) => `location = ${from} { return 301 ${to}; }${from.ends
 location ~ ^/page/\\d+/?$ { return 301 /; }
 location ~ ^/wp-(admin|login\\.php|content|includes|json) { return 301 /; }
 `);
+
+// ---------------------------------------------------------------- agent readiness
+// Everything below is static files, so any AI crawler or agent can read the site without running JavaScript:
+//   markdown twin of every page, llms.txt / llms-full.txt, robots.txt with AI crawlers + Content Signals,
+//   /.well-known/api-catalog (RFC 9727), OpenAPI for the read-only feeds, Agent Skills index, security.txt.
+function htmlToMd(html) {
+  const grab = (re) => ((html.match(re) || [])[1] || '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  const title = grab(/<title>([\s\S]*?)<\/title>/), desc = grab(/<meta name="description" content="([^"]*)"/), canon = grab(/<link rel="canonical" href="([^"]*)"/);
+  const lang = grab(/<html lang="(\w+)"/);
+  let s = (html.match(/<main id="main">([\s\S]*?)<\/main>/) || [, html])[1];
+  s = s.replace(/<(script|style|svg|template|noscript|button)[\s\S]*?<\/\1>/g, '').replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<span aria-hidden="true">[\s\S]*?<\/h1>/g, '</h1>').replace(/<(img|source|input|video|iframe)[^>]*>/g, '')
+    .replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/g, (_, n, x) => `\n\n${'#'.repeat(+n)} ${x.replace(/<br\s*\/?>/g, ' ').replace(/<[^>]+>/g, '').trim()}\n\n`)
+    .replace(/<a [^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g, (_, h, x) => { const tx2 = x.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim(); return tx2 ? `[${tx2}](${h.startsWith('/') ? abs(h) : h})` : ''; })
+    .replace(/<li[^>]*>/g, '\n- ').replace(/<summary[^>]*>([\s\S]*?)<\/summary>/g, '\n**$1**\n').replace(/<(strong|b)>([\s\S]*?)<\/\1>/g, '**$2**')
+    .replace(/<br\s*\/?>/g, '\n').replace(/<\/(p|div|section|ul|ol|tr|figure|figcaption|details|blockquote|article)>/g, '\n').replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
+    .split('\n').map((l) => l.replace(/[ \t]+/g, ' ').trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return { md: `---\ntitle: ${JSON.stringify(title)}\ndescription: ${JSON.stringify(desc)}\nurl: ${canon}\nlanguage: ${lang}\n---\n\n${s}\n`, title, desc, canon };
+}
+const mdPages = {};
+for (const u of written) {
+  if (u.endsWith('.html')) continue;
+  const html = fs.readFileSync(path.join(DIST, u, 'index.html'), 'utf8');
+  const r = htmlToMd(html);
+  fs.writeFileSync(path.join(DIST, u, 'index.md'), r.md);
+  mdPages[u] = r;
+}
+const mdUrl = (u) => abs(u.replace(/\/?$/, '/') + 'index.md');
+const line = (u, name, d) => `- [${name}](${mdUrl(u)})${d ? `: ${d}` : ''}`;
+const first = (x, n = 160) => (x.length > n ? x.slice(0, n - 1).replace(/\s+\S*$/, '') + '…' : x);
+for (const lang of LANGS) {
+  const ar = lang === 'ar';
+  const siteDesc = tx(P.home.seo.description, lang);
+  const out = `# admepro
+
+> ${siteDesc}
+
+${ar ? 'وكالة تسويق رقمي وإبداعي مدعومة بالذكاء الاصطناعي بمكاتب في القاهرة ودبي والرياض. كل رابط أدناه يفتح نسخة Markdown نظيفة من الصفحة.' : 'AI-powered creative and digital marketing agency with offices in Cairo, Dubai and Riyadh. Every link below opens a clean Markdown version of the page.'}
+
+## ${ar ? 'الخدمات' : 'Services'}
+${P.services.pages.map((S) => line(L(S.path, lang), tx(S.title, lang), tx(S.seo.description, lang))).join('\n')}
+${line(L(P.gcc.path, lang), t('gcc', lang), tx(P.gcc.seo.description, lang))}
+
+## ${ar ? 'الأعمال' : 'Portfolio'}
+${line(L('/portfolio/', lang), t('portfolio', lang), tx(P.listing.portfolio.seo.description, lang))}
+${projects.map((p) => line(L(`/project/${p.slug}/`, lang), `${p.title}${p.client && tx(p.client, lang) !== p.title ? ' · ' + tx(p.client, lang) : ''}`, first(tx(p.summary, lang)))).join('\n')}
+
+## ${ar ? 'الشركة' : 'Company'}
+${line(L('/about/', lang), t('about', lang), tx(P.about.seo.description, lang))}
+${line(L('/contact-us/', lang), t('contact', lang), tx(P.contact.seo.description, lang))}
+${line(L('/', lang), t('home', lang), siteDesc)}
+
+${ar ? '## مقالات (بالإنجليزية)' : '## Insights'}
+${posts.map((p) => line(`/blog/${p.slug}/`, p.title, first(p.seoDescription || p.description))).join('\n')}
+
+## ${ar ? 'بيانات للآلات' : 'Machine-readable'}
+- [Sitemap](${abs('/sitemap.xml')}): ${ar ? 'كل الصفحات مع روابط اللغات' : 'every page, with language alternates and images'}
+- [Projects feed](${abs('/api/projects.json')}): ${ar ? 'قائمة المشاريع بصيغة JSON' : 'all portfolio projects as JSON'}
+- [OpenAPI description](${abs('/api/openapi.json')}): ${ar ? 'وصف الخدمات العامة للقراءة فقط' : 'read-only public endpoints'}
+- [API catalog](${abs('/.well-known/api-catalog')}): RFC 9727
+- [Agent skills](${abs('/.well-known/agent-skills/index.json')}): ${ar ? 'كيف يستخدم الوكلاء الموقع' : 'how agents can use this site'}
+
+## Optional
+- [${ar ? 'English edition' : 'النسخة العربية'}](${abs(ar ? '/llms.txt' : '/ar/llms.txt')})
+- [${ar ? 'Full text' : 'Full site text'}](${abs(ar ? '/ar/llms-full.txt' : '/llms-full.txt')}): ${ar ? 'كل نصوص الموقع في ملف واحد' : 'every page in one Markdown file'}
+`;
+  fs.writeFileSync(path.join(DIST, ar ? 'ar/llms.txt' : 'llms.txt'), out);
+  const keep = (u) => (ar ? u.startsWith('/ar/') : !u.startsWith('/ar/'));
+  fs.writeFileSync(path.join(DIST, ar ? 'ar/llms-full.txt' : 'llms-full.txt'), `# admepro, ${ar ? 'النص الكامل للموقع' : 'full site text'}\n\n` + Object.keys(mdPages).filter(keep).map((u) => mdPages[u].md.replace(/^---[\s\S]*?---\n\n/, `<!-- ${mdPages[u].canon} -->\n\n`)).join('\n\n---\n\n'));
+}
+const AI_BOTS = ['GPTBot', 'OAI-SearchBot', 'ChatGPT-User', 'ClaudeBot', 'Claude-SearchBot', 'Claude-User', 'PerplexityBot', 'Perplexity-User', 'Google-Extended', 'Applebot-Extended', 'Bingbot', 'Googlebot', 'DuckAssistBot', 'MistralAI-User', 'Meta-ExternalAgent', 'Amazonbot', 'CCBot'];
+if (ENV !== 'staging') {
+  fs.writeFileSync(path.join(DIST, 'robots.txt'), `# admepro. Everything public is open to search engines and AI assistants.
+# Content-Signal (contentsignals.org): search and AI answers allowed, model training not.
+User-agent: *
+Content-Signal: search=yes, ai-input=yes, ai-train=no
+Allow: /
+
+${AI_BOTS.map((b) => `User-agent: ${b}\nAllow: /\n`).join('\n')}
+Sitemap: ${abs('/sitemap.xml')}
+`);
+}
+// open API description of the read-only feeds
+fs.writeFileSync(path.join(DIST, 'api/openapi.json'), JSON.stringify({
+  openapi: '3.1.0',
+  info: { title: 'admepro public read-only feeds', version: '1.0.0', description: 'Static JSON files describing the admepro portfolio and the site search index. No authentication. Lead forms are not part of this API.', contact: { email: site.infoEmail } },
+  servers: [{ url: BASE }],
+  paths: {
+    '/api/projects.json': { get: { operationId: 'listProjects', summary: 'List portfolio projects', responses: { 200: { description: 'All projects', content: { 'application/json': { schema: { type: 'object', properties: { generatedAt: { type: 'string', format: 'date-time' }, projects: { type: 'array', items: { type: 'object', properties: { slug: { type: 'string' }, title: { type: 'string' }, client: { type: 'object' }, categories: { type: 'array', items: { type: 'string' } }, tags: { type: 'array', items: { type: 'string' } }, featured: { type: 'boolean' }, url: { type: 'object' }, cover: { type: 'string', format: 'uri' }, summary: { type: 'object' } } } } } } } } } } } },
+    '/search.json': { get: { operationId: 'siteSearchIndexEn', summary: 'English search index (pages, projects, posts)', responses: { 200: { description: 'Index', content: { 'application/json': { schema: { type: 'object' } } } } } } },
+    '/ar/search.json': { get: { operationId: 'siteSearchIndexAr', summary: 'Arabic search index', responses: { 200: { description: 'Index', content: { 'application/json': { schema: { type: 'object' } } } } } } },
+  },
+}, null, 2));
+fs.mkdirSync(path.join(DIST, '.well-known/agent-skills/admepro-site'), { recursive: true });
+fs.writeFileSync(path.join(DIST, '.well-known/api-catalog'), JSON.stringify({
+  linkset: [{ anchor: abs('/api/'), 'service-desc': [{ href: abs('/api/openapi.json'), type: 'application/vnd.oai.openapi+json' }], 'service-doc': [{ href: abs('/llms.txt'), type: 'text/plain' }], item: [{ href: abs('/api/projects.json'), type: 'application/json' }] }],
+}, null, 2));
+const skillMd = `---
+name: admepro-site
+description: Find admepro services, portfolio projects, insights and contact details, in English or Arabic. Use when asked about admepro, an AI-powered marketing agency in Egypt and the GCC.
+---
+
+# Using the admepro website
+
+- Start at ${abs('/llms.txt')} (English) or ${abs('/ar/llms.txt')} (Arabic). Every page has a Markdown twin at \`<page-url>/index.md\`, also served when you send \`Accept: text/markdown\`.
+- All projects: ${abs('/api/projects.json')}. Search index: ${abs('/search.json')}.
+- Offices: Cairo (Egypt), Dubai (UAE), Riyadh (KSA). Contact: ${site.infoEmail}, ${site.phone}.
+- To contact the agency, send people to ${abs('/contact-us/')}. Do not submit forms on a person's behalf without their say-so.
+- Facts to quote: 12+ years of experience, offices in three cities, services are branding, creative, digital marketing and production.
+`;
+fs.writeFileSync(path.join(DIST, '.well-known/agent-skills/admepro-site/SKILL.md'), skillMd);
+fs.writeFileSync(path.join(DIST, '.well-known/agent-skills/index.json'), JSON.stringify({
+  $schema: 'https://schemas.agentskills.io/discovery/0.2.0/schema.json',
+  skills: [{ name: 'admepro-site', type: 'skill-md', description: 'Find admepro services, portfolio projects, insights and contact details, in English or Arabic.', url: abs('/.well-known/agent-skills/admepro-site/SKILL.md'), digest: 'sha256:' + crypto.createHash('sha256').update(skillMd).digest('hex') }],
+}, null, 2));
+fs.writeFileSync(path.join(DIST, '.well-known/security.txt'), `Contact: mailto:${site.infoEmail}\nExpires: ${new Date(Date.parse(BUILD_TIME) + 365 * 864e5).toISOString()}\nPreferred-Languages: en, ar\nCanonical: ${abs('/.well-known/security.txt')}\n`);
 
 // ---------------------------------------------------------------- link check
 const exists = (u) => {
