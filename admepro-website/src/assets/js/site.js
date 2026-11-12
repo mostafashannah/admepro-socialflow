@@ -69,15 +69,15 @@
   });
 
   // Vimeo: load the player only when someone presses play (keeps pages fast)
-  const vimeoSrc = (id) => `https://player.vimeo.com/video/${encodeURIComponent(id)}?autoplay=1&title=0&byline=0&portrait=0&dnt=1`;
+  const vimeoSrc = (id, h) => `https://player.vimeo.com/video/${encodeURIComponent(id)}?${h ? 'h=' + encodeURIComponent(h) + '&' : ''}autoplay=1&title=0&byline=0&portrait=0&dnt=1`;
   $$('[data-vimeo]').forEach((b) => b.addEventListener('click', () => {
     const f = document.createElement('iframe');
-    f.src = vimeoSrc(b.dataset.vimeo); f.allow = 'autoplay; fullscreen; picture-in-picture'; f.allowFullscreen = true; f.title = b.getAttribute('aria-label') || 'Video';
+    f.src = vimeoSrc(b.dataset.vimeo, b.dataset.hash); f.allow = 'autoplay; fullscreen; picture-in-picture'; f.allowFullscreen = true; f.title = b.getAttribute('aria-label') || 'Video';
     b.replaceWith(f);
   }));
   $$('[data-vimeo-modal]').forEach((b) => b.addEventListener('click', () => {
     const m = document.createElement('div'); m.className = 'vmodal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true');
-    m.innerHTML = `<iframe src="${vimeoSrc(b.dataset.vimeoModal)}" allow="autoplay; fullscreen" allowfullscreen title="Showcase"></iframe><button type="button" aria-label="Close">✕</button>`;
+    m.innerHTML = `<iframe src="${vimeoSrc(b.dataset.vimeoModal, b.dataset.hash)}" allow="autoplay; fullscreen" allowfullscreen title="Showcase"></iframe><button type="button" aria-label="Close">✕</button>`;
     const close = () => { m.remove(); b.focus(); removeEventListener('keydown', esc); };
     const esc = (e) => e.key === 'Escape' && close();
     m.addEventListener('click', (e) => { if (e.target === m || e.target.tagName === 'BUTTON') close(); });
@@ -144,9 +144,9 @@
   const saveData = navigator.connection && navigator.connection.saveData;
   if (hero && !reduced && !saveData) {
     addEventListener('load', () => setTimeout(() => {
-      const { heroVideo: id, start = 0, end = 0 } = hero.dataset;
+      const { heroVideo: id, hash = '', start = 0, end = 0 } = hero.dataset;
       const f = document.createElement('iframe');
-      f.src = `https://player.vimeo.com/video/${encodeURIComponent(id)}?background=1&autoplay=1&muted=1&loop=1&autopause=0&dnt=1#t=${start}s`;
+      f.src = `https://player.vimeo.com/video/${encodeURIComponent(id)}?${hash ? 'h=' + encodeURIComponent(hash) + '&' : ''}background=1&autoplay=1&muted=1&loop=1&autopause=0&dnt=1#t=${start}s`;
       f.allow = 'autoplay; fullscreen'; f.title = ''; f.tabIndex = -1; f.setAttribute('aria-hidden', 'true');
       $('.hero-media', hero).append(f);
       const post = (m) => f.contentWindow && f.contentWindow.postMessage(JSON.stringify(m), 'https://player.vimeo.com');

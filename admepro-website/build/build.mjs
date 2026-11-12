@@ -440,7 +440,7 @@ function media(p, m, lang) {
   const alt = m.alt || p.title;
   if (m.type === 'image') return `<figure class="m">${img(projImg(p, m.src), alt, { sizes: '(min-width: 900px) 50vw, 100vw' })}</figure>`;
   if (m.type === 'vimeo') {
-    return `<figure class="m video${m.ratio === '9/16' ? ' tall' : ''}"><button type="button" class="vfacade" data-vimeo="${esc(m.id)}" aria-label="${esc(t('playVideo', lang))}: ${esc(alt)}">
+    return `<figure class="m video${m.ratio === '9/16' ? ' tall' : ''}"><button type="button" class="vfacade" data-vimeo="${esc(m.id)}" data-hash="${esc(m.h || '')}" aria-label="${esc(t('playVideo', lang))}: ${esc(alt)}">
 ${m.poster ? img(projImg(p, m.poster), alt, { sizes: '(min-width: 900px) 66vw, 100vw' }) : ''}<span class="vplay">${icon.play}</span></button></figure>`;
   }
   if (m.type === 'video') {
@@ -463,7 +463,7 @@ function homePage(lang) {
   const wideIdx = new Set([4, 7]);
   const fp = projectBySlug[H.featured.project];
   const body = `
-<section class="hero"${H.hero.video ? ` data-hero-file="${esc(H.hero.video)}"` : ` data-hero-video="${esc(H.hero.vimeo)}" data-start="${H.hero.start}" data-end="${H.hero.end}"`}>
+<section class="hero"${H.hero.video ? ` data-hero-file="${esc(H.hero.video)}"` : ` data-hero-video="${esc(H.hero.vimeo)}" data-hash="${esc(H.hero.vimeoHash || '')}" data-start="${H.hero.start}" data-end="${H.hero.end}"`}>
   <div class="hero-media" aria-hidden="true">${img(H.hero.poster, '', { cls: 'hero-poster', eager: true, sizes: '100vw' })}</div>
   <div class="hero-shade" aria-hidden="true"></div>
   <div class="wrap hero-in">
@@ -524,7 +524,7 @@ ${clientMarquee(lang)}
   <div class="wrap-wide"><div class="showcase reveal">
     <div class="showcase-top">
       <div class="showcase-video"><p>${esc(tx(H.showcase.label, lang))}</p>
-        <button type="button" class="play-round" data-vimeo-modal="${H.showcase.vimeo}" aria-label="${esc(t('playVideo', lang))}">${icon.play}</button></div>
+        <button type="button" class="play-round" data-vimeo-modal="${H.showcase.vimeo}" data-hash="${esc(H.showcase.vimeoHash || '')}" aria-label="${esc(t('playVideo', lang))}">${icon.play}</button></div>
       <div class="showcase-text"><h2 class="h3">${esc(tx(H.showcase.title, lang))}</h2>
         <div class="btn-row"><a class="btn btn-ghost-dark" href="${L('/about/', lang)}">${esc(t('about', lang))}</a><a class="btn btn-black" href="${L('/portfolio/', lang)}">${esc(t('seeMoreProjects', lang))}</a></div></div>
     </div>
@@ -691,7 +691,7 @@ function gccPage(lang) {
   </div>
 </section>
 <section class="section-sm"><div class="wrap-wide"><div class="showcase reveal">
-  <div class="showcase-top"><div class="showcase-video"><p>${esc(tx(H.showcase.label, lang))}</p><button type="button" class="play-round" data-vimeo-modal="${H.showcase.vimeo}" aria-label="${esc(t('playVideo', lang))}">${icon.play}</button></div>
+  <div class="showcase-top"><div class="showcase-video"><p>${esc(tx(H.showcase.label, lang))}</p><button type="button" class="play-round" data-vimeo-modal="${H.showcase.vimeo}" data-hash="${esc(H.showcase.vimeoHash || '')}" aria-label="${esc(t('playVideo', lang))}">${icon.play}</button></div>
   <div class="showcase-text"><h2 class="h3">${esc(tx(H.showcase.title, lang))}</h2><div class="btn-row"><a class="btn btn-ghost-dark" href="${L('/about/', lang)}">${esc(t('about', lang))}</a><a class="btn btn-black" href="${L('/contact-us/', lang)}">${esc(t('getQuote', lang))}</a></div></div></div>
   ${statsRow(shared.stats, lang, 'on-dark')}
 </div></div></section>

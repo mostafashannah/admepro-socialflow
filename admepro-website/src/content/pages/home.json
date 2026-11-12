@@ -38,7 +38,8 @@
     "vimeo": "1027080421",
     "start": 20,
     "end": 50,
-    "poster": "/project/goldsgym/images/campaign.webp"
+    "poster": "/project/goldsgym/images/campaign.webp",
+    "vimeoHash": "acb2cee14f"
   },
   "clientsTitle": {
     "en": "Our Clients",
@@ -203,7 +204,8 @@
     "title": {
       "en": "Strategy, bold creative, and data-driven campaigns, powered by AI, that deliver real results.",
       "ar": "استراتيجية، وإبداع جريء، وحملات قائمة على البيانات ومدعومة بالذكاء الاصطناعي تحقق نتائج حقيقية."
-    }
+    },
+    "vimeoHash": "acb2cee14f"
   },
   "teamCards": [
     {

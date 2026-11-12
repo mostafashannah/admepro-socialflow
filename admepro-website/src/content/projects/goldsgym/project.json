@@ -70,7 +70,8 @@
           "type": "vimeo",
           "id": "1027080421",
           "poster": "images/campaign.webp",
-          "alt": "Gold's Gym campaign film"
+          "alt": "Gold's Gym campaign film",
+          "h": "acb2cee14f"
         }
       ],
       "layout": "wide"
