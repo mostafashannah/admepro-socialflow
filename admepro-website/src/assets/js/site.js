@@ -172,11 +172,13 @@
     });
   }
 
-  // floating "next project" card: hides when the footer area is on screen
+  // floating "next project" card: appears after the banner is scrolled past, hides at the footer
   const nextCard = $('[data-next]');
-  if (nextCard && 'IntersectionObserver' in window) {
-    const end = $('.cta-band, .cfooter');
-    if (end) new IntersectionObserver((e) => nextCard.classList.toggle('off', e.some((x) => x.isIntersecting))).observe(end);
+  if (nextCard) {
+    const end = $('.cta-band, .cfooter'); let atEnd = false;
+    const upd = () => nextCard.classList.toggle('on', scrollY > innerHeight * 0.85);
+    addEventListener('scroll', upd, { passive: true }); upd();
+    if (end && 'IntersectionObserver' in window) new IntersectionObserver((e) => { atEnd = e.some((x) => x.isIntersecting); nextCard.classList.toggle('off', atEnd); }).observe(end);
   }
 
   // search (bottom-left button). The index is loaded only when someone opens search.

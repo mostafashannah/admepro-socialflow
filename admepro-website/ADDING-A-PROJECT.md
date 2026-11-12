@@ -33,6 +33,8 @@ This creates the folder. It also converts every photo to WebP (max 2000 px) with
 | `tags` | no | Keys from `src/content/tags.json`. To add a new tag, add it there first, with its Arabic name |
 | `date` | recommended | `YYYY-MM-DD`, shown on the banner ("December 15, 2023") |
 | `color` | recommended | Dark background colour of the green-style intro block, e.g. `#2f3830` |
+| `intro.bg` / `intro.ghost` | no | Own look for the intro block: any CSS background (e.g. a `linear-gradient(...)`) and the colour of the faint name down the edge. Cote uses a pink-to-blue gradient |
+| `displayTitle` | no | Spelling used in the intro block (e.g. "Côte") when it differs from `title` |
 | `cover` | yes | `images/cover.webp`: used on cards, in shares and as the hero |
 | `hero` | no | A different hero image, if the cover is a square crop |
 | `heroVideo` | no | Full-screen banner video: `{ "src": "/assets/video/x.mp4", "poster": "/assets/video/x.webp" }` (used by Kohi Bar, Skycorp, Autogate) |

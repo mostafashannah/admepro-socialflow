@@ -763,10 +763,10 @@ function projectPage(p, lang) {
     ${s.media?.length ? `<div class="pmedia ${s.layout || 'grid-2'}">${s.media.map((m) => media(p, m, lang)).join('')}</div>` : ''}
   </div>
 </section>`).join('');
-  const introHtml = introSec ? `<section class="gintro" style="--nc:${esc(p.color || '#1f1e22')}">
-  <span class="ghost" aria-hidden="true" dir="ltr">${esc(p.title)}</span>
+  const introHtml = introSec ? `<section class="gintro" style="--nc:${esc(p.color || '#1f1e22')}${p.intro?.bg ? `;background:${esc(p.intro.bg)}` : ''}${p.intro?.ghost ? `;--gc:${esc(p.intro.ghost)}` : ''}">
+  <span class="ghost" aria-hidden="true" dir="ltr">${esc(p.displayTitle || p.title)}</span>
   <div class="wrap gintro-in">
-    <p class="gintro-label">${esc(p.title)}<br>${esc(catLabels[0] || '')}</p>
+    <p class="gintro-label">${esc(p.displayTitle || p.title)}<br>${esc(catLabels[0] || '')}</p>
     <h2 class="gintro-h">${esc(tx(introSec.heading, lang))}</h2>
     <div class="gintro-text">${tx(introSec.text, lang).map((x) => `<p>${esc(x)}</p>`).join('')}</div>
   </div>
@@ -780,7 +780,7 @@ function projectPage(p, lang) {
 <section class="phero">
   ${heroMedia}
   <div class="wrap phero-in">
-    <p class="phero-cats">${esc(catLabels.join(', '))}${p.date ? ` · ${esc(fmtDate(p.date, lang))}` : ''}</p>
+    <p class="phero-cats">${esc(catLabels.join(', '))}${p.date ? ` <i class="sep">·</i> ${esc(fmtDate(p.date, lang))}` : ''}</p>
     <h1 class="h1">${esc(p.title)}</h1>
   </div>
   <div class="phero-share" aria-label="${lang === 'ar' ? 'مشاركة' : 'Share'}">${[['Facebook', `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(abs(L(`/project/${p.slug}/`, lang)))}`, shareIco.fb], ['X', `https://twitter.com/intent/tweet?url=${encodeURIComponent(abs(L(`/project/${p.slug}/`, lang)))}&text=${encodeURIComponent(p.title)}`, shareIco.x], ['LinkedIn', `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(abs(L(`/project/${p.slug}/`, lang)))}`, shareIco.in]].map(([n, u, d]) => `<a href="${u}" rel="noopener" target="_blank" aria-label="${n}"><svg class="i no-flip" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="${d}"/></svg></a>`).join('')}</div>
