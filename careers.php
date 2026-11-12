@@ -94,6 +94,8 @@ if ($indexHtml && preg_match('/\/app\.js\?v=\d+/', $indexHtml, $m)) $appJsTag = 
 <link rel="icon" href="/careers-icons/icon-192.png?v=2" sizes="192x192" type="image/png"/>
 <link rel="apple-touch-icon" href="/careers-icons/apple-touch-icon.png?v=2"/>
 <link rel="manifest" href="/manifest.json"/>
+<link rel="preconnect" href="https://unpkg.com" crossorigin>
+<link rel="preload" as="script" href="<?= htmlspecialchars($appJsTag) ?>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&family=DM+Sans:wght@500;600;700&display=swap" rel="stylesheet">
 
@@ -141,12 +143,22 @@ img{max-width:100%;display:block}
 #seo-content .body-text strong{color:#fff}
 #seo-content a.apply{display:inline-block;background:#d90b2c;color:#fff;font-weight:700;font-size:14px;padding:10px 20px;border-radius:8px;text-decoration:none}
 #seo-content .empty{color:#9099ab;font-size:15px;text-align:center;padding:60px 0}
+/* Visitors see a short branded loader while the app starts; the full job text stays in the page for Google / job sites. */
+#seo-loader{position:fixed;inset:0;z-index:5;background:#0b0d12;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px}
+#seo-loader img{width:56px;height:56px;border-radius:14px}
+#seo-loader .bar{width:120px;height:3px;border-radius:3px;background:#232838;overflow:hidden;position:relative}
+#seo-loader .bar::after{content:"";position:absolute;inset:0;width:40%;background:#d90b2c;border-radius:3px;animation:sfl 1s ease-in-out infinite}
+@keyframes sfl{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
+@media (prefers-reduced-motion: reduce){#seo-loader .bar::after{animation:none;width:100%}}
 </style>
 </head>
 <body>
 <div id="root">
   <!-- Real, crawlable content — replaced by the React app once app.js
        mounts, for visitors with JavaScript. -->
+  <div id="seo-loader" aria-hidden="true"><img src="/careers-icons/icon-192.png?v=2" alt=""/><div class="bar"></div></div>
+  <noscript><style>#seo-loader{display:none}</style></noscript>
+  <script>setTimeout(function(){var l=document.getElementById("seo-loader");if(l)l.style.display="none";},10000);</script>
   <div id="seo-content">
     <div class="wrap">
       <h1>Careers at Admepro</h1>
@@ -172,8 +184,34 @@ img{max-width:100%;display:block}
 </div>
 <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";}</script>
+<script>
+(function(){
+  var L={
+    html2pdf:"https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js",
+    html2canvas:"https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js",
+    mammoth:"https://cdn.jsdelivr.net/npm/mammoth@1.7.0/mammoth.browser.min.js",
+    heic2any:"https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js",
+    jspdf:"https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js",
+    JSZip:"https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js",
+    XLSX:"https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
+    pdfjsLib:"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
+  };
+  var P={};
+  function load(n){
+    if(window[n]) return Promise.resolve(window[n]);
+    if(P[n]) return P[n];
+    P[n]=new Promise(function(res){
+      var s=document.createElement("script"); s.src=L[n]; s.async=true;
+      s.onload=function(){ if(n==="pdfjsLib"&&window.pdfjsLib){ pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; } res(window[n]); };
+      s.onerror=function(){ delete P[n]; res(undefined); };
+      document.head.appendChild(s);
+    });
+    return P[n];
+  }
+  window.sfLib=function(n){ return L[n]?load(n):Promise.resolve(window[n]); };
+  // Loaded only when a feature needs one (PDF, Excel, Word, zip, HEIC) — no background downloads competing with the app.
+})();
+</script>
 <script>window.__SF_OPENINGS = <?= json_encode($openings, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>;</script>
 <script src="<?= htmlspecialchars($appJsTag) ?>"></script>
 </body>
