@@ -190,6 +190,34 @@
     });
   }
 
+  // custom cursor (mouse devices only): red dot + trailing ring; over a project it becomes a grey circle with an arrow
+  if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    const el = document.createElement('div'); el.className = 'cursor'; el.setAttribute('aria-hidden', 'true');
+    el.innerHTML = '<span class="c-ring"><svg class="c-arrow" viewBox="0 0 24 24"><path d="M7 17L17 7M8 7h9v9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"/></svg></span><span class="c-dot"></span>';
+    document.body.append(el);
+    const ring = $('.c-ring', el), dot = $('.c-dot', el); let x = -100, y = -100, rx = -100, ry = -100, seen = false, raf;
+    const loop = () => { rx += (x - rx) * (reduced ? 1 : 0.16); ry += (y - ry) * (reduced ? 1 : 0.16); ring.style.transform = `translate3d(${rx}px,${ry}px,0)`; dot.style.transform = `translate3d(${x}px,${y}px,0)`; raf = (Math.abs(x - rx) + Math.abs(y - ry) > 0.1) ? requestAnimationFrame(loop) : null; };
+    addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'touch') return;
+      x = e.clientX; y = e.clientY;
+      if (!seen) { seen = true; rx = x; ry = y; }
+      el.classList.add('on');
+      if (!raf) raf = requestAnimationFrame(loop);
+      el.classList.toggle('is-view', !!e.target.closest('.pcard, .sample, .plist-item'));
+    }, { passive: true });
+    // hide only when the mouse really exits through a window edge (ignores spurious leave events)
+    document.documentElement.addEventListener('mouseleave', () => { if (x <= 2 || y <= 2 || x >= innerWidth - 2 || y >= innerHeight - 2) el.classList.remove('on'); });
+    document.documentElement.addEventListener('mouseenter', () => seen && el.classList.add('on'));
+  }
+
+  // project cards tilt slightly towards the mouse (mouse devices, no reduced motion)
+  if (!reduced && matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    $$('.pcard').forEach((card) => {
+      card.addEventListener('pointermove', (e) => { const r = card.getBoundingClientRect(); const px = (e.clientX - r.left) / r.width - 0.5, py = (e.clientY - r.top) / r.height - 0.5; card.style.setProperty('--ry', (px * 5).toFixed(2) + 'deg'); card.style.setProperty('--rx', (-py * 5).toFixed(2) + 'deg'); card.style.transition = 'transform .15s linear'; });
+      card.addEventListener('pointerleave', () => { card.style.setProperty('--ry', '0deg'); card.style.setProperty('--rx', '0deg'); card.style.transition = ''; });
+    });
+  }
+
   // floating "next project" card: appears after the banner is scrolled past, hides at the footer
   const nextCard = $('[data-next]');
   if (nextCard) {

@@ -357,7 +357,7 @@ const eyebrow = (s) => (s ? `<p class="eyebrow">${esc(s)}</p>` : '');
 function clientMarquee(lang) {
   const items = shared.clientStrips.map((k) => img(siteImg('clients/' + k), '', { sizes: '320px' })).join('');
   return `<section class="clients" aria-label="${esc(tx(P.home.clientsTitle, lang))}">
-  <div class="wrap row-between"><p class="eyebrow">${esc(tx(P.home.clientsTitle, lang))}</p><a class="link-sm" href="${L('/portfolio/', lang)}">${esc(t('seeMoreProjects', lang))}</a></div>
+  <div class="wrap-wide row-between"><p class="eyebrow">${esc(tx(P.home.clientsTitle, lang))}</p><a class="link-sm" href="${L('/portfolio/', lang)}">${esc(t('seeMoreProjects', lang))}</a></div>
   <div class="marquee" aria-hidden="true"><div class="marquee-track">${items}${items}</div></div>
 </section>`;
 }
@@ -370,7 +370,7 @@ function projectCard(p, lang, { wide = false, eager = false } = {}) {
   const cats = p.categories.map((c) => esc(tx(P.listing.portfolio.categories.find((x) => x.key === c)?.label, lang))).join(', ');
   return `<a class="pcard${wide ? ' wide' : ''}" href="${L(`/project/${p.slug}/`, lang)}" data-cats="${p.categories.join(' ')}" data-tags="${(p.tags || []).join(' ')}">
   ${img(projImg(p, p.cover), p.title, { eager, sizes: wide ? '(min-width: 900px) 66vw, 100vw' : '(min-width: 900px) 33vw, 100vw' })}
-  <span class="pcard-meta"><span class="pcard-title">${esc(p.title)}</span><span class="pcard-cats">${cats}</span></span>
+  <span class="pcard-meta"><span class="pcard-title">${esc(p.title)}</span><span class="pcard-cats"><span class="pc-a">${cats}</span><span class="pc-b">${esc(t('showProject', lang))}<i></i></span></span></span>
 </a>`;
 }
 

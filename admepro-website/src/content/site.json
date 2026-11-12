@@ -576,6 +576,10 @@
     "kindPost": {
       "en": "Article",
       "ar": "مقال"
+    },
+    "showProject": {
+      "en": "Show project",
+      "ar": "عرض المشروع"
     }
   }
 }
