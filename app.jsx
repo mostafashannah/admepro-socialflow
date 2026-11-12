@@ -26237,6 +26237,17 @@ const CAREERS_NAV_LINKS = [
   {label:"Portfolio", url:"https://admepro.com/portfolio/"},
   {label:"Contact", url:"https://admepro.com/contact-us/"},
 ];
+// Smaller links under the big ones, same list as the "more pages" row of the admepro.com menu,
+// so every page of the website can be reached from the careers page too.
+const CAREERS_MORE_LINKS = [
+  {label:"Branding", url:"https://admepro.com/branding/"},
+  {label:"Creative", url:"https://admepro.com/creative/"},
+  {label:"Digital", url:"https://admepro.com/digital/"},
+  {label:"Production", url:"https://admepro.com/production/"},
+  {label:"GCC & KSA", url:"https://admepro.com/gcc-ksa-ai-marketing-agency/"},
+  {label:"Blog", url:"https://admepro.com/blog/"},
+  {label:"Arabic site", url:"https://admepro.com/ar/"},
+];
 
 // Full-screen menu overlay matching admepro.com's own site menu style —
 // big bold nav links on the left, contact info + social icons on the right.
@@ -26258,6 +26269,12 @@ function CareersFullMenu({onClose}) {
           </span>
         </a>
       ))}
+      <p style={{display:"flex",flexWrap:"wrap",gap:"8px 18px",marginTop:22,fontFamily:"'Montserrat',sans-serif",fontSize:14,fontWeight:600}}>
+        {CAREERS_MORE_LINKS.map(item=>(
+          <a key={item.label} href={item.url} target="_blank" rel="noreferrer" className="careers-more-link">{item.label}</a>
+        ))}
+        <a href="/careers" className="careers-more-link" aria-current="page" style={{color:"#fff"}}>Careers</a>
+      </p>
     </div>
   );
 
@@ -26303,6 +26320,8 @@ function CareersFullMenu({onClose}) {
         .careers-nav-flip:hover .careers-nav-flip-inner,.careers-nav-flip:active .careers-nav-flip-inner{transform:rotateX(180deg)}
         .careers-nav-flip-face{display:block;backface-visibility:hidden}
         .careers-nav-flip-face.back{position:absolute;inset:0;transform:rotateX(180deg);color:#d90b2c}
+        .careers-more-link{color:rgba(255,255,255,0.6);text-decoration:none;padding:6px 0;border-bottom:1px dotted rgba(255,255,255,0.35);transition:color .15s,border-color .15s}
+        .careers-more-link:hover{color:#fff;border-bottom-color:#fff}
       `}</style>
       <button onClick={onClose} style={{position:"absolute",top:20,right:20,width:44,height:44,borderRadius:"50%",background:"rgba(255,255,255,0.1)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff"}}>
         <Ico d={Icons.x} size={20}/>
