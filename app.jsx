@@ -29590,6 +29590,7 @@ function LeadCard({lead, onClick, team}) {
         {lead.platforms?.slice(0,3).map(p=><PChip key={p} platform={p} xs/>)}
         {lead.source&&!lead.platforms?.some(p=>p.toLowerCase()===lead.source.toLowerCase())&&<Badge label={lead.source} color="#6b7280" xs/>}
         {assignee&&<Badge label={assignee.name} color="#8b5cf6" xs/>}
+        {lead.client_name&&!/^admepro$/i.test(String(lead.client_name).trim())&&<Badge label={"via "+lead.client_name} color="#0ea5e9" xs/>}
       </div>
       {lead.followup_date&&(
         <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,color:overdue?"#ef4444":dueToday?"#f59e0b":"var(--text3)"}}>
@@ -29729,6 +29730,10 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState("");
   const [sourceF, setSourceF] = useState("all");
+  // Contacts captured from CLIENT pages (Bino, Dr. Ahmed Soliman…) are the client's customers, not admepro's leads —
+  // hidden by default so the pipeline only shows people who contacted admepro.
+  const [accountF, setAccountF] = useState("admepro");
+  const isOwnLead = l => !l.client_name || /^admepro$/i.test(String(l.client_name).trim());
   const [assigneeF, setAssigneeF] = useState("all");
   const [countryF, setCountryF] = useState("all");
   const [industryF, setIndustryF] = useState("all");
@@ -29792,6 +29797,8 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const matchesLeadFilters = (l) => {
     if(search&&!l.name.toLowerCase().includes(search.toLowerCase())&&!(l.company||"").toLowerCase().includes(search.toLowerCase())) return false;
     if(sourceF!=="all"&&l.source!==sourceF) return false;
+    if(accountF==="admepro"&&!isOwnLead(l)) return false;
+    if(accountF==="clients"&&isOwnLead(l)) return false;
     if(assigneeF!=="all"&&l.assigned_to!==assigneeF) return false;
     if(countryF!=="all"&&leadCountry(l.phone)!==countryF) return false;
     if(industryF!=="all"&&(l.industry||"")!==industryF) return false;
@@ -29897,6 +29904,11 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
           style={{padding:"9px 14px",borderRadius:99,fontSize:12,fontWeight:700,border:`1px solid ${sourceF==="old_data"?"var(--accent)":"var(--border2)"}`,background:sourceF==="old_data"?"var(--accent)":"var(--surface2)",color:sourceF==="old_data"?"#fff":"var(--text2)",cursor:"pointer",whiteSpace:"nowrap"}}>
           Old Data
         </button>
+        <select value={accountF} onChange={e=>setAccountF(e.target.value)} title="Which page the person messaged" style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12,borderRadius:99}}>
+          <option value="admepro">admepro leads</option>
+          <option value="clients">From client pages ({leadsScope.filter(l=>!isOwnLead(l)).length})</option>
+          <option value="all">All accounts</option>
+        </select>
         <select value={assigneeF} onChange={e=>setAssigneeF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12,borderRadius:99}}>
           <option value="all">All Assignees</option>
           {(team||[]).filter(t=>["account_manager","account_director","account_executive","business_development"].includes(t.role)).map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
