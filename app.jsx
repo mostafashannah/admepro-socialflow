@@ -12005,6 +12005,7 @@ No markdown, no explanation.`;
 
       {/* ════ OVERVIEW TAB ════ */}
       {tab==="overview"&&(isAdmin||currentUser?.role==="account_director")&&<AdminControlCenter viewer={currentUser} data={{...data, appSettings}} setPage={setPage} onDecideLeaveRequest={onDecideLeaveRequest} onOpenPost={onOpenPost} onlineEmails={liveMemberEmails} onlineClients={liveClients}/>}
+      {tab==="overview"&&isAdmin&&<div style={{marginTop:16}}><WebsiteDashSummary setPage={setPage}/></div>}
       {!isAdmin&&currentUser?.role!=="account_director"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <LeaderApprovals posts={data.posts} team={team} currentUser={currentUser} onOpen={onOpenPost}/>
@@ -33492,6 +33493,49 @@ function WebsiteKeywords({days}) {
           <td style={{padding:"7px 4px",textAlign:"right",color:"var(--text2)"}}>{q.impressions}</td><td style={{padding:"7px 4px",textAlign:"right",color:"var(--text2)"}}>{q.ctr}%</td>
           <td style={{padding:"7px 4px",textAlign:"right",color:q.position<=10?"#10b981":"var(--text2)",fontWeight:700}}>{q.position}</td></tr>)}</tbody>
       </table></div>}
+    </div>);
+}
+
+
+// Admin dashboard: a short website summary (last 7 days vs the 7 before) + who's on the site now.
+function WebsiteDashSummary({setPage}) {
+  const [d,setD]=useState(null); const [live,setLive]=useState(null); const [hide,setHide]=useState(false);
+  useEffect(()=>{ let dead=false;
+    wApi.get("stats",{days:7}).then(x=>{ if(!dead){ if(x.setup) setHide(true); else setD(x); } }).catch(()=>{ if(!dead) setHide(true); });
+    const ll=()=>wApi.get("live").then(x=>{ if(!dead) setLive(x.rows||[]); }).catch(()=>{});
+    ll(); const id=setInterval(ll,20000); return ()=>{dead=true;clearInterval(id);}; },[]);
+  if(hide) return null;
+  const go=()=>{ try{ localStorage.setItem("sf_website_tab","overview"); }catch(e){} setPage("website"); };
+  if(!d) return <div style={{...wCard,display:"flex",justifyContent:"center",padding:24}}><Spinner size={16}/></div>;
+  const T=d.totals;
+  const delta=(a,b)=>{ if(!b) return null; const p=Math.round((a-b)/b*100); return <span style={{fontSize:11,fontWeight:800,color:p>=0?"#10b981":"#ef4444"}}>{p>=0?"▲":"▼"}{Math.abs(p)}%</span>; };
+  const stat=(label,val,extra,color)=>(
+    <div style={{flex:"1 1 110px",padding:"10px 12px",borderRadius:12,background:"var(--surface2)",borderTop:`3px solid ${color}`}}>
+      <p style={{fontSize:10,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>{label}</p>
+      <p style={{fontSize:20,fontWeight:800,fontFamily:"'Montserrat',sans-serif",display:"flex",alignItems:"baseline",gap:6}}>{val}{extra}</p>
+    </div>);
+  const topSrc=(d.sources||[]).slice(0,3); const topPage=(d.pages||[])[0]; const topC=(d.countries||[]).filter(c=>c.k!=="??").slice(0,3);
+  const lv=live||[];
+  return (
+    <div style={{...wCard,display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+        <p style={{fontWeight:800,fontSize:15,flex:1}}>🌐 Website · last 7 days</p>
+        <span style={{display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:700,color:lv.length?"#10b981":"var(--text3)"}}><span style={{width:8,height:8,borderRadius:"50%",background:lv.length?"#10b981":"var(--text3)",boxShadow:lv.length?"0 0 0 4px #10b98133":"none"}}/>{lv.length} on the site now</span>
+        <button onClick={go} style={wBtn(false)}>Open Website →</button>
+      </div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        {stat("Visitors",T.visitors.toLocaleString(),delta(T.visitors,T.prev_visitors),"#6366f1")}
+        {stat("Page views",T.views.toLocaleString(),delta(T.views,T.prev_views),"#0ea5e9")}
+        {stat("Avg. time",wFmtSecs(T.avg_secs),null,"#8b5cf6")}
+        {stat("Leads",T.leads,null,"#10b981")}
+        {stat("Conversion",T.conversion==null?"—":T.conversion+"%",null,"#d90b2c")}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:10,fontSize:12}}>
+        <div><p style={{fontSize:10,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",marginBottom:4}}>Top sources</p>{topSrc.length?topSrc.map(x=><div key={x.source} style={{display:"flex",justifyContent:"space-between"}}><span style={{color:"var(--text2)"}}>{x.source}</span><b>{x.visitors}</b></div>):<span style={{color:"var(--text3)"}}>—</span>}</div>
+        <div><p style={{fontSize:10,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",marginBottom:4}}>Top countries</p>{topC.length?topC.map(x=><div key={x.k} style={{display:"flex",justifyContent:"space-between"}}><span style={{color:"var(--text2)"}}>{wFlag(x.k)} {x.k}</span><b>{x.v}</b></div>):<span style={{color:"var(--text3)"}}>—</span>}</div>
+        <div><p style={{fontSize:10,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",marginBottom:4}}>Most viewed page</p>{topPage?<div style={{display:"flex",justifyContent:"space-between",gap:8}}><span style={{color:"var(--text2)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(topPage.title||topPage.path).replace(/\s*[|–-]\s*admepro.*$/i,"")}</span><b>{topPage.views}</b></div>:<span style={{color:"var(--text3)"}}>—</span>}</div>
+      </div>
+      {lv.length>0&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{lv.slice(0,6).map(r=><span key={r.visitor+r.ts} style={{fontSize:11,padding:"4px 9px",borderRadius:999,background:"#10b98114",color:"var(--text2)"}}>{wFlag(r.country)} {(r.title||r.path).replace(/\s*[|–-]\s*admepro.*$/i,"").slice(0,32)}</span>)}</div>}
     </div>);
 }
 
