@@ -58,7 +58,7 @@ if ($action === 'stats') {
     $campaigns = $q("SELECT utm_campaign AS campaign, utm_source AS source, COUNT(DISTINCT visitor) AS visitors FROM site_events WHERE event='pageview' AND utm_campaign IS NOT NULL AND $range GROUP BY campaign, source ORDER BY visitors DESC LIMIT 10", [$F, $T]);
     $devices = $q("SELECT device AS k, COUNT(DISTINCT visitor) AS v FROM site_events WHERE event='pageview' AND $range GROUP BY device ORDER BY v DESC", [$F, $T]);
     $browsers = $q("SELECT browser AS k, COUNT(DISTINCT visitor) AS v FROM site_events WHERE event='pageview' AND $range GROUP BY browser ORDER BY v DESC LIMIT 6", [$F, $T]);
-    $countries = $q("SELECT COALESCE(country,'??') AS k, COUNT(DISTINCT visitor) AS v FROM site_events WHERE event='pageview' AND $range GROUP BY k ORDER BY v DESC LIMIT 10", [$F, $T]);
+    $countries = $q("SELECT COALESCE(country,'??') AS k, COUNT(DISTINCT visitor) AS v FROM site_events WHERE event='pageview' AND $range GROUP BY k ORDER BY v DESC LIMIT 250", [$F, $T]);
     $langs = $q("SELECT CASE WHEN path LIKE '/ar%' THEN 'Arabic' ELSE 'English' END AS k, COUNT(*) AS v FROM site_events WHERE event='pageview' AND $range GROUP BY k", [$F, $T]);
     $clicks = $q("SELECT CASE WHEN title LIKE 'tel:%' THEN 'Phone' WHEN title LIKE 'mailto:%' THEN 'Email' ELSE 'WhatsApp' END AS k, COUNT(*) AS v FROM site_events WHERE event='click' AND $range GROUP BY k", [$F, $T]);
     $live = (int)$one("SELECT COUNT(DISTINCT visitor) FROM site_events WHERE ts >= ?", [(new DateTime('now', $tz))->modify('-5 minutes')->format('Y-m-d H:i:s')]);
@@ -78,6 +78,66 @@ if ($action === 'stats') {
         'devices' => $devices, 'browsers' => $browsers, 'countries' => $countries, 'langs' => $langs, 'clicks' => $clicks,
         'live' => $live, 'live_pages' => $livePages, 'leads' => $leads, 'site' => $SITE,
     ]);
+}
+
+/* Live: who is on the site in the last 5 minutes (anonymous, one row per visitor). */
+if ($action === 'live') {
+    $since = (new DateTime('now', new DateTimeZone('Africa/Cairo')))->modify('-5 minutes')->format('Y-m-d H:i:s');
+    try {
+        $st = $pdo->prepare("SELECT e.visitor, e.path, e.title, e.country, e.device, e.browser, e.ref_host, e.utm_source, e.ts,
+                (SELECT COUNT(*) FROM site_events x WHERE x.visitor=e.visitor AND x.event='pageview' AND x.day=e.day) AS pages,
+                (SELECT MIN(ts) FROM site_events x WHERE x.visitor=e.visitor AND x.day=e.day) AS first_ts
+            FROM site_events e
+            JOIN (SELECT visitor, MAX(id) mid FROM site_events WHERE event='pageview' AND ts >= ? GROUP BY visitor) l ON l.mid = e.id
+            ORDER BY e.ts DESC LIMIT 50");
+        $st->execute([$since]);
+        $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as &$r) { $r['visitor'] = substr($r['visitor'], 0, 6); } unset($r);
+        wOut(200, ['rows' => $rows, 'now' => (new DateTime('now', new DateTimeZone('Africa/Cairo')))->format('Y-m-d H:i:s')]);
+    } catch (Throwable $e) { wOut(200, ['rows' => [], 'error' => 'Run migration-website.sql']); }
+}
+
+/* Google search keywords via Search Console (Google never sends the keyword to the website itself).
+ * config.php: define('GSC_KEY_FILE', '/etc/socialflow/gsc-key.json');  // service-account JSON, outside the web folder
+ *             define('GSC_SITE', 'sc-domain:admepro.com');               // or 'https://admepro.com/'            */
+function gscToken() {
+    $cache = sys_get_temp_dir() . '/sf-gsc-token.json';
+    $c = json_decode((string)@file_get_contents($cache), true);
+    if (!empty($c['t']) && $c['exp'] > time() + 60) return $c['t'];
+    $key = json_decode((string)@file_get_contents(GSC_KEY_FILE), true);
+    if (empty($key['private_key']) || empty($key['client_email'])) return null;
+    $b64 = fn($x) => rtrim(strtr(base64_encode($x), '+/', '-_'), '=');
+    $now = time();
+    $unsigned = $b64(json_encode(['alg' => 'RS256', 'typ' => 'JWT'])) . '.' . $b64(json_encode(['iss' => $key['client_email'],
+        'scope' => 'https://www.googleapis.com/auth/webmasters.readonly', 'aud' => 'https://oauth2.googleapis.com/token', 'iat' => $now, 'exp' => $now + 3600]));
+    if (!openssl_sign($unsigned, $sig, $key['private_key'], 'sha256WithRSAEncryption')) return null;
+    $ch = curl_init('https://oauth2.googleapis.com/token');
+    curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20,
+        CURLOPT_POSTFIELDS => http_build_query(['grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer', 'assertion' => $unsigned . '.' . $b64($sig)])]);
+    $j = json_decode((string)curl_exec($ch), true); curl_close($ch);
+    if (empty($j['access_token'])) return null;
+    @file_put_contents($cache, json_encode(['t' => $j['access_token'], 'exp' => $now + (int)($j['expires_in'] ?? 3600)])); @chmod($cache, 0600);
+    return $j['access_token'];
+}
+if ($action === 'keywords') {
+    if (!defined('GSC_KEY_FILE') || !GSC_KEY_FILE || !is_readable(GSC_KEY_FILE)) wOut(200, ['connected' => false]);
+    $tok = gscToken(); if (!$tok) wOut(200, ['connected' => false, 'error' => 'Could not sign in to Google with the key file']);
+    $days = max(7, min(480, (int)($_GET['days'] ?? 30)));
+    $site = defined('GSC_SITE') && GSC_SITE ? GSC_SITE : 'sc-domain:admepro.com';
+    $end = (new DateTime('now'))->modify('-2 days'); $start = (clone $end)->modify('-' . ($days - 1) . ' days');
+    $ask = function ($dims, $limit) use ($tok, $site, $start, $end) {
+        $ch = curl_init('https://www.googleapis.com/webmasters/v3/sites/' . rawurlencode($site) . '/searchAnalytics/query');
+        curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30,
+            CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $tok, 'Content-Type: application/json'],
+            CURLOPT_POSTFIELDS => json_encode(['startDate' => $start->format('Y-m-d'), 'endDate' => $end->format('Y-m-d'), 'dimensions' => $dims, 'rowLimit' => $limit])]);
+        $j = json_decode((string)curl_exec($ch), true); curl_close($ch);
+        return $j;
+    };
+    $q = $ask(['query'], 100);
+    if (isset($q['error'])) wOut(200, ['connected' => false, 'error' => $q['error']['message'] ?? 'Search Console error']);
+    $c = $ask(['country'], 50);
+    $map = fn($rows, $k) => array_map(fn($r) => [$k => $r['keys'][0], 'clicks' => (int)$r['clicks'], 'impressions' => (int)$r['impressions'], 'ctr' => round($r['ctr'] * 100, 1), 'position' => round($r['position'], 1)], $rows ?? []);
+    wOut(200, ['connected' => true, 'from' => $start->format('Y-m-d'), 'to' => $end->format('Y-m-d'), 'queries' => $map($q['rows'] ?? [], 'query'), 'countries' => $map($c['rows'] ?? [], 'country')]);
 }
 
 /* ─────────────────────────── GitHub content ─────────────────────────── */

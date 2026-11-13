@@ -33408,6 +33408,93 @@ function WBars({rows, k="k", v="v", color="var(--accent)", fmt=x=>x, label=x=>x}
     </div>);
 }
 
+
+// ISO alpha-2 → ISO numeric (world-atlas ids) for the visitor map.
+const W_ISO_NUM = {EG:"818",SA:"682",AE:"784",KW:"414",QA:"634",BH:"048",OM:"512",JO:"400",LB:"422",IQ:"368",SY:"760",PS:"275",IL:"376",YE:"887",LY:"434",TN:"788",DZ:"012",MA:"504",SD:"729",
+  US:"840",CA:"124",MX:"484",BR:"076",AR:"032",CL:"152",CO:"170",PE:"604",GB:"826",IE:"372",FR:"250",DE:"276",ES:"724",PT:"620",IT:"380",NL:"528",BE:"056",CH:"756",AT:"040",SE:"752",NO:"578",DK:"208",FI:"246",PL:"616",CZ:"203",GR:"300",RO:"642",HU:"348",UA:"804",RU:"643",TR:"792",
+  IN:"356",PK:"586",BD:"050",CN:"156",JP:"392",KR:"410",SG:"702",MY:"458",ID:"360",PH:"608",TH:"764",VN:"704",AU:"036",NZ:"554",ZA:"710",NG:"566",KE:"404",ET:"231",GH:"288",IR:"364",AF:"004",KZ:"398",CY:"196",MT:"470",RS:"688",BG:"100",HR:"191",SK:"703",SI:"705",LT:"440",LV:"428",EE:"233",IS:"352"};
+let wWorldP = null;
+function WebsiteMap({rows}) {
+  const ref = useRef(null); const [tip,setTip] = useState(null); const [failed,setFailed]=useState(false);
+  useEffect(()=>{ let dead=false;
+    (async()=>{
+      const [d3,topo] = await Promise.all([window.sfLib("d3"),window.sfLib("topojson")]);
+      if(!d3||!topo){ setFailed(true); return; }
+      if(!wWorldP) wWorldP = fetch("https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-110m.json").then(r=>r.json()).catch(()=>{ wWorldP=null; return null; });
+      const world = await wWorldP; if(dead||!ref.current) return; if(!world){ setFailed(true); return; }
+      const byNum = {}; (rows||[]).forEach(r=>{ const n=W_ISO_NUM[r.k]; if(n) byNum[n]={code:r.k,v:+r.v}; });
+      const max = Math.max(1,...Object.values(byNum).map(x=>x.v));
+      const feats = topo.feature(world, world.objects.countries).features.filter(f=>f.id!=="010");
+      const W=960,H=470; const proj=d3.geoEqualEarth().fitSize([W,H],{type:"FeatureCollection",features:feats}); const path=d3.geoPath(proj);
+      const svg=d3.select(ref.current); svg.selectAll("*").remove();
+      svg.attr("viewBox",`0 0 ${W} ${H}`);
+      const css=getComputedStyle(document.documentElement); const empty=(css.getPropertyValue("--surface2")||"#e5e7eb").trim()||"#e5e7eb";
+      svg.append("g").selectAll("path").data(feats).join("path").attr("d",path)
+        .attr("fill",f=>{ const x=byNum[f.id]; if(!x) return empty; const t=0.25+0.75*Math.sqrt(x.v/max); return `rgba(16,185,129,${t.toFixed(2)})`; })
+        .attr("stroke","var(--border)").attr("stroke-width",0.5)
+        .style("cursor",f=>byNum[f.id]?"pointer":"default")
+        .on("mousemove",(ev,f)=>{ const x=byNum[f.id]; const b=ref.current.getBoundingClientRect(); setTip({x:ev.clientX-b.left,y:ev.clientY-b.top,t:`${x?wFlag(x.code)+" ":""}${f.properties.name}: ${x?x.v:0} visitor${x&&x.v===1?"":"s"}`}); })
+        .on("mouseleave",()=>setTip(null));
+      // dots on visited countries so small ones (Bahrain, Qatar…) are visible
+      svg.append("g").selectAll("circle").data(feats.filter(f=>byNum[f.id])).join("circle")
+        .attr("transform",f=>`translate(${path.centroid(f)})`).attr("r",f=>3+6*Math.sqrt(byNum[f.id].v/max))
+        .attr("fill","#10b981").attr("fill-opacity",0.85).attr("stroke","#fff").attr("stroke-width",1).style("pointer-events","none");
+    })();
+    return ()=>{dead=true;}; },[JSON.stringify(rows)]);
+  if(failed) return <p style={{fontSize:12,color:"var(--text3)"}}>Map couldn't load — check your connection.</p>;
+  return <div style={{position:"relative"}}><svg ref={ref} style={{width:"100%",height:"auto",display:"block"}}/>{tip&&<div style={{position:"absolute",left:Math.min(tip.x+12,9999),top:tip.y+12,background:"var(--text)",color:"var(--bg,#fff)",fontSize:12,fontWeight:700,padding:"5px 9px",borderRadius:8,pointerEvents:"none",whiteSpace:"nowrap"}}>{tip.t}</div>}</div>;
+}
+
+function WebsiteLive({site}) {
+  const [d,setD]=useState(null);
+  useEffect(()=>{ let dead=false; const load=()=>wApi.get("live").then(x=>{ if(!dead) setD(x); }).catch(()=>{}); load(); const id=setInterval(load,10000); return ()=>{dead=true;clearInterval(id);}; },[]);
+  const ago = ts => { if(!ts||!d?.now) return ""; const s=Math.max(0,Math.round((new Date(d.now.replace(" ","T"))-new Date(ts.replace(" ","T")))/1000)); return s<60?`${s}s ago`:`${Math.floor(s/60)}m ago`; };
+  const rows=d?.rows||[];
+  return (
+    <div style={{...wCard,borderTop:"3px solid #10b981"}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+        <span style={{width:9,height:9,borderRadius:"50%",background:rows.length?"#10b981":"var(--text3)",boxShadow:rows.length?"0 0 0 4px #10b98133":"none",animation:rows.length?"pulse 1.6s infinite":"none"}}/>
+        <p style={{fontWeight:800,fontSize:14,flex:1}}>Live now · {rows.length} visitor{rows.length===1?"":"s"}</p>
+        <span style={{fontSize:11,color:"var(--text3)"}}>last 5 min · updates every 10s</span>
+      </div>
+      {!d?<Spinner size={16}/>:rows.length===0?<p style={{fontSize:12,color:"var(--text3)"}}>Nobody on the site right now.</p>:
+      <div style={{display:"flex",flexDirection:"column",gap:6}}>{rows.map(r=>(
+        <div key={r.visitor+r.ts} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",border:"1px solid var(--border)",borderRadius:10,fontSize:12,flexWrap:"wrap"}}>
+          <span style={{fontSize:18}} title={r.country||"Unknown"}>{wFlag(r.country)}</span>
+          <div style={{flex:"1 1 200px",minWidth:0}}>
+            <a href={site+r.path} target="_blank" rel="noreferrer" style={{fontWeight:700,color:"var(--text)",display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(r.title||r.path).replace(/\s*[|–-]\s*admepro.*$/i,"")}</a>
+            <span style={{color:"var(--text3)"}}>{r.path} · {r.pages} page{+r.pages===1?"":"s"} · from {r.utm_source||r.ref_host||"direct"}</span>
+          </div>
+          <span style={{color:"var(--text2)"}}>{r.device==="mobile"?"📱":r.device==="tablet"?"📲":"💻"} {r.browser}</span>
+          <span style={{color:"#10b981",fontWeight:700,minWidth:52,textAlign:"right"}}>{ago(r.ts)}</span>
+        </div>))}</div>}
+    </div>);
+}
+
+function WebsiteKeywords({days}) {
+  const [d,setD]=useState(null);
+  useEffect(()=>{ setD(null); wApi.get("keywords",{days:Math.max(7,days)}).then(setD).catch(e=>setD({connected:false,error:e.message})); },[days]);
+  if(!d) return <div style={wCard}><p style={{fontWeight:800,fontSize:14,marginBottom:8}}>Google search keywords</p><Spinner size={16}/></div>;
+  if(!d.connected) return (
+    <div style={wCard}>
+      <p style={{fontWeight:800,fontSize:14,marginBottom:6}}>Google search keywords</p>
+      <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>Google hides the search words from websites, so they can only come from <b>Google Search Console</b>. Connect it once (see Setup) and the words people searched to find admepro show here: clicks, views in Google and your position.</p>
+      {d.error&&<p style={{fontSize:12,color:"#ef4444",marginTop:6}}>{d.error}</p>}
+    </div>);
+  return (
+    <div style={wCard}>
+      <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:10}}><p style={{fontWeight:800,fontSize:14,flex:1}}>Google search keywords</p><span style={{fontSize:11,color:"var(--text3)"}}>{d.from} → {d.to} · Google data is ~2 days behind</span></div>
+      {d.queries.length===0?<p style={{fontSize:12,color:"var(--text3)"}}>No searches yet in this period.</p>:
+      <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:420}}>
+        <thead><tr style={{color:"var(--text3)",textAlign:"left",fontSize:10,textTransform:"uppercase"}}><th style={{padding:"6px 4px"}}>Search words</th><th style={{padding:"6px 4px",textAlign:"right"}}>Clicks</th><th style={{padding:"6px 4px",textAlign:"right"}}>Shown</th><th style={{padding:"6px 4px",textAlign:"right"}}>CTR</th><th style={{padding:"6px 4px",textAlign:"right"}}>Position</th></tr></thead>
+        <tbody>{d.queries.slice(0,30).map(q=><tr key={q.query} style={{borderTop:"1px solid var(--border)"}}>
+          <td style={{padding:"7px 4px",fontWeight:600}} dir="auto">{q.query}</td><td style={{padding:"7px 4px",textAlign:"right",fontWeight:800}}>{q.clicks}</td>
+          <td style={{padding:"7px 4px",textAlign:"right",color:"var(--text2)"}}>{q.impressions}</td><td style={{padding:"7px 4px",textAlign:"right",color:"var(--text2)"}}>{q.ctr}%</td>
+          <td style={{padding:"7px 4px",textAlign:"right",color:q.position<=10?"#10b981":"var(--text2)",fontWeight:700}}>{q.position}</td></tr>)}</tbody>
+      </table></div>}
+    </div>);
+}
+
 function WebsiteOverview() {
   const [days, setDays] = useState(30);
   const [d, setD] = useState(null); const [err, setErr] = useState("");
@@ -33441,6 +33528,12 @@ function WebsiteOverview() {
         {kpi("Website leads", T.leads, "forms submitted", "#10b981")}
         {kpi("Conversion", T.conversion==null?"—":T.conversion+"%", "visitors → leads", "#d90b2c")}
       </div>
+      <WebsiteLive site={d.site}/>
+      <div style={wCard}>
+        <p style={{fontWeight:800,fontSize:14,marginBottom:10}}>Visitors around the world</p>
+        <WebsiteMap rows={d.countries.filter(c=>c.k!=="??")}/>
+      </div>
+      <WebsiteKeywords days={days}/>
       <div style={wCard}>
         <p style={{fontWeight:800,fontSize:14,marginBottom:10}}>Visitors per day</p>
         <div style={{display:"flex",alignItems:"flex-end",gap:2,height:150}}>
@@ -33455,7 +33548,7 @@ function WebsiteOverview() {
         <div style={wCard}><p style={{fontWeight:800,fontSize:14,marginBottom:10}}>Where visitors come from</p>
           <WBars rows={d.sources} k="source" v="visitors" color="#0ea5e9"/></div>
         <div style={wCard}><p style={{fontWeight:800,fontSize:14,marginBottom:10}}>Countries</p>
-          <WBars rows={d.countries} color="#10b981" label={c=>`${wFlag(c)} ${c==="??"?"Unknown":c}`}/></div>
+          <WBars rows={d.countries.slice(0,10)} color="#10b981" label={c=>`${wFlag(c)} ${c==="??"?"Unknown":c}`}/></div>
         <div style={wCard}><p style={{fontWeight:800,fontSize:14,marginBottom:10}}>Devices & browsers</p>
           <WBars rows={d.devices} color="#f59e0b" label={x=>x?x[0].toUpperCase()+x.slice(1):"—"}/><div style={{height:14}}/><WBars rows={d.browsers} color="#94a3b8"/></div>
         <div style={wCard}><p style={{fontWeight:800,fontSize:14,marginBottom:10}}>Contact clicks</p>
@@ -33754,6 +33847,13 @@ function WebsiteSetup() {
         {step(2,"Add this line to every page of admepro.com (in the site's <head>)",<>{code(snippet)}<button onClick={()=>{try{navigator.clipboard.writeText(snippet);}catch(e){}}} style={{...wBtn(false),marginTop:6}}>Copy</button></>)}
         {step(3,"Count form submissions as conversions (optional)",<p style={{fontSize:12,color:"var(--text2)"}}>After a contact form is sent successfully, the site can call <code>window.sfTrackLead()</code>. Website leads are counted anyway from SocialFlow's Leads.</p>)}
         <p style={{fontSize:11,color:"var(--text3)"}}>No cookies, no personal data: visitors are counted with an anonymous ID that changes daily, so no cookie banner is needed.</p>
+      </div>
+      <div style={{...wCard,display:"flex",flexDirection:"column",gap:16}}>
+        <p style={{fontWeight:800,fontSize:15}}>Google search keywords (Search Console)</p>
+        {step(1,"Verify admepro.com in Google Search Console",<p style={{fontSize:12,color:"var(--text2)"}}>search.google.com/search-console → Add property → <b>Domain</b> → admepro.com (add the TXT record in Hostinger DNS).</p>)}
+        {step(2,"Create a service account key",<p style={{fontSize:12,color:"var(--text2)"}}>console.cloud.google.com → new project → enable <b>Google Search Console API</b> → IAM → Service accounts → Create → Keys → Add key → JSON. A .json file downloads.</p>)}
+        {step(3,"Give it access",<p style={{fontSize:12,color:"var(--text2)"}}>Search Console → Settings → Users and permissions → Add user → paste the service account email (…@….iam.gserviceaccount.com) → Restricted.</p>)}
+        {step(4,"Put the key on the server (outside the web folder) and add to config.php",code("mkdir -p /etc/socialflow && nano /etc/socialflow/gsc-key.json\nchown www-data /etc/socialflow/gsc-key.json && chmod 600 /etc/socialflow/gsc-key.json\n\ndefine('GSC_KEY_FILE', '/etc/socialflow/gsc-key.json');\ndefine('GSC_SITE', 'sc-domain:admepro.com');"))}
       </div>
       <div style={{...wCard,display:"flex",flexDirection:"column",gap:12}}>
         <p style={{fontWeight:800,fontSize:15}}>Content control (GitHub)</p>
