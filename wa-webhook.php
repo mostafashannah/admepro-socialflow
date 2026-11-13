@@ -165,6 +165,21 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
     );
 
+    // Marketing opt-out: a non-team number replying STOP / إلغاء stops marketing WhatsApp messages.
+    if (preg_match('/^\s*(stop|unsubscribe|الغاء|إلغاء|ايقاف|إيقاف)\s*$/iu', $text)) {
+        try {
+            require_once __DIR__ . '/wa-lib.php';
+            if (!waIsTeamNumber($pdo, $from)) {
+                $st = $pdo->prepare("UPDATE mkt_contacts SET unsub_wa = 1, updated_at = NOW() WHERE REPLACE(phone,'+','') = ?");
+                $st->execute([$from]);
+                if ($st->rowCount() > 0) { sendWhatsAppReply($from, "You're unsubscribed from admepro updates. Reply START anytime to join again."); exit; }
+            }
+        } catch (Throwable $e) { error_log('[wa-webhook] stop: ' . $e->getMessage()); }
+    }
+    if (preg_match('/^\s*start\s*$/i', $text)) {
+        try { $pdo->prepare("UPDATE mkt_contacts SET unsub_wa = 0, wa_opt_in = 1, updated_at = NOW() WHERE REPLACE(phone,'+','') = ? AND unsub_wa = 1")->execute([$from]); } catch (Throwable $e) {}
+    }
+
     // Meta can redeliver the exact same webhook message more than once
     // (slow ack, network retry) — without this check, Pro would reprocess
     // it and re-run tool calls like add_transaction, creating duplicate

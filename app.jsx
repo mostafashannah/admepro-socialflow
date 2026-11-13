@@ -33800,6 +33800,429 @@ function WebsitePage({setPage}) {
     </div>);
 }
 
+// ═══════════════════════════════════════════════════════════════
+// GROWTH — Marketing (newsletters + WhatsApp campaigns) and Sales agent
+// ═══════════════════════════════════════════════════════════════
+const gApiFor = (file)=>({
+  get: async (action, params={}) => {
+    const r = await fetch(window.location.origin+"/"+file+"?"+new URLSearchParams({action,...params}).toString());
+    const d = await r.json().catch(()=>({error:"Bad response"}));
+    if(!r.ok) throw new Error(d.error||("HTTP "+r.status));
+    return d;
+  },
+  post: async (action, body={}) => {
+    const r = await fetch(window.location.origin+"/"+file+"?action="+action,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const d = await r.json().catch(()=>({error:"Bad response"}));
+    if(!r.ok) throw new Error(d.error||("HTTP "+r.status));
+    return d;
+  },
+});
+const mApi = gApiFor("marketing.php");
+const sApi = gApiFor("sales-agent.php");
+const gCard = {background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:16};
+const gLabel = {fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".04em",marginBottom:6,display:"block"};
+const gPill = (on)=>({padding:"6px 12px",borderRadius:999,fontSize:12,fontWeight:700,border:"1px solid "+(on?"var(--accent)":"var(--border2)"),background:on?"var(--accent)":"transparent",color:on?"#fff":"var(--text2)",cursor:"pointer"});
+const gPct = (a,b)=> b? Math.round((a||0)*100/b)+"%" : "—";
+const G_STATUS_COLORS = {draft:"#6b7280",scheduled:"#2563eb",sending:"#d97706",sent:"#16a34a",cancelled:"#9ca3af",new:"#2563eb",approved:"#7c3aed",contacted:"#d97706",replied:"#0891b2",won:"#16a34a",rejected:"#9ca3af"};
+const GBadge = ({s})=><span style={{fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:999,background:(G_STATUS_COLORS[s]||"#6b7280")+"1f",color:G_STATUS_COLORS[s]||"#6b7280",textTransform:"capitalize"}}>{s}</span>;
+const GSetupNote = ({err})=> err ? <div style={{...gCard,borderColor:"#f59e0b",background:"#f59e0b14",fontSize:13}}>{err}{/migration/i.test(err)&&<div style={{marginTop:6,fontFamily:"monospace",fontSize:12}}>mysql -u root -p socialflow &lt; /var/www/socialflow/migration-marketing.sql</div>}</div> : null;
+
+function MarketingPage() {
+  const [tab, setTab] = useState(()=>{ try{ return localStorage.getItem("sf_mkt_tab")||"campaigns"; }catch(e){ return "campaigns"; } });
+  useEffect(()=>{ try{ localStorage.setItem("sf_mkt_tab",tab); }catch(e){} },[tab]);
+  const [ov, setOv] = useState(null); const [err, setErr] = useState("");
+  const loadOv = ()=> mApi.get("overview").then(d=>{ setOv(d); setErr(""); }).catch(e=>setErr(e.message));
+  useEffect(()=>{ loadOv(); },[]);
+  const c = ov?.contacts||{}; const l = ov?.last30||{};
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
+      <div>
+        <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:"clamp(20px,5vw,28px)",fontWeight:800}}>Marketing</h1>
+        <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Newsletters and WhatsApp campaigns to people who know admepro</p>
+      </div>
+      <GSetupNote err={err}/>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
+        {[["Contacts",c.total],["Subscribed",c.opt_in],["Leads & clients",c.leads],["WhatsApp opt-in",c.wa],["Sent · 30 days",l.sent],["Open rate",gPct(l.opened,l.sent)],["Click rate",gPct(l.clicked,l.sent)]].map(([k,v])=>(
+          <div key={k} style={{...gCard,padding:"12px 14px"}}><div style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>{k}</div><div style={{fontSize:22,fontWeight:800,marginTop:2}}>{v??"—"}</div></div>
+        ))}
+      </div>
+      <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",overflowX:"auto"}}>
+        {[["campaigns","Campaigns"],["contacts","Contacts"],["setup","Setup"]].map(([k,lb])=><button key={k} onClick={()=>setTab(k)} style={{padding:"9px 16px",fontSize:13,fontWeight:600,whiteSpace:"nowrap",borderBottom:`2px solid ${tab===k?"var(--accent)":"transparent"}`,color:tab===k?"var(--accent)":"var(--text2)"}}>{lb}</button>)}
+      </div>
+      {tab==="campaigns"&&<MktCampaigns ov={ov} onChange={loadOv}/>}
+      {tab==="contacts"&&<MktContacts ov={ov} onChange={loadOv}/>}
+      {tab==="setup"&&<MktSetup ov={ov}/>}
+    </div>);
+}
+
+function MktCampaigns({ov,onChange}) {
+  const [rows,setRows]=useState(null); const [edit,setEdit]=useState(null); const [err,setErr]=useState("");
+  const load=()=>mApi.get("campaigns").then(d=>{setRows(d.rows);setErr("");}).catch(e=>setErr(e.message));
+  useEffect(()=>{load();},[]);
+  useEffect(()=>{ if(!rows||!rows.some(r=>r.status==="sending")) return; const t=setInterval(load,15000); return ()=>clearInterval(t); },[rows]);
+  const act=async(a,id)=>{ try{ const d=await mApi.post(a,{id}); if(a==="duplicate"&&d.id){ await load(); } else load(); onChange&&onChange(); }catch(e){ alert(e.message); } };
+  if(edit) return <MktEditor init={edit} ov={ov} onClose={()=>{setEdit(null);load();}}/>;
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <GSetupNote err={err}/>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <button style={wBtn(true)} onClick={()=>setEdit({channel:"email",name:"",subject:"",preheader:"",blocks:[],audience:{consent:["opt_in","lead"]}})}>+ Email newsletter</button>
+        <button style={wBtn(false)} onClick={()=>setEdit({channel:"whatsapp",name:"",wa_template:"",wa_lang:"en_US",wa_params:[],audience:{}})}>+ WhatsApp campaign</button>
+      </div>
+      {rows&&rows.length===0&&<div style={{...gCard,textAlign:"center",color:"var(--text2)",fontSize:13,padding:30}}>No campaigns yet. Start with a newsletter — Sara can write the first draft for you.</div>}
+      {(rows||[]).map(r=>(
+        <div key={r.id} style={{...gCard,display:"flex",gap:14,alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{width:38,height:38,borderRadius:10,background:r.channel==="whatsapp"?"#25d36622":"var(--accent)1a",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>{r.channel==="whatsapp"?"💬":"✉️"}</div>
+          <div style={{flex:"1 1 220px",minWidth:0}}>
+            <div style={{fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name||"Untitled"}</div>
+            <div style={{fontSize:12,color:"var(--text3)",marginTop:2}}>{r.channel==="email"?(r.subject||"No subject"):("Template: "+(r.wa_template||"—"))}{r.scheduled_at&&r.status==="scheduled"?" · sends "+new Date(r.scheduled_at.replace(" ","T")).toLocaleString():""}{r.finished_at?" · sent "+new Date(r.finished_at.replace(" ","T")).toLocaleDateString():""}</div>
+          </div>
+          <GBadge s={r.status}/>
+          {Number(r.total)>0&&<div style={{display:"flex",gap:14,fontSize:12,color:"var(--text2)"}}>
+            <span><b>{r.sent}</b>/{r.total} sent</span>
+            {r.channel==="email"&&<><span><b>{gPct(r.opened,r.sent)}</b> opened</span><span><b>{gPct(r.clicked,r.sent)}</b> clicked</span>{Number(r.unsubs)>0&&<span>{r.unsubs} unsub</span>}</>}
+            {Number(r.failed)>0&&<span style={{color:"#dc2626"}}>{r.failed} failed</span>}
+          </div>}
+          <div style={{display:"flex",gap:6}}>
+            {["draft","scheduled"].includes(r.status)&&<button style={wBtn(false)} onClick={()=>setEdit(r)}>Edit</button>}
+            {["scheduled","sending"].includes(r.status)&&<button style={wBtn(false)} onClick={()=>confirm("Stop this campaign?")&&act("cancel",r.id)}>Stop</button>}
+            <button style={wBtn(false)} onClick={()=>act("duplicate",r.id)}>Duplicate</button>
+            {["draft","cancelled"].includes(r.status)&&<button style={{...wBtn(false),color:"#dc2626"}} onClick={()=>confirm("Delete this campaign?")&&act("campaign_delete",r.id)}>Delete</button>}
+          </div>
+        </div>
+      ))}
+    </div>);
+}
+
+function MktAudience({channel,aud,setAud,ov}) {
+  const [count,setCount]=useState(null);
+  useEffect(()=>{ const t=setTimeout(()=>mApi.post("audience_count",{channel,audience:aud}).then(d=>setCount(d.count)).catch(()=>setCount(null)),350); return ()=>clearTimeout(t); },[channel,JSON.stringify(aud)]);
+  const toggle=(k,v)=>{ const cur=aud[k]||[]; setAud({...aud,[k]:cur.includes(v)?cur.filter(x=>x!==v):[...cur,v]}); };
+  const tags=Object.keys(ov?.tags||{}); const sources=(ov?.sources||[]).map(s=>s.source).filter(Boolean);
+  return (
+    <div style={{...gCard,display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><b style={{fontSize:14}}>Audience</b><span style={{fontSize:13,fontWeight:800,color:"var(--accent)"}}>{count==null?"…":count+" people"}</span></div>
+      {channel==="email"?<div><span style={gLabel}>Who</span><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        <button style={gPill((aud.consent||[]).includes("opt_in"))} onClick={()=>toggle("consent","opt_in")}>Subscribed</button>
+        <button style={gPill((aud.consent||[]).includes("lead"))} onClick={()=>toggle("consent","lead")}>Leads & clients</button>
+      </div></div>:<div style={{fontSize:12,color:"var(--text2)"}}>Only people who opted in to WhatsApp updates are included. Anyone who replies STOP is removed automatically.</div>}
+      {sources.length>0&&<div><span style={gLabel}>Source (optional)</span><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{sources.map(s=><button key={s} style={gPill((aud.sources||[]).includes(s))} onClick={()=>toggle("sources",s)}>{s}</button>)}</div></div>}
+      {tags.length>0&&<div><span style={gLabel}>Tags (optional — any of)</span><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{tags.map(s=><button key={s} style={gPill((aud.tags||[]).includes(s))} onClick={()=>toggle("tags",s)}>{s} <span style={{opacity:.6}}>{ov.tags[s]}</span></button>)}</div></div>}
+      <div><span style={gLabel}>Language</span><div style={{display:"flex",gap:6}}>{[["","All"],["en","English"],["ar","Arabic"]].map(([k,lb])=><button key={k} style={gPill((aud.lang||"")===k)} onClick={()=>setAud({...aud,lang:k||undefined})}>{lb}</button>)}</div></div>
+    </div>);
+}
+
+function MktEditor({init,ov,onClose}) {
+  const [f,setF]=useState(()=>({...init,blocks:init.blocks||[],wa_params:init.wa_params||[],audience:init.audience||{}}));
+  const [saving,setSaving]=useState(false); const [msg,setMsg]=useState("");
+  const [html,setHtml]=useState(""); const [brief,setBrief]=useState(""); const [lang,setLang]=useState("en"); const [writing,setWriting]=useState(false);
+  const [testTo,setTestTo]=useState(""); const [when,setWhen]=useState(""); const [tpls,setTpls]=useState(null);
+  const s=(k,v)=>setF(p=>({...p,[k]:v}));
+  const isEmail=f.channel==="email";
+  useEffect(()=>{ if(!isEmail) return; const t=setTimeout(()=>mApi.post("preview",{blocks:f.blocks,preheader:f.preheader,lang:f.audience?.lang}).then(d=>setHtml(d.html)).catch(()=>{}),400); return ()=>clearTimeout(t); },[JSON.stringify(f.blocks),f.preheader,f.audience?.lang]);
+  useEffect(()=>{ if(!isEmail) mApi.get("wa_templates").then(setTpls).catch(e=>setTpls({rows:[],error:e.message})); },[]);
+  const save=async()=>{ setSaving(true); setMsg(""); try{ const d=await mApi.post("campaign_save",f); s("id",d.id); setMsg("Saved"); return d.id; }catch(e){ setMsg(e.message); return null; } finally{ setSaving(false); } };
+  const setBlock=(i,patch)=>s("blocks",f.blocks.map((b,j)=>j===i?{...b,...patch}:b));
+  const move=(i,d)=>{ const a=[...f.blocks]; const j=i+d; if(j<0||j>=a.length) return; [a[i],a[j]]=[a[j],a[i]]; s("blocks",a); };
+  const write=async()=>{ setWriting(true); setMsg(""); try{ const d=await mApi.post("write",{brief,lang}); setF(p=>({...p,subject:d.subject||p.subject,preheader:d.preheader||p.preheader,blocks:d.blocks||p.blocks,name:p.name||d.subject||""})); if(lang==="ar") setF(p=>({...p,audience:{...p.audience,lang:"ar"}})); }catch(e){ setMsg(e.message); } finally{ setWriting(false); } };
+  const test=async()=>{ setMsg(""); try{ const d=await mApi.post("test",{...f,to:testTo}); setMsg("Test sent"+(d.to?" to "+d.to:"")); }catch(e){ setMsg(e.message); } };
+  const schedule=async()=>{ const id=await save(); if(!id) return; const n=when?new Date(when).toLocaleString():"now";
+    try{ const d=await mApi.post("audience_count",{channel:f.channel,audience:f.audience}); if(!confirm(`Send to ${d.count} people ${when?"on "+n:"now"}?`)) return;
+      await mApi.post("schedule",{id,at:when?when.replace("T"," ")+":00":""}); onClose(); }catch(e){ setMsg(e.message); } };
+  const tpl=(tpls?.rows||[]).find(t=>t.name===f.wa_template&&t.lang===f.wa_lang);
+  const BLOCK_TYPES=[["heading","Heading"],["text","Text"],["image","Image"],["button","Button"],["divider","Divider"]];
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+        <button style={wBtn(false)} onClick={onClose}>← Back</button>
+        <input value={f.name} onChange={e=>s("name",e.target.value)} placeholder="Campaign name (internal)" style={{...inputSt,flex:"1 1 220px",fontWeight:700}}/>
+        <button style={wBtn(false)} disabled={saving} onClick={save}>{saving?"Saving…":"Save draft"}</button>
+        {msg&&<span style={{fontSize:12,color:/saved|sent/i.test(msg)?"#16a34a":"#dc2626"}}>{msg}</span>}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:isEmail?"repeat(auto-fit,minmax(320px,1fr))":"1fr",gap:12,alignItems:"start"}}>
+        <div style={{display:"flex",flexDirection:"column",gap:12,minWidth:0}}>
+          {isEmail?<>
+            <div style={{...gCard,display:"flex",flexDirection:"column",gap:8,background:"linear-gradient(135deg,var(--accent)0d,transparent)"}}>
+              <b style={{fontSize:13}}>✨ Write with Sara</b>
+              <textarea value={brief} onChange={e=>setBrief(e.target.value)} rows={3} placeholder="e.g. Ramadan offer: 20% off social media packages for new clients until end of month. Mention our new video production studio." style={{...inputSt,resize:"vertical"}}/>
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                <button style={gPill(lang==="en")} onClick={()=>setLang("en")}>English</button><button style={gPill(lang==="ar")} onClick={()=>setLang("ar")}>Arabic</button>
+                <div style={{flex:1}}/><button style={wBtn(true)} disabled={writing||!brief.trim()} onClick={write}>{writing?"Writing…":"Draft it"}</button>
+              </div>
+            </div>
+            <div style={{...gCard,display:"flex",flexDirection:"column",gap:8}}>
+              <span style={gLabel}>Subject</span><input value={f.subject} onChange={e=>s("subject",e.target.value)} placeholder="Subject line — {{first_name}} works here" style={inputSt}/>
+              <span style={gLabel}>Preview text</span><input value={f.preheader} onChange={e=>s("preheader",e.target.value)} placeholder="Short line shown after the subject in the inbox" style={inputSt}/>
+            </div>
+            <div style={{...gCard,display:"flex",flexDirection:"column",gap:10}}>
+              <b style={{fontSize:14}}>Content</b>
+              {f.blocks.map((b,i)=>(
+                <div key={i} style={{border:"1px solid var(--border)",borderRadius:10,padding:10,display:"flex",flexDirection:"column",gap:6}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{fontSize:11,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",flex:1}}>{b.type}</span>
+                    <button onClick={()=>move(i,-1)} style={{fontSize:12,padding:"2px 6px"}}>↑</button><button onClick={()=>move(i,1)} style={{fontSize:12,padding:"2px 6px"}}>↓</button>
+                    <button onClick={()=>s("blocks",f.blocks.filter((_,j)=>j!==i))} style={{fontSize:12,padding:"2px 6px",color:"#dc2626"}}>✕</button>
+                  </div>
+                  {b.type==="heading"&&<input value={b.text||""} onChange={e=>setBlock(i,{text:e.target.value})} style={{...inputSt,fontWeight:700}}/>}
+                  {b.type==="text"&&<textarea value={b.text||""} onChange={e=>setBlock(i,{text:e.target.value})} rows={4} style={{...inputSt,resize:"vertical"}}/>}
+                  {b.type==="image"&&<><input value={b.url||""} onChange={e=>setBlock(i,{url:e.target.value})} placeholder="Image URL (https://…)" style={inputSt}/><input value={b.link||""} onChange={e=>setBlock(i,{link:e.target.value})} placeholder="Link when clicked (optional)" style={inputSt}/></>}
+                  {b.type==="button"&&<div style={{display:"flex",gap:6}}><input value={b.text||""} onChange={e=>setBlock(i,{text:e.target.value})} placeholder="Button text" style={{...inputSt,flex:1}}/><input value={b.url||""} onChange={e=>setBlock(i,{url:e.target.value})} placeholder="https://…" style={{...inputSt,flex:2}}/></div>}
+                </div>))}
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{BLOCK_TYPES.map(([k,lb])=><button key={k} style={wBtn(false)} onClick={()=>s("blocks",[...f.blocks,{type:k,text:"",url:k==="button"?"https://admepro.com":""}])}>+ {lb}</button>)}</div>
+            </div>
+          </>:<div style={{...gCard,display:"flex",flexDirection:"column",gap:10}}>
+            <b style={{fontSize:14}}>WhatsApp template</b>
+            <div style={{fontSize:12,color:"var(--text2)"}}>Marketing messages must use a template approved by Meta (category Marketing).</div>
+            {tpls?.rows?.length>0?<select value={f.wa_template?f.wa_template+"|"+f.wa_lang:""} onChange={e=>{ const [n,l]=e.target.value.split("|"); const t=tpls.rows.find(x=>x.name===n&&x.lang===l); setF(p=>({...p,wa_template:n,wa_lang:l,wa_params:Array.from({length:t?.vars||0},(_,k)=>p.wa_params[k]||"")})); }} style={inputSt}>
+              <option value="">Choose a template…</option>
+              {tpls.rows.map(t=><option key={t.name+t.lang} value={t.name+"|"+t.lang}>{t.name} · {t.lang} · {t.category}</option>)}
+            </select>:<div style={{display:"flex",gap:6}}>
+              <input value={f.wa_template||""} onChange={e=>s("wa_template",e.target.value.trim())} placeholder="Template name" style={{...inputSt,flex:2}}/>
+              <input value={f.wa_lang||""} onChange={e=>s("wa_lang",e.target.value.trim())} placeholder="en_US" style={{...inputSt,flex:1}}/>
+            </div>}
+            {tpls?.note&&<div style={{fontSize:11,color:"var(--text3)"}}>{tpls.note}</div>}
+            {tpl?.body&&<div style={{background:"#dcf8c6",color:"#111",borderRadius:10,padding:"10px 12px",fontSize:13,whiteSpace:"pre-wrap"}}>{tpl.body.replace(/\{\{(\d+)\}\}/g,(m,k)=>f.wa_params[k-1]||m)}</div>}
+            {(tpl?tpl.vars:f.wa_params.length)>0&&f.wa_params.map((p,i)=><div key={i}><span style={gLabel}>{`{{${i+1}}}`}</span><input value={p} onChange={e=>s("wa_params",f.wa_params.map((x,j)=>j===i?e.target.value:x))} placeholder={i===0?"{{name}} for the person's first name":"Value"} style={inputSt}/></div>)}
+            {!tpl&&<button style={{...wBtn(false),alignSelf:"flex-start"}} onClick={()=>s("wa_params",[...f.wa_params,""])}>+ Variable</button>}
+            {(tpl?.image_header||f.wa_header_image)&&<><span style={gLabel}>Header image URL</span><input value={f.wa_header_image||""} onChange={e=>s("wa_header_image",e.target.value)} placeholder="https://…jpg" style={inputSt}/></>}
+          </div>}
+          <MktAudience channel={f.channel} aud={f.audience} setAud={a=>s("audience",a)} ov={ov}/>
+          <div style={{...gCard,display:"flex",flexDirection:"column",gap:10}}>
+            <b style={{fontSize:14}}>Test & send</b>
+            <div style={{display:"flex",gap:6}}><input value={testTo} onChange={e=>setTestTo(e.target.value)} placeholder={isEmail?"Test email (default: yours)":"Test phone, e.g. +2010…"} style={{...inputSt,flex:1}}/><button style={wBtn(false)} onClick={test}>Send test</button></div>
+            <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+              <input type="datetime-local" value={when} onChange={e=>setWhen(e.target.value)} style={{...inputSt,flex:"1 1 180px"}}/>
+              <button style={wBtn(true)} onClick={schedule}>{when?"Schedule":"Send now"}</button>
+            </div>
+            <div style={{fontSize:11,color:"var(--text3)"}}>Leave the date empty to send right away. Sends go out in batches every minute; unsubscribed people are always skipped.</div>
+          </div>
+        </div>
+        {isEmail&&<div style={{...gCard,padding:0,overflow:"hidden",position:"sticky",top:12}}>
+          <div style={{padding:"10px 14px",borderBottom:"1px solid var(--border)",fontSize:12,fontWeight:700,color:"var(--text2)"}}>Preview · {f.subject||"No subject"}</div>
+          <iframe title="preview" srcDoc={html} sandbox="" style={{width:"100%",height:640,border:0,background:"#f4f4f5",display:"block"}}/>
+        </div>}
+      </div>
+    </div>);
+}
+
+function MktContacts({ov,onChange}) {
+  const [q,setQ]=useState(""); const [filter,setFilter]=useState(""); const [data,setData]=useState(null); const [err,setErr]=useState("");
+  const [adding,setAdding]=useState(null); const [imp,setImp]=useState(null); const [busy,setBusy]=useState("");
+  const load=()=>mApi.get("contacts",{q,filter}).then(d=>{setData(d);setErr("");}).catch(e=>setErr(e.message));
+  useEffect(()=>{ const t=setTimeout(load,250); return ()=>clearTimeout(t); },[q,filter]);
+  const sync=async()=>{ setBusy("sync"); try{ const d=await mApi.post("sync"); alert(`${d.synced} contacts synced from Leads and Clients.`); load(); onChange&&onChange(); }catch(e){ alert(e.message); } finally{ setBusy(""); } };
+  const saveC=async(c)=>{ try{ await mApi.post("contact_save",c); setAdding(null); load(); onChange&&onChange(); }catch(e){ alert(e.message); } };
+  const parseCsv=(txt)=>{ const lines=txt.split(/\r?\n/).filter(l=>l.trim()); if(!lines.length) return [];
+    const split=l=>{ const out=[]; let cur="",qq=false; for(const ch of l){ if(ch==='"'){qq=!qq;continue;} if((ch===","||ch===";")&&!qq){out.push(cur);cur="";continue;} cur+=ch; } out.push(cur); return out.map(x=>x.trim()); };
+    const head=split(lines[0]).map(h=>h.toLowerCase()); const hasHead=head.some(h=>/mail|name|phone/.test(h));
+    const idx=k=>head.findIndex(h=>h.includes(k)); const ei=hasHead?idx("mail"):0, ni=hasHead?idx("name"):1, ci=hasHead?idx("company"):-1, pi=hasHead?idx("phone"):-1;
+    return lines.slice(hasHead?1:0).map(l=>{ const c=split(l); return {email:c[ei]||"",name:ni>=0?c[ni]||"":"",company:ci>=0?c[ci]||"":"",phone:pi>=0?c[pi]||"":""}; }).filter(r=>r.email||r.phone); };
+  const doImport=async()=>{ setBusy("imp"); try{ const d=await mApi.post("import",{rows:imp.rows,consent:imp.consent,note:imp.note,tags:imp.tags,wa_opt_in:imp.wa}); alert(`${d.imported} contacts imported.`); setImp(null); load(); onChange&&onChange(); }catch(e){ alert(e.message); } finally{ setBusy(""); } };
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <GSetupNote err={err}/>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search name, email, company, phone…" style={{...inputSt,flex:"1 1 220px"}}/>
+        {[["","All"],["opt_in","Subscribed"],["lead","Leads"],["wa","WhatsApp"],["unsub","Unsubscribed"]].map(([k,lb])=><button key={k} style={gPill(filter===k)} onClick={()=>setFilter(k)}>{lb}</button>)}
+      </div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <button style={wBtn(true)} onClick={()=>setAdding({consent:"opt_in"})}>+ Add contact</button>
+        <label style={{...wBtn(false),display:"inline-flex",alignItems:"center"}}>Import CSV<input type="file" accept=".csv,text/csv" style={{display:"none"}} onChange={async e=>{ const file=e.target.files?.[0]; if(!file) return; const rows=parseCsv(await file.text()); setImp({rows,consent:"lead",note:"CSV import: "+file.name,tags:"",wa:false}); e.target.value=""; }}/></label>
+        <button style={wBtn(false)} disabled={busy==="sync"} onClick={sync}>{busy==="sync"?"Syncing…":"Sync from Leads & Clients"}</button>
+      </div>
+      {imp&&<div style={{...gCard,display:"flex",flexDirection:"column",gap:8}}>
+        <b>Import {imp.rows.length} contacts</b>
+        <div style={{fontSize:12,color:"var(--text2)"}}>Only import people who know admepro. Choose "Subscribed" only if they actually agreed to receive newsletters.</div>
+        <div style={{display:"flex",gap:6}}><button style={gPill(imp.consent==="opt_in")} onClick={()=>setImp({...imp,consent:"opt_in"})}>They subscribed</button><button style={gPill(imp.consent==="lead")} onClick={()=>setImp({...imp,consent:"lead"})}>Business contacts / leads</button></div>
+        <input value={imp.note} onChange={e=>setImp({...imp,note:e.target.value})} placeholder="Where these came from (kept as consent record)" style={inputSt}/>
+        <input value={imp.tags} onChange={e=>setImp({...imp,tags:e.target.value})} placeholder="Tags for all, e.g. event-2026, real-estate" style={inputSt}/>
+        <label style={{fontSize:13,display:"flex",gap:6,alignItems:"center"}}><input type="checkbox" checked={imp.wa} onChange={e=>setImp({...imp,wa:e.target.checked})}/> They agreed to WhatsApp updates too</label>
+        <div style={{display:"flex",gap:6}}><button style={wBtn(true)} disabled={busy==="imp"||!imp.rows.length} onClick={doImport}>{busy==="imp"?"Importing…":"Import"}</button><button style={wBtn(false)} onClick={()=>setImp(null)}>Cancel</button></div>
+      </div>}
+      {adding&&<MktContactForm c={adding} onSave={saveC} onCancel={()=>setAdding(null)}/>}
+      <div style={{...gCard,padding:0,overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:640}}>
+          <thead><tr style={{textAlign:"left",color:"var(--text3)",fontSize:11,textTransform:"uppercase"}}>{["Name","Email","Phone","Status","Source","Tags",""].map(h=><th key={h} style={{padding:"10px 12px",borderBottom:"1px solid var(--border)"}}>{h}</th>)}</tr></thead>
+          <tbody>{(data?.rows||[]).map(c=>(
+            <tr key={c.id} style={{borderBottom:"1px solid var(--border)"}}>
+              <td style={{padding:"9px 12px"}}><div style={{fontWeight:600}}>{c.name||"—"}</div>{c.company&&<div style={{fontSize:11,color:"var(--text3)"}}>{c.company}</div>}</td>
+              <td style={{padding:"9px 12px"}}>{c.email||"—"}</td>
+              <td style={{padding:"9px 12px"}}>{c.phone||"—"}{Number(c.wa_opt_in)===1&&Number(c.unsub_wa)===0&&<span title="WhatsApp opt-in"> 💬</span>}</td>
+              <td style={{padding:"9px 12px"}}>{Number(c.unsub_email)===1?<span style={{color:"#dc2626",fontSize:12,fontWeight:700}}>Unsubscribed</span>:<span style={{fontSize:12}}>{c.consent==="opt_in"?"Subscribed":c.consent==="lead"?"Lead":"No consent"}</span>}</td>
+              <td style={{padding:"9px 12px",fontSize:12}}>{c.source}</td>
+              <td style={{padding:"9px 12px",fontSize:12,color:"var(--text2)"}}>{c.tags||""}</td>
+              <td style={{padding:"9px 12px",whiteSpace:"nowrap"}}><button style={{fontSize:12,color:"var(--accent)",fontWeight:700}} onClick={()=>setAdding(c)}>Edit</button></td>
+            </tr>))}</tbody>
+        </table>
+        {data&&<div style={{padding:"10px 12px",fontSize:12,color:"var(--text3)"}}>{data.total} contacts{data.total>100?" · showing first 100":""}</div>}
+      </div>
+    </div>);
+}
+
+function MktContactForm({c,onSave,onCancel}) {
+  const [f,setF]=useState({...c,wa_opt_in:Number(c.wa_opt_in)===1,unsub_email:Number(c.unsub_email)===1,unsub_wa:Number(c.unsub_wa)===1});
+  const s=(k,v)=>setF(p=>({...p,[k]:v}));
+  const del=async()=>{ if(!confirm("Delete this contact?")) return; try{ await mApi.post("contact_delete",{id:c.id}); onCancel(); }catch(e){ alert(e.message); } };
+  return (
+    <div style={{...gCard,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:8}}>
+      <input value={f.email||""} disabled={!!c.id} onChange={e=>s("email",e.target.value)} placeholder="Email" style={inputSt}/>
+      <input value={f.name||""} onChange={e=>s("name",e.target.value)} placeholder="Name" style={inputSt}/>
+      <input value={f.company||""} onChange={e=>s("company",e.target.value)} placeholder="Company" style={inputSt}/>
+      <input value={f.phone||""} onChange={e=>s("phone",e.target.value)} placeholder="Phone (+20…)" style={inputSt}/>
+      <input value={f.tags||""} onChange={e=>s("tags",e.target.value)} placeholder="Tags, comma separated" style={inputSt}/>
+      <select value={f.consent||"lead"} onChange={e=>s("consent",e.target.value)} style={inputSt}><option value="opt_in">Subscribed (agreed)</option><option value="lead">Lead / business contact</option><option value="none">No consent</option></select>
+      <select value={f.lang||""} onChange={e=>s("lang",e.target.value)} style={inputSt}><option value="">Language: any</option><option value="en">English</option><option value="ar">Arabic</option></select>
+      <div style={{display:"flex",flexDirection:"column",gap:4,fontSize:13}}>
+        <label><input type="checkbox" checked={f.wa_opt_in} onChange={e=>s("wa_opt_in",e.target.checked)}/> WhatsApp opt-in</label>
+        {c.id&&<label><input type="checkbox" checked={f.unsub_email} onChange={e=>s("unsub_email",e.target.checked)}/> Unsubscribed from email</label>}
+      </div>
+      <div style={{display:"flex",gap:6,alignItems:"center"}}><button style={wBtn(true)} onClick={()=>onSave(f)}>Save</button><button style={wBtn(false)} onClick={onCancel}>Cancel</button>{c.id&&<button style={{...wBtn(false),color:"#dc2626"}} onClick={del}>Delete</button>}</div>
+    </div>);
+}
+
+function MktSetup({ov}) {
+  const url=ov?.config?.signup_url||"https://socialflow.admepro.com/newsletter-signup.php";
+  const snippet=`<form id="nl" style="display:flex;gap:8px;flex-wrap:wrap">
+  <input name="email" type="email" required placeholder="Your email">
+  <input name="website" style="display:none" tabindex="-1" autocomplete="off">
+  <button type="submit">Subscribe</button>
+</form>
+<script>
+document.getElementById('nl').addEventListener('submit', async e => {
+  e.preventDefault(); const f = e.target;
+  const r = await fetch('${url}', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({email: f.email.value, website: f.website.value, lang: document.documentElement.lang})});
+  f.innerHTML = r.ok ? 'Thanks — you are subscribed.' : 'Something went wrong, please try again.';
+});
+</script>`;
+  const Row=({t,children})=><div style={{...gCard,display:"flex",flexDirection:"column",gap:6}}><b style={{fontSize:14}}>{t}</b><div style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}>{children}</div></div>;
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <Row t="Sending address">Newsletters go from <b>{ov?.config?.from||"admepro <news@admepro.com>"}</b>. The domain must be verified in Resend. Change it with <code>MARKETING_FROM</code> in config.php.</Row>
+      <Row t="Signup form for admepro.com">Paste this where you want the form. Signups arrive here as <b>Subscribed</b> with the time and page saved as proof of consent.
+        <pre style={{background:"var(--bg2,#0000000d)",borderRadius:10,padding:12,fontSize:11,overflowX:"auto",whiteSpace:"pre",marginTop:6}}>{snippet}</pre>
+        <button style={{...wBtn(false),alignSelf:"flex-start"}} onClick={()=>navigator.clipboard?.writeText(snippet)}>Copy</button></Row>
+      <Row t="WhatsApp campaigns">Uses {ov?.config?.wa_marketing_number==="separate"?"your separate marketing number":"the main WhatsApp number — set WA_MKT_PHONE_ID in config.php to use a separate number and protect the team line"}. Create Marketing templates in Meta WhatsApp Manager; add <code>WA_WABA_ID</code> to list them here {ov?.config?.templates?"(connected ✓)":""}. Only contacts with WhatsApp opt-in receive them; replying STOP removes them.</Row>
+      <Row t="The rules we follow">Subscribed people and existing leads/clients can get newsletters. Every email has a one-click unsubscribe, and unsubscribed or bounced people are never sent to again. Don't import bought lists — they damage the sending domain for everyone.</Row>
+    </div>);
+}
+
+/* ───────────── Sales agent ───────────── */
+function SalesAgentPage({setPage}) {
+  const [brief,setBrief]=useState(""); const [country,setCountry]=useState("Egypt"); const [count,setCount]=useState(8);
+  const [job,setJob]=useState(()=>{ try{ return localStorage.getItem("sf_sales_job")||""; }catch(e){ return ""; } });
+  const [jobState,setJobState]=useState(null);
+  const [data,setData]=useState(null); const [err,setErr]=useState(""); const [filter,setFilter]=useState("new"); const [open,setOpen]=useState(null);
+  const load=()=>sApi.get("list",{status:filter}).then(d=>{setData(d);setErr("");}).catch(e=>setErr(e.message));
+  useEffect(()=>{load();},[filter]);
+  useEffect(()=>{ try{ job?localStorage.setItem("sf_sales_job",job):localStorage.removeItem("sf_sales_job"); }catch(e){}
+    if(!job) return; let stop=false;
+    const tick=async()=>{ try{ const d=await sApi.get("job_status",{job}); if(stop) return; setJobState(d); if(d.status==="done"||d.status==="error"){ setJob(""); load(); return; } }catch(e){ setJob(""); setJobState({status:"error",error:e.message}); return; } setTimeout(tick,5000); };
+    tick(); return ()=>{stop=true;}; },[job]);
+  const run=async()=>{ setJobState({status:"queued",step:"Starting…"}); try{ const d=await sApi.post("research",{brief,country,count}); setJob(d.job); }catch(e){ setJobState({status:"error",error:e.message}); } };
+  const running=jobState&&["queued","running"].includes(jobState.status);
+  const counts=data?.counts||{};
+  const EXAMPLES=["Real estate developers in New Cairo launching new compounds in 2026","Specialty coffee shops and restaurant groups in Cairo with weak Instagram","Private schools and nurseries in Sheikh Zayed","Skincare and cosmetics brands selling online in Saudi Arabia"];
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
+      <div>
+        <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:"clamp(20px,5vw,28px)",fontWeight:800}}>Sales agent</h1>
+        <p style={{fontSize:13,color:"var(--text2)"}}>Finds real companies that fit admepro, the public decision makers, and drafts outreach for you to review</p>
+      </div>
+      <GSetupNote err={err}/>
+      <div style={{...gCard,display:"flex",flexDirection:"column",gap:10,background:"linear-gradient(135deg,var(--accent)0f,transparent 60%)"}}>
+        <span style={gLabel}>Who should the agent look for?</span>
+        <textarea value={brief} onChange={e=>setBrief(e.target.value)} rows={3} placeholder="Describe the ideal client: industry, area, size, and what makes them need us…" style={{...inputSt,resize:"vertical"}}/>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{EXAMPLES.map(x=><button key={x} onClick={()=>setBrief(x)} style={{...gPill(false),fontWeight:500,fontSize:11}}>{x}</button>)}</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+          <input value={country} onChange={e=>setCountry(e.target.value)} placeholder="Country / city" style={{...inputSt,flex:"1 1 160px"}}/>
+          <select value={count} onChange={e=>setCount(+e.target.value)} style={{...inputSt,width:130}}>{[5,8,10,15].map(n=><option key={n} value={n}>{n} companies</option>)}</select>
+          <button style={wBtn(true)} disabled={running||brief.trim().length<8} onClick={run}>{running?"Researching…":"Find prospects"}</button>
+        </div>
+        {jobState&&<div style={{fontSize:13,color:jobState.status==="error"?"#dc2626":jobState.status==="done"?"#16a34a":"var(--text2)",display:"flex",gap:8,alignItems:"center"}}>
+          {running&&<span className="spin" style={{width:12,height:12,border:"2px solid var(--accent)",borderTopColor:"transparent",borderRadius:"50%",display:"inline-block"}}/>}
+          {jobState.status==="error"?jobState.error:jobState.step}{running&&<span style={{color:"var(--text3)"}}> · usually 2–5 minutes, you can leave this page</span>}
+        </div>}
+        <div style={{fontSize:11,color:"var(--text3)"}}>{data?.config?.hunter?"Verified emails via Hunter.io are on.":"Tip: add HUNTER_API_KEY in config.php to get verified work emails for decision makers."} Only public business info is collected, every prospect shows its sources.</div>
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+        {["new","approved","contacted","replied","won","rejected","all"].map(k=><button key={k} style={gPill(filter===k)} onClick={()=>setFilter(k)}>{k[0].toUpperCase()+k.slice(1)}{k!=="all"&&counts[k]?" "+counts[k]:""}</button>)}
+        <div style={{flex:1}}/>{data&&<span style={{fontSize:12,color:"var(--text3)"}}>Outreach today: {data.sent_today}/{data.cap}</span>}
+      </div>
+      {data&&data.rows.length===0&&<div style={{...gCard,textAlign:"center",color:"var(--text2)",fontSize:13,padding:30}}>Nothing here yet.</div>}
+      {(data?.rows||[]).map(p=><SalesProspect key={p.id} p={p} open={open===p.id} onToggle={()=>setOpen(open===p.id?null:p.id)} onChange={load} config={data.config} setPage={setPage}/>)}
+    </div>);
+}
+
+function SalesProspect({p,open,onToggle,onChange,config,setPage}) {
+  const [busy,setBusy]=useState(""); const [out,setOut]=useState(p.outreach&&p.outreach.steps?p.outreach:null);
+  const [contactIdx,setContactIdx]=useState(p.outreach?.contact||0); const [lang,setLang]=useState(p.outreach?.lang||"en"); const [angle,setAngle]=useState("");
+  const [sends,setSends]=useState(null);
+  useEffect(()=>{ if(open) sApi.get("sends",{id:p.id}).then(d=>setSends(d.rows)).catch(()=>{}); },[open]);
+  const call=async(a,body,done)=>{ setBusy(a); try{ const d=await sApi.post(a,{id:p.id,...body}); done&&done(d); }catch(e){ alert(e.message); } finally{ setBusy(""); } };
+  const contacts=p.contacts||[]; const withEmail=contacts.map((c,i)=>({...c,i})).filter(c=>c.email);
+  const sc=p.score>=75?"#16a34a":p.score>=50?"#d97706":"#6b7280";
+  const sentSteps=new Set((sends||[]).map(s=>s.to_email+"|"+s.step));
+  const target=contacts[contactIdx]?.email||withEmail[0]?.email||"";
+  return (
+    <div style={{...gCard,padding:0,overflow:"hidden"}}>
+      <div onClick={onToggle} style={{padding:14,display:"flex",gap:12,alignItems:"center",cursor:"pointer",flexWrap:"wrap"}}>
+        <div style={{width:42,height:42,borderRadius:10,border:`2px solid ${sc}`,color:sc,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,flexShrink:0}}>{p.score}</div>
+        <div style={{flex:"1 1 220px",minWidth:0}}>
+          <div style={{fontWeight:700,fontSize:15}}>{p.company}</div>
+          <div style={{fontSize:12,color:"var(--text3)"}}>{[p.industry,p.city,p.country].filter(Boolean).join(" · ")}{p.domain&&<> · <a href={p.website} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{color:"var(--accent)"}}>{p.domain}</a></>}</div>
+        </div>
+        <span style={{fontSize:12,color:"var(--text2)"}}>{contacts.length} contact{contacts.length===1?"":"s"}{withEmail.length?` · ${withEmail.length} email`:""}</span>
+        {Number(p.sends)>0&&<span style={{fontSize:12,color:"var(--text2)"}}>✉️ {p.sends}</span>}
+        <GBadge s={p.status}/>
+      </div>
+      {open&&<div style={{padding:"0 14px 14px",display:"flex",flexDirection:"column",gap:12,borderTop:"1px solid var(--border)"}}>
+        <div style={{fontSize:13,lineHeight:1.6,marginTop:12}}>{p.why_fit}</div>
+        {p.signals?.length>0&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{p.signals.map((s,i)=><span key={i} style={{fontSize:11,padding:"4px 9px",borderRadius:999,background:"var(--accent)14",color:"var(--accent)",fontWeight:600}}>{s}</span>)}</div>}
+        <div>
+          <span style={gLabel}>Decision makers</span>
+          {contacts.length===0&&<div style={{fontSize:12,color:"var(--text3)"}}>No public contacts found. Check the company site or LinkedIn.</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>{contacts.map((c,i)=>(
+            <div key={i} style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",fontSize:13,padding:"8px 10px",border:"1px solid var(--border)",borderRadius:10}}>
+              <div style={{flex:"1 1 180px"}}><b>{c.name||"—"}</b> <span style={{color:"var(--text3)"}}>{c.role}</span></div>
+              {c.email?<span>{c.email}{c.verified?<span style={{color:"#16a34a",fontSize:11,fontWeight:700}}> ✓ verified</span>:c.confidence?<span style={{color:"var(--text3)",fontSize:11}}> {c.confidence}%</span>:null}</span>:<span style={{color:"var(--text3)",fontSize:12}}>no email</span>}
+              {c.phone&&<span>{c.phone}</span>}
+              {c.profile_url&&<a href={c.profile_url} target="_blank" rel="noreferrer" style={{color:"var(--accent)",fontSize:12}}>Profile ↗</a>}
+              {c.source&&/^https?:/.test(c.source)&&<a href={c.source} target="_blank" rel="noreferrer" style={{color:"var(--text3)",fontSize:11}}>source</a>}
+            </div>))}</div>
+        </div>
+        {p.sources?.length>0&&<details><summary style={{fontSize:12,color:"var(--text3)",cursor:"pointer"}}>Sources ({p.sources.length})</summary><div style={{display:"flex",flexDirection:"column",gap:2,marginTop:6}}>{p.sources.map(u=><a key={u} href={u} target="_blank" rel="noreferrer" style={{fontSize:12,color:"var(--accent)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u}</a>)}</div></details>}
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {!p.lead_id?<button style={wBtn(true)} disabled={busy==="approve"} onClick={()=>call("approve",{},()=>onChange())}>{busy==="approve"?"…":"Approve → add to Leads"}</button>
+            :<button style={wBtn(false)} onClick={()=>setPage&&setPage("leads")}>Open in Leads</button>}
+          {["replied","won"].map(s=>p.status!==s&&<button key={s} style={wBtn(false)} onClick={()=>call("update",{status:s},onChange)}>Mark {s}</button>)}
+          {p.status!=="rejected"&&<button style={wBtn(false)} onClick={()=>call("update",{status:"rejected"},onChange)}>Not a fit</button>}
+          <button style={{...wBtn(false),color:"#dc2626"}} onClick={()=>confirm("Delete this prospect?")&&call("delete",{},onChange)}>Delete</button>
+        </div>
+        <div style={{border:"1px solid var(--border)",borderRadius:12,padding:12,display:"flex",flexDirection:"column",gap:10}}>
+          <b style={{fontSize:14}}>Outreach</b>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+            <select value={contactIdx} onChange={e=>setContactIdx(+e.target.value)} style={{...inputSt,flex:"1 1 200px"}}>{contacts.map((c,i)=><option key={i} value={i}>{(c.name||c.role||"Contact")+(c.email?" · "+c.email:" · no email")}</option>)}{contacts.length===0&&<option value={0}>No contacts</option>}</select>
+            <button style={gPill(lang==="en")} onClick={()=>setLang("en")}>EN</button><button style={gPill(lang==="ar")} onClick={()=>setLang("ar")}>AR</button>
+          </div>
+          <input value={angle} onChange={e=>setAngle(e.target.value)} placeholder="Angle (optional), e.g. offer a free Instagram audit" style={inputSt}/>
+          <button style={{...wBtn(!out),alignSelf:"flex-start"}} disabled={busy==="draft"} onClick={()=>call("draft",{contact:contactIdx,lang,angle},d=>setOut(d.outreach))}>{busy==="draft"?"Writing…":out?"Rewrite sequence":"Draft 3-email sequence"}</button>
+          {out?.steps?.map((st,i)=>{ const done=sentSteps.has(target+"|"+(st.step||i+1)); return (
+            <div key={i} style={{border:"1px solid var(--border)",borderRadius:10,padding:10,display:"flex",flexDirection:"column",gap:6,opacity:done?.7:1}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:11,fontWeight:800,color:"var(--text3)",textTransform:"uppercase"}}><span>Email {st.step||i+1}{i===1?" · after 3 days":i===2?" · after a week":""}</span>{done&&<span style={{color:"#16a34a"}}>Sent ✓</span>}</div>
+              <input value={st.subject||""} onChange={e=>setOut({...out,steps:out.steps.map((x,j)=>j===i?{...x,subject:e.target.value}:x)})} style={{...inputSt,fontWeight:700}}/>
+              <textarea value={st.body||""} onChange={e=>setOut({...out,steps:out.steps.map((x,j)=>j===i?{...x,body:e.target.value}:x)})} rows={6} style={{...inputSt,resize:"vertical",fontSize:13,lineHeight:1.5}}/>
+              <div style={{display:"flex",gap:6}}>
+                <button style={wBtn(false)} onClick={()=>call("save_outreach",{outreach:out})}>Save</button>
+                <button style={wBtn(true)} disabled={!target||done||busy==="send"} onClick={()=>confirm(`Send email ${st.step||i+1} to ${target}?`)&&call("send",{to:target,step:st.step||i+1,subject:st.subject,body:st.body},()=>{ sApi.get("sends",{id:p.id}).then(d=>setSends(d.rows)); onChange(); })}>{busy==="send"?"Sending…":target?"Send to "+target:"No email"}</button>
+              </div>
+            </div>); })}
+          <div style={{fontSize:11,color:"var(--text3)"}}>Sent from {config?.from} with an opt-out link. Replies go to your inbox. One email at a time, you review each one.</div>
+        </div>
+      </div>}
+    </div>);
+}
+
 function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, integrationLogs, onAddIntegration, onUpdateIntegration, onDeleteIntegration, onRetryIntegration, emailSettings, onSaveEmailSettings, team, posts, clients, timelogs, perfLogs, accentColor, brandingAssets, onSaveBrandingAssets, wallpaper, emailLogs, activityLogs, onRefreshLogs, systemSessions, onRefreshSessions, assets, onFindDuplicateAssets, onRemoveDuplicateAssets, onBackfillSaraMemory, backfillRunning}) {
   const [settingsTab, setSettingsTab] = usePersistentState("sf_tab_settings","branding");
   const [f,setF] = useState({
@@ -45627,6 +46050,10 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       ...(currentUser?.role==="account_director"?[{key:"mai_reports", label:"Mai Reports", ico:Icons.award}]:[]),
       ...(canManageRecruitment?[{key:"recruitment", label:"Recruitment", ico:Icons.briefcase}]:[]),
     ]}] : [])),
+    ...(["admin","account_director","account_manager","account_executive"].includes(currentUser?.role) ? [{ group: "GROWTH", icon: Icons.target, items: [
+      {key:"marketing", label:"Marketing", ico:Icons.mail},
+      {key:"sales", label:"Sales agent", ico:Icons.target},
+    ]}] : []),
     ...((canAgency||isAdmin) ? [{ group: "TOOLS", icon: Icons.wand, items: [
       ...(canAgency?[
         {key:"assets", label:"Assets", ico:Icons.assets},
@@ -50999,7 +51426,7 @@ function App() {
     setImpersonatorUser(null);
     setPage(returnPage);
   };
-  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","mai_reports","rewards","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment","website"];
+  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","mai_reports","rewards","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment","website","marketing","sales"];
   const [page,setPage_] = useState(()=>{
     try{
       // A contact-report email sent internally links straight to
@@ -51009,7 +51436,7 @@ function App() {
       // to avoid getting stuck on a detail page that hasn't loaded data yet
       const hash = window.location.hash.replace("#","");
       // Only use hash/localStorage if it's a top-level list page (not a detail context)
-      const SAFE_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","mai_reports","rewards","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment","website"];
+      const SAFE_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","mai_reports","rewards","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment","website","marketing","sales"];
       if(hash && SAFE_PAGES.includes(hash)) return hash;
       const stored = localStorage.getItem("sf_page");
       return (stored && SAFE_PAGES.includes(stored)) ? stored : "home";
@@ -55857,6 +56284,8 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
           />
         )}
         {page==="website"&&currentUser?.role==="admin"&&<WebsitePage setPage={setPage}/>}
+        {page==="marketing"&&["admin","account_director","account_manager","account_executive"].includes(currentUser?.role)&&<MarketingPage/>}
+        {page==="sales"&&["admin","account_director","account_manager","account_executive"].includes(currentUser?.role)&&<SalesAgentPage setPage={setPage}/>}
         {page==="recruitment"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.manage_recruitment"))&&(
           <RecruitmentPage currentUser={currentUser} appSettings={appSettings} onSaveSettings={saveAppSettings} team={data.team||[]} clients={data.clients||[]} onInviteUser={inviteUser} comments={data.comments||[]} onAddComment={handleAddApplicationComment}/>
         )}
