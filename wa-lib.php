@@ -64,16 +64,52 @@ function waWindowOpen(PDO $pdo, $to) {
 }
 
 /** Sends $body to $to as the team template. Returns [ok, httpStatus, response]. */
+/** Splits a WhatsApp-style text into sections: a line that is only *Bold* starts a section; the first block is the title. */
+function waSections($text) {
+    $out = [['head' => '', 'items' => []]];
+    foreach (preg_split('/\R/', strip_tags($text)) as $line) {
+        $line = trim(preg_replace('/^[•\-\s]+/u', '', trim($line)));
+        if ($line === '') continue;
+        if (preg_match('/^\*([^*]+)\*:?$/u', $line, $m)) { $out[] = ['head' => trim($m[1]), 'items' => []]; continue; }
+        if (preg_match('/^Full details:/i', $line)) continue;
+        $out[count($out) - 1]['items'][] = rtrim($line, '.');
+    }
+    // the title block is kept even when short; other empty sections are dropped
+    return array_values(array_filter($out, fn($x, $i) => $i === 0 || $x['items'], ARRAY_FILTER_USE_BOTH));
+}
+/** One-line version: "Title — greeting ┃ *Tasks:* a · b ┃ *Finance:* c · d". */
+function waFlatten(array $sections) {
+    $parts = [];
+    foreach ($sections as $i => $x) {
+        $txt = implode(', ', $x['items']);
+        $parts[] = $i === 0 ? trim(($x['head'] ? $x['head'] . ' — ' : '') . $txt) : '*' . $x['head'] . ':* ' . $txt;
+    }
+    return implode(' ┃ ', array_filter($parts, 'strlen'));
+}
 function waSendTeamTemplate($to, $body) {
     $name = defined('WA_TEAM_TEMPLATE') && WA_TEAM_TEMPLATE ? WA_TEAM_TEMPLATE : 'team_update';
     $lang = defined('WA_TEAM_TEMPLATE_LANG') && WA_TEAM_TEMPLATE_LANG ? WA_TEAM_TEMPLATE_LANG : 'en_US';
     // Template parameters can't contain new lines/tabs or 4+ spaces, max ~1024 chars.
-    $param = trim(preg_replace('/\s{2,}/', ' ', preg_replace('/[\r\n\t]+/', ' · ', strip_tags((string)$body))));
-    if (mb_strlen($param) > 1000) $param = mb_substr($param, 0, 997) . '…';
+    $sections = waSections((string)$body);
+    $params = null;
+    // Structured brief template (optional): keeps each section on its own line.
+    // Body in Meta, category Utility, 6 variables:
+    //   {{1}}\n\n{{2}}\n\n{{3}}\n\n{{4}}\n\n{{5}}\n\n{{6}}\n\nFull details: socialflow.admepro.com
+    if (defined('WA_BRIEF_TEMPLATE') && WA_BRIEF_TEMPLATE && count($sections) >= 3) {
+        $name = WA_BRIEF_TEMPLATE;
+        $title = array_shift($sections);
+        $parts = array_map(fn($x) => ($x['head'] ? '*' . $x['head'] . ':* ' : '') . implode(', ', $x['items']), $sections);
+        while (count($parts) > 5) { $last = array_pop($parts); $parts[4] .= ' ┃ ' . $last; }
+        while (count($parts) < 5) $parts[] = '—';
+        $params = array_merge([($title['head'] ? $title['head'] . ' — ' : '') . implode(' ', $title['items'])], $parts);
+    } else {
+        $params = [waFlatten($sections)];
+    }
+    $params = array_map(function ($p) { $p = trim(preg_replace('/\s{2,}/', ' ', $p)) ?: '—'; return mb_strlen($p) > 1000 ? mb_substr($p, 0, 997) . '…' : $p; }, $params);
     $payload = json_encode([
         'messaging_product' => 'whatsapp', 'to' => $to, 'type' => 'template',
         'template' => ['name' => $name, 'language' => ['code' => $lang],
-            'components' => [['type' => 'body', 'parameters' => [['type' => 'text', 'text' => $param]]]]],
+            'components' => [['type' => 'body', 'parameters' => array_map(fn($p) => ['type' => 'text', 'text' => $p], $params)]]],
     ]);
     $ch = curl_init('https://graph.facebook.com/v19.0/' . WA_PHONE_ID . '/messages');
     curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => $payload, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15,
