@@ -268,13 +268,16 @@ function seoApprove(PDO $pdo, $id, $by, $onlySafe = false) {
             $content = json_encode($json, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n"; $msg = 'SEO draft post: ' . ($json['title'] ?? $path);
         } else {
             if (!$cur) { $err = "File not found: $path"; break; }
+            $unchanged = 0;
             $data = json_decode($cur['content'], true); if (!is_array($data)) { $err = "Unreadable JSON: $path"; break; }
             foreach ($list as $c) {
                 if ($onlySafe && !seoIsMetaField($c['field'])) { $err = 'Not a safe field for auto-apply'; break 2; }
                 [$has, $now] = seoGetPath($data, $c['field']);
+                if ($has && $now === $c['after']) { $unchanged++; continue; }   // already live
                 if (!$has || $now !== $c['before']) { $err = "The text changed on the site since the suggestion ($path " . $c['field'] . ') — run the agent again.'; break 2; }
                 if (!seoSetPath($data, $c['field'], $c['after'])) { $err = 'Could not apply ' . $c['field']; break 2; }
             }
+            if ($unchanged === count($list)) continue;      // nothing left to write in this file
             $content = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n"; $msg = 'SEO: ' . mb_substr($s['title'], 0, 120);
         }
         [$ok, $commit, $e] = seoWriteFile($path, $content, $sha, $msg);
@@ -286,7 +289,7 @@ function seoApprove(PDO $pdo, $id, $by, $onlySafe = false) {
         return [false, $err];
     }
     $pdo->prepare("UPDATE seo_suggestions SET status='applied', decided_by=?, decided_at=?, commit_sha=?, auto_applied=?, error=NULL, measure_after=DATE_ADD(CURDATE(), INTERVAL 21 DAY) WHERE id=?")
-        ->execute([$by, gNow(), implode(',', $commits), $by === 'auto' ? 1 : 0, $id]);
+        ->execute([$by, gNow(), substr($commits[0] ?? '', 0, 12), $by === 'auto' ? 1 : 0, $id]);
     seoLog($pdo, ($by === 'auto' ? 'auto-applied' : 'applied') . ' change', $s['title'] . ' (' . implode(',', $commits) . ')');
     return [true, 'Applied — live in 1–2 minutes'];
 }
