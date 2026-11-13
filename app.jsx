@@ -33492,7 +33492,7 @@ function WebsiteKeywords({days}) {
       {d.queries.length===0?<p style={{fontSize:12,color:"var(--text3)"}}>No searches yet in this period.</p>:
       <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:420}}>
         <thead><tr style={{color:"var(--text3)",textAlign:"left",fontSize:10,textTransform:"uppercase"}}><th style={{padding:"6px 4px"}}>Search words</th><th style={{padding:"6px 4px",textAlign:"right"}}>Clicks</th><th style={{padding:"6px 4px",textAlign:"right"}}>Shown</th><th style={{padding:"6px 4px",textAlign:"right"}}>CTR</th><th style={{padding:"6px 4px",textAlign:"right"}}>Position</th></tr></thead>
-        <tbody>{d.queries.slice(0,30).map(q=><tr key={q.query} style={{borderTop:"1px solid var(--border)"}}>
+        <tbody>{[...d.queries].sort((a,b)=>b.clicks-a.clicks||b.impressions-a.impressions).slice(0,30).map(q=><tr key={q.query} style={{borderTop:"1px solid var(--border)"}}>
           <td style={{padding:"7px 4px",fontWeight:600}} dir="auto">{q.query}</td><td style={{padding:"7px 4px",textAlign:"right",fontWeight:800}}>{q.clicks}</td>
           <td style={{padding:"7px 4px",textAlign:"right",color:"var(--text2)"}}>{q.impressions}</td><td style={{padding:"7px 4px",textAlign:"right",color:"var(--text2)"}}>{q.ctr}%</td>
           <td style={{padding:"7px 4px",textAlign:"right",color:q.position<=10?"#10b981":"var(--text2)",fontWeight:700}}>{q.position}</td></tr>)}</tbody>
