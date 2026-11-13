@@ -37866,6 +37866,7 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
                       <p style={{fontSize:11,color:"var(--text3)"}}>Remaining</p>
                       <p style={{fontSize:18,fontWeight:800,color:remaining>0?"#ef4444":"#10b981"}}>{remaining.toLocaleString()}</p>
                       <p style={{fontSize:10,color:"var(--text3)"}}>of {total.toLocaleString()} · paid {paid.toLocaleString()}</p>
+                      {e.outstanding_status==="settled"&&(()=>{ const ds=(paymentsByExpense[e.id]||[]).map(p=>String(p.date||"").slice(0,10)).filter(Boolean).sort(); const d=ds[ds.length-1]; return d?<p style={{fontSize:11,fontWeight:700,color:"#10b981",marginTop:2}}>Settled {new Date(d+"T00:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})}</p>:null; })()}
                     </div>
                   </div>
 
