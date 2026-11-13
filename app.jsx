@@ -2896,7 +2896,9 @@ const AI_AGENT_DEFS = [
   {id:"graphic_designer", name:"Yahia — Senior Graphic Designer", color:"#0ea5e9",
    description:"Works under Pro's supervision generating designs with AI image models — learns each client's past designs and brand/design guidelines to keep every new piece on-style, then hands the real generation off to gpt-image-1."},
   {id:"account_executive", name:"Mai — Account Executive", color:"#a855f7",
-   description:"Runs a fixed daily routine on every active client, internal-only: checks whether posting is keeping pace with the client's configured schedule (alerting the account manager + admins if not), checks whether the scheduled-post pipeline will run dry within 10 working days (alerting until new scheduled posts are added), writes a short daily performance analysis from that client's real post results, and keeps each client's memory sorted with the most important facts first. Runs server-side once a day (mai-daily-report-cron.php). Also mentionable directly in any task/post comment thread (type @Mai) for an on-demand analytical read grounded in that client's knowledge/memory."},
+   description:"Runs a fixed daily routine on every active client, internal-only: checks whether posting is keeping pace with the client's configured schedule (alerting the account manager + admins if not), checks whether the scheduled-post pipeline will run dry within 10 working days (alerting until new scheduled posts are added), writes a short daily performance analysis from that client's real post results, and keeps each client's memory sorted with the most important facts first. Runs server-side once a day (mai-daily-report-cron.php). Also mentionable directly in any task/post comment thread (type @Mai) for an on-demand analytical read grounded in that client's knowledge/memory."},,
+  {id:"seo_agent", name:"Nour — SEO Growth Agent", color:"#059669",
+   description:"Runs weekly: reads Search Console, website visitors and the site itself, researches who ranks in Egypt and the GCC, then proposes better Google titles/descriptions, new article drafts and technical fixes in Website → SEO agent. Nothing goes live until an admin approves it (optionally auto-applies safe title fixes after a date you choose)."}
 ];
 // Sara's character when she's talking directly WITH the team (comment
 // mentions) — distinct from her content-writing prompts above, which are
@@ -33926,7 +33928,7 @@ function WebsitePage({setPage}) {
   const [root, setRoot] = useState("src/content");
   useEffect(()=>{ try{ localStorage.setItem("sf_website_tab",tab); }catch(e){} },[tab]);
   useEffect(()=>{ wApi.get("status").then(s=>{ if(s.root!==undefined) setRoot(s.root); }).catch(()=>{}); },[]);
-  const tabs = [["overview","Overview"],["projects","Projects"],["insights","Insights"],["pages","Pages & SEO"],["leads","Leads"],["setup","Setup"]];
+  const tabs = [["overview","Overview"],["projects","Projects"],["insights","Insights"],["pages","Pages & SEO"],["leads","Leads"],["seo","SEO agent"],["setup","Setup"]];
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
       <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
@@ -33944,6 +33946,7 @@ function WebsitePage({setPage}) {
       {tab==="insights"&&<WebsiteInsights/>}
       {tab==="pages"&&<WebsitePages/>}
       {tab==="leads"&&<WebsiteLeads setPage={setPage}/>}
+      {tab==="seo"&&<SeoAgentTab/>}
       {tab==="setup"&&<WebsiteSetup/>}
     </div>);
 }
@@ -34368,6 +34371,140 @@ function SalesProspect({p,open,onToggle,onChange,config,setPage}) {
           <div style={{fontSize:11,color:"var(--text3)"}}>Sent from {config?.from} with an opt-out link. Replies go to your inbox. One email at a time, you review each one.</div>
         </div>
       </div>}
+    </div>);
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// SEO Growth agent (Website → SEO agent). Model & skills live in Settings → AI Agents.
+// ═══════════════════════════════════════════════════════════════
+const seoApi = gApiFor("seo-agent.php");
+const SEO_TYPES = {meta:["Titles & descriptions","#0ea5e9"],content:["New content","#10b981"],technical:["Technical","#8b5cf6"],conversion:["Conversion","#f59e0b"],offsite:["Off-site (you)","#ec4899"]};
+const SEO_MARKETS = [["EG","Egypt"],["SA","Saudi"],["AE","UAE"],["KW","Kuwait"],["QA","Qatar"],["BH","Bahrain"],["OM","Oman"]];
+
+function SeoAgentTab() {
+  const [ov,setOv]=useState(null); const [err,setErr]=useState(""); const [filter,setFilter]=useState("pending"); const [rows,setRows]=useState(null);
+  const [job,setJob]=useState(()=>{ try{ return localStorage.getItem("sf_seo_job")||""; }catch(e){ return ""; } });
+  const [jobState,setJobState]=useState(null); const [showSet,setShowSet]=useState(false);
+  const loadOv=()=>seoApi.get("overview").then(d=>{setOv(d);setErr("");}).catch(e=>setErr(e.message));
+  const loadRows=()=>seoApi.get("list",{status:filter}).then(d=>setRows(d.rows)).catch(e=>setErr(e.message));
+  useEffect(()=>{loadOv();},[]);
+  useEffect(()=>{setRows(null);loadRows();},[filter]);
+  useEffect(()=>{ try{ job?localStorage.setItem("sf_seo_job",job):localStorage.removeItem("sf_seo_job"); }catch(e){}
+    if(!job) return; let stop=false;
+    const tick=async()=>{ try{ const d=await seoApi.get("job_status",{job}); if(stop) return; setJobState(d); if(d.status==="done"||d.status==="error"){ setJob(""); loadOv(); loadRows(); return; } }catch(e){ setJob(""); setJobState({status:"error",error:e.message}); return; } setTimeout(tick,5000); };
+    tick(); return ()=>{stop=true;}; },[job]);
+  const run=async()=>{ setJobState({status:"queued",step:"Starting…"}); try{ const d=await seoApi.post("run",{}); setJob(d.job); }catch(e){ setJobState({status:"error",error:e.message}); } };
+  const running=jobState&&["queued","running"].includes(jobState.status);
+  const c=ov?.counts||{}; const s=ov?.settings; const lr=ov?.last_run;
+  const toggleMarket=async k=>{ const cur=s.markets||[]; const next=cur.includes(k)?cur.filter(x=>x!==k):[...cur,k]; setOv(o=>({...o,settings:{...o.settings,markets:next}})); await seoApi.post("settings",{markets:next}).catch(()=>{}); };
+  const saveSet=async patch=>{ setOv(o=>({...o,settings:{...o.settings,...patch}})); await seoApi.post("settings",patch).catch(e=>setErr(e.message)); };
+  const [notes,setNotes]=useState(null);
+  useEffect(()=>{ if(s&&notes===null) setNotes(s.notes||""); },[s]);
+  const daysTo = s?.auto_from ? Math.ceil((new Date(s.auto_from+"T00:00:00")-new Date())/86400000) : null;
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <GSetupNote err={err}/>
+      <div style={{...wCard,display:"flex",flexDirection:"column",gap:10,background:"linear-gradient(135deg,#10b9810d,transparent 60%)"}}>
+        <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{flex:"1 1 260px"}}>
+            <p style={{fontWeight:800,fontSize:15}}>SEO Growth agent</p>
+            <p style={{fontSize:12,color:"var(--text2)",marginTop:2}}>Every week it reads Search Console, your visitor data and the site, checks who ranks in Egypt and the Gulf, and proposes fixes. <b>Nothing changes until you approve it.</b></p>
+          </div>
+          <button style={wBtn(true)} disabled={running} onClick={run}>{running?"Analysing…":"Analyse now"}</button>
+        </div>
+        {jobState&&<div style={{fontSize:12,color:jobState.status==="error"?"#dc2626":jobState.status==="done"?"#16a34a":"var(--text2)"}}>{jobState.status==="error"?jobState.error:jobState.status==="done"?jobState.step:jobState.step}{running&&" · usually 3–8 minutes, you can leave this page"}</div>}
+        <div style={{display:"flex",gap:14,flexWrap:"wrap",fontSize:12,color:"var(--text3)"}}>
+          <span>Last run: {lr?`${new Date(lr.started_at.replace(" ","T")).toLocaleString()} · ${lr.status==="done"?lr.added+" suggestions":lr.status==="error"?"failed":"running"}`:"never"}</span>
+          {ov&&<span>Model: {ov.model} <span style={{opacity:.7}}>(change in Settings → AI Agents)</span></span>}
+          {s&&<span>{s.auto_from?(daysTo>0?`Auto-apply of safe fixes starts in ${daysTo} days`:"Auto-apply of safe fixes is ON"):"Approving everything manually"}</span>}
+        </div>
+        {ov&&!ov.gsc&&<div style={{fontSize:12,color:"#d97706"}}>Search Console isn't connected yet — see Website → Setup.</div>}
+        {ov&&!ov.github&&<div style={{fontSize:12,color:"#d97706"}}>Website GitHub settings are missing — see Website → Setup.</div>}
+        <button onClick={()=>setShowSet(v=>!v)} style={{alignSelf:"flex-start",fontSize:12,fontWeight:700,color:"var(--accent)"}}>{showSet?"Hide settings":"Settings"}</button>
+        {showSet&&s&&<div style={{display:"flex",flexDirection:"column",gap:12,borderTop:"1px solid var(--border)",paddingTop:12}}>
+          <label style={{display:"flex",gap:8,alignItems:"center",fontSize:13}}><input type="checkbox" checked={s.enabled} onChange={e=>saveSet({enabled:e.target.checked})}/> Run automatically every week</label>
+          <div><span style={wLabel}>Markets to grow</span><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{SEO_MARKETS.map(([k,l])=><button key={k} style={gPill((s.markets||[]).includes(k))} onClick={()=>toggleMarket(k)}>{wFlag(k)} {l}</button>)}</div></div>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
+            <div><span style={wLabel}>Suggestions per run</span><select value={s.per_run} onChange={e=>saveSet({per_run:+e.target.value})} style={{...wInput,width:90}}>{[5,8,10,15].map(n=><option key={n} value={n}>{n}</option>)}</select></div>
+            <div><span style={wLabel}>Auto-apply safe fixes from</span><input type="date" value={s.auto_from||""} onChange={e=>saveSet({auto_from:e.target.value})} style={{...wInput,width:170}}/></div>
+            {s.auto_from&&<button style={wBtn(false)} onClick={()=>saveSet({auto_from:""})}>Keep approving manually</button>}
+          </div>
+          <p style={{fontSize:11,color:"var(--text3)"}}>Safe fixes = Google titles and descriptions only. New posts, headline changes and everything else always wait for your approval, even after this date. Leave the date empty to approve everything yourself.</p>
+          <div><span style={wLabel}>Notes for the agent (priorities, services to push, things to avoid)</span><textarea value={notes??""} onChange={e=>setNotes(e.target.value)} onBlur={()=>saveSet({notes})} rows={3} style={{...wInput,resize:"vertical"}} placeholder="e.g. Focus on branding and video production for real-estate developers in Riyadh and Dubai."/></div>
+        </div>}
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {[["pending","To review"+(c.pending?` (${c.pending})`:"")],["applied","Applied"+((+c.applied||0)+(+c.failed||0)?` (${(+c.applied||0)+(+c.failed||0)})`:"")],["closed","Closed"]].map(([k,l])=><button key={k} style={gPill(filter===k)} onClick={()=>setFilter(k)}>{l}</button>)}
+      </div>
+      {rows===null?<div style={{padding:30,display:"flex",justifyContent:"center"}}><Spinner size={18}/></div>
+        :rows.length===0?<div style={{...wCard,textAlign:"center",color:"var(--text2)",fontSize:13,padding:30}}>{filter==="pending"?"Nothing to review. Tap “Analyse now” to run the first analysis.":"Nothing here yet."}</div>
+        :rows.map(r=><SeoCard key={r.id} r={r} onChange={()=>{loadRows();loadOv();}}/>)}
+    </div>);
+}
+
+function SeoCard({r,onChange}) {
+  const [edits,setEdits]=useState({}); const [postEdits,setPostEdits]=useState({}); const [busy,setBusy]=useState(""); const [msg,setMsg]=useState(null);
+  const [t,col]=SEO_TYPES[r.type]||["Other","#6b7280"]; const ev=r.evidence||{}; const ch=r.changes||[];
+  const hasPost=ch.some(c=>c.op==="create_post"); const pending=r.status==="pending";
+  const act=async(a,body={})=>{ setBusy(a); setMsg(null); try{ const d=await seoApi.post(a,{id:r.id,...body}); if(a==="approve") setMsg({t:d.message||"Applied"}); onChange(); }catch(e){ setMsg({err:true,t:e.message}); } finally{ setBusy(""); } };
+  const approve=async()=>{ setBusy("approve"); setMsg(null); try{
+      if(Object.keys(edits).length||Object.keys(postEdits).length) await seoApi.post("save_changes",{id:r.id,edits,post_edits:postEdits});
+      const d=await seoApi.post("approve",{id:r.id}); setMsg({t:d.message||"Applied"}); onChange();
+    }catch(e){ setMsg({err:true,t:e.message}); } finally{ setBusy(""); } };
+  const pos=x=>x==null?"—":x;
+  const res=r.result&&r.result.after?r.result:null;
+  const fieldLimit=f=>/title/i.test(f)?60:/description/i.test(f)?160:null;
+  return (
+    <div style={{...wCard,display:"flex",flexDirection:"column",gap:10,borderLeft:`4px solid ${col}`}}>
+      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+        <span style={{fontSize:11,fontWeight:800,padding:"3px 9px",borderRadius:999,background:col+"1f",color:col}}>{t}</span>
+        {pending&&<span style={{fontSize:11,color:"var(--text3)"}}>impact {r.priority}</span>}
+        {r.status==="applied"&&<span style={{fontSize:11,fontWeight:700,color:"#16a34a"}}>Applied{Number(r.auto_applied)?" automatically":""} · {r.commit_sha}</span>}
+        {r.status==="failed"&&<span style={{fontSize:11,fontWeight:700,color:"#dc2626"}}>Partly applied — check the site</span>}
+        {["rejected","reverted","done"].includes(r.status)&&<span style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"capitalize"}}>{r.status}</span>}
+      </div>
+      <p style={{fontWeight:800,fontSize:15}}>{r.title}</p>
+      <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}>{r.why}</p>
+      {(ev.query||ev.page)&&<div style={{display:"flex",gap:6,flexWrap:"wrap",fontSize:11}}>
+        {ev.query&&<span style={{padding:"3px 9px",borderRadius:999,background:"var(--surface2)"}}>🔎 {ev.query}</span>}
+        {ev.position!=null&&<span style={{padding:"3px 9px",borderRadius:999,background:"var(--surface2)"}}>position {ev.position}</span>}
+        {ev.impressions!=null&&<span style={{padding:"3px 9px",borderRadius:999,background:"var(--surface2)"}}>{ev.impressions} shown · {ev.clicks||0} clicks</span>}
+        {(ev.markets||[]).map(m=><span key={m} style={{padding:"3px 9px",borderRadius:999,background:"var(--surface2)"}}>{wFlag(m)} {m}</span>)}
+      </div>}
+      {ch.map((c,i)=>c.op==="set"?(
+        <div key={i} style={{border:"1px solid var(--border)",borderRadius:10,padding:10,display:"flex",flexDirection:"column",gap:6}}>
+          <span style={{fontSize:11,color:"var(--text3)"}}>{c.path.split("/").slice(-2).join("/")} · <b>{c.field}</b></span>
+          <div style={{fontSize:12,color:"#b91c1c",background:"#ef444412",borderRadius:8,padding:"6px 9px",textDecoration:"line-through",textDecorationColor:"#ef444466"}} dir="auto">{c.before}</div>
+          {pending?<><textarea dir="auto" value={edits[i]??c.after} onChange={e=>setEdits(x=>({...x,[i]:e.target.value}))} rows={Math.min(5,Math.max(2,Math.ceil((edits[i]??c.after).length/70)))} style={{...wInput,fontSize:12,background:"#10b98112",borderColor:"#10b98155"}}/>
+            {fieldLimit(c.field)&&<span style={{fontSize:10,color:(edits[i]??c.after).length>fieldLimit(c.field)?"#dc2626":"var(--text3)"}}>{(edits[i]??c.after).length} / {fieldLimit(c.field)} characters</span>}</>
+            :<div style={{fontSize:12,color:"#166534",background:"#10b98112",borderRadius:8,padding:"6px 9px"}} dir="auto">{c.after}</div>}
+        </div>):(
+        <div key={i} style={{border:"1px solid var(--border)",borderRadius:10,padding:10,display:"flex",flexDirection:"column",gap:6}}>
+          <span style={{fontSize:11,color:"var(--text3)"}}>New draft post · {c.json.lang==="ar"?"Arabic":"English"} · ~{String(c.json.bodyHtml||"").replace(/<[^>]+>/g," ").split(/\s+/).filter(Boolean).length} words · saved unpublished</span>
+          {pending?<>
+            <input dir="auto" value={postEdits[i]?.title??c.json.title} onChange={e=>setPostEdits(x=>({...x,[i]:{...(x[i]||{}),title:e.target.value}}))} style={{...wInput,fontWeight:700}}/>
+            <input dir="auto" value={postEdits[i]?.seoTitle??c.json.seoTitle??""} onChange={e=>setPostEdits(x=>({...x,[i]:{...(x[i]||{}),seoTitle:e.target.value}}))} placeholder="Google title" style={wInput}/>
+            <textarea dir="auto" value={postEdits[i]?.description??c.json.description??""} onChange={e=>setPostEdits(x=>({...x,[i]:{...(x[i]||{}),description:e.target.value}}))} rows={2} placeholder="Google description" style={{...wInput,resize:"vertical"}}/></>
+            :<p style={{fontWeight:700,fontSize:13}} dir="auto">{c.json.title}</p>}
+          <details><summary style={{fontSize:12,color:"var(--accent)",cursor:"pointer"}}>Read the draft</summary><div dir="auto" style={{fontSize:13,lineHeight:1.7,marginTop:8,maxHeight:360,overflowY:"auto"}} dangerouslySetInnerHTML={{__html:String(c.json.bodyHtml||"").replace(/<script[\s\S]*?<\/script>/gi,"").replace(/ on\w+="[^"]*"/gi,"")}}/></details>
+          <span style={{fontSize:11,color:"var(--text3)"}}>After approving, open it in Insights to add a cover image and tick Published.</span>
+        </div>))}
+      {(r.manual_steps||[]).length>0&&<div style={{background:"var(--surface2)",borderRadius:10,padding:"10px 12px"}}>
+        <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",marginBottom:6}}>For you to do</p>
+        <ol style={{paddingLeft:18,fontSize:12.5,lineHeight:1.7,color:"var(--text2)"}}>{r.manual_steps.map((m,i)=><li key={i}>{m}</li>)}</ol></div>}
+      {res&&<div style={{fontSize:12,background:"var(--surface2)",borderRadius:10,padding:"8px 12px"}}>
+        <b>Result after 3 weeks</b> for “{res.query}”: position {pos(res.before.position)} → <b>{pos(res.after.position)}</b>
+        {res.before.position!=null&&res.after.position!=null&&<span style={{color:res.after.position<res.before.position?"#16a34a":"#dc2626",fontWeight:800}}> {res.after.position<res.before.position?"▲ better":"▼ worse"}</span>} · clicks {res.before.clicks} → <b>{res.after.clicks}</b> · shown {res.before.impressions} → <b>{res.after.impressions}</b></div>}
+      {r.status==="applied"&&!res&&r.measure_after&&<p style={{fontSize:11,color:"var(--text3)"}}>Results are checked on {r.measure_after}.</p>}
+      {r.error&&<p style={{fontSize:12,color:"#dc2626"}}>{r.error}</p>}
+      {msg&&<p style={{fontSize:12,color:msg.err?"#dc2626":"#16a34a"}}>{msg.t}</p>}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {pending&&ch.length>0&&<button style={wBtn(true)} disabled={!!busy} onClick={approve}>{busy==="approve"?"Applying…":hasPost?"Approve & save draft":"Approve & publish"}</button>}
+        {pending&&ch.length===0&&<button style={wBtn(true)} disabled={!!busy} onClick={()=>act("done")}>Mark as done</button>}
+        {pending&&<button style={wBtn(false)} disabled={!!busy} onClick={()=>act("reject")}>Reject</button>}
+        {r.status==="applied"&&ch.some(c=>c.op==="set")&&<button style={wBtn(false)} disabled={!!busy} onClick={()=>confirm("Put the old text back?")&&act("revert")}>{busy==="revert"?"Reverting…":"Undo"}</button>}
+      </div>
     </div>);
 }
 
