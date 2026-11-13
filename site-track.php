@@ -34,7 +34,19 @@ $visitor = substr(hash('sha256', $ip . '|' . $ua . '|' . $now->format('Y-m-d') .
 $device = preg_match('/iPad|Tablet/i', $ua) ? 'tablet' : (preg_match('/Mobi|Android|iPhone/i', $ua) ? 'mobile' : 'desktop');
 $browser = preg_match('/Edg\//', $ua) ? 'Edge' : (preg_match('/OPR\//', $ua) ? 'Opera' : (preg_match('/SamsungBrowser/', $ua) ? 'Samsung' : (preg_match('/Chrome\//', $ua) ? 'Chrome' : (preg_match('/Firefox\//', $ua) ? 'Firefox' : (preg_match('/Safari\//', $ua) ? 'Safari' : 'Other')))));
 $country = strtoupper(substr((string)($_SERVER['HTTP_CF_IPCOUNTRY'] ?? ''), 0, 2)) ?: null;
-if (!$country && preg_match('/^[a-z]{2}-([A-Z]{2})/', (string)($in['l'] ?? ''), $m)) $country = $m[1];
+// No Cloudflare in front: use the browser's time zone (e.g. Africa/Cairo → EG). Language (en-US) is only a last resort —
+// most Egyptians browse in English with a US locale, so it said "US" for them.
+if (!$country) {
+    $TZ = ['Africa/Cairo'=>'EG','Asia/Riyadh'=>'SA','Asia/Dubai'=>'AE','Asia/Kuwait'=>'KW','Asia/Qatar'=>'QA','Asia/Bahrain'=>'BH','Asia/Muscat'=>'OM','Asia/Amman'=>'JO',
+        'Asia/Beirut'=>'LB','Asia/Baghdad'=>'IQ','Africa/Tripoli'=>'LY','Africa/Tunis'=>'TN','Africa/Algiers'=>'DZ','Africa/Casablanca'=>'MA','Africa/Khartoum'=>'SD',
+        'Europe/London'=>'GB','Europe/Paris'=>'FR','Europe/Berlin'=>'DE','Europe/Madrid'=>'ES','Europe/Rome'=>'IT','Europe/Amsterdam'=>'NL','Europe/Istanbul'=>'TR',
+        'Asia/Kolkata'=>'IN','Asia/Calcutta'=>'IN','Asia/Karachi'=>'PK','Asia/Singapore'=>'SG','Asia/Tokyo'=>'JP','Asia/Shanghai'=>'CN','Australia/Sydney'=>'AU',
+        'America/Toronto'=>'CA','America/Vancouver'=>'CA','America/Sao_Paulo'=>'BR','America/Mexico_City'=>'MX'];
+    $z = (string)($in['z'] ?? '');
+    if (isset($TZ[$z])) $country = $TZ[$z];
+    elseif (preg_match('#^America/(New_York|Chicago|Denver|Los_Angeles|Phoenix|Detroit|Anchorage|Indiana/|Kentucky/)#', $z) || $z === 'Pacific/Honolulu') $country = 'US';
+    elseif ($z === '' && preg_match('/^[a-z]{2}-([A-Z]{2})/', (string)($in['l'] ?? ''), $m)) $country = $m[1];
+}
 
 try {
     $pdo = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4', DB_USER, DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);

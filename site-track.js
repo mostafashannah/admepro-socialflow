@@ -6,7 +6,7 @@
   var q = new URLSearchParams(location.search), u = {};
   ["source", "medium", "campaign"].forEach(function (k) { var v = q.get("utm_" + k); if (v) u[k] = v; });
   function send(e, extra) {
-    var d = { e: e, p: location.pathname, t: document.title, r: document.referrer, u: u, l: navigator.language };
+    var d = { e: e, p: location.pathname, t: document.title, r: document.referrer, u: u, l: navigator.language, z: (function(){ try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (x) { return ""; } })() };
     for (var k in extra) d[k] = extra[k];
     var b = JSON.stringify(d);
     if (navigator.sendBeacon) navigator.sendBeacon(URL_, new Blob([b], { type: "text/plain" }));
