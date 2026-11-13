@@ -26246,7 +26246,7 @@ const CAREERS_MORE_LINKS = [
   {label:"Digital", url:"https://admepro.com/digital/"},
   {label:"Production", url:"https://admepro.com/production/"},
   {label:"GCC & KSA", url:"https://admepro.com/gcc-ksa-ai-marketing-agency/"},
-  {label:"Insights", url:"https://admepro.com/insights/"},
+  {label:"Insights", url:"https://admepro.com/blog/"},
 ];
 
 // Full-screen menu overlay matching admepro.com's own site menu style —
