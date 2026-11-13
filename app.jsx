@@ -37848,6 +37848,18 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
                         <Badge label={e.outstanding_status} color={e.outstanding_status==="settled"?"#10b981":e.outstanding_status==="partial"?"#f59e0b":"#ef4444"} xs/>
                       </div>
                       <p style={{fontSize:14,fontWeight:700,marginTop:6}}>{e.description}</p>
+                      {e.date&&<p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>Added {new Date(String(e.date).slice(0,10)+"T00:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})}</p>}
+                      {(paymentsByExpense[e.id]||[]).length>0&&<div style={{display:"flex",flexDirection:"column",gap:3,marginTop:6}}>
+                        {[...(paymentsByExpense[e.id]||[])].sort((a,b)=>String(a.date||"").localeCompare(String(b.date||""))).map(p=>(
+                          <div key={p.id} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"var(--text2)"}}>
+                            <span style={{color:"#10b981",fontWeight:700}}>✓ {Number(p.amount||0).toLocaleString()}</span>
+                            <span>paid on</span>
+                            {canManage
+                              ? <input type="date" value={String(p.date||"").slice(0,10)} onChange={async ev=>{ const d=ev.target.value; if(!d) return; setPaymentsByExpense(m=>({...m,[e.id]:(m[e.id]||[]).map(x=>x.id===p.id?{...x,date:d}:x)})); try{ await ue("OutstandingPayment",p.id,{date:d}); onPaymentRecorded&&onPaymentRecorded(); }catch(err){ alert("Could not save the date"); load(); } }} style={{fontSize:11,padding:"2px 6px",border:"1px solid var(--border2)",borderRadius:6,background:"var(--surface)",color:"var(--text)"}}/>
+                              : <b>{p.date?new Date(String(p.date).slice(0,10)+"T00:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}):"—"}</b>}
+                            {p.method&&<span style={{color:"var(--text3)"}}>· {p.method}</span>}
+                          </div>))}
+                      </div>}
                       {e.outstanding_kind==="installment"&&<p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{e.outstanding_months} months @ {e.outstanding_monthly_interest_rate}%/mo — principal {Number(e.outstanding_principal_amount??e.amount).toLocaleString()}</p>}
                     </div>
                     <div style={{textAlign:"right"}}>
@@ -37890,7 +37902,7 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
                     payingId===e.id ? (
                       <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap",alignItems:"center"}}>
                         <input type="number" value={payAmount} onChange={ev=>setPayAmount(ev.target.value)} placeholder="Amount" style={{...inputSt,maxWidth:120}}/>
-                        <input type="date" value={payDate} onChange={ev=>setPayDate(ev.target.value)} style={{...inputSt,maxWidth:150}}/>
+                        <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--text2)"}}>Payment date<input type="date" value={payDate} onChange={ev=>setPayDate(ev.target.value)} style={{...inputSt,maxWidth:150}}/></label>
                         <select value={payMethod} onChange={ev=>setPayMethod(ev.target.value)} style={{...inputSt,maxWidth:130}}>
                           <option>Cash</option><option>Bank transfer</option><option>Card</option><option>Other</option>
                         </select>
@@ -37898,7 +37910,7 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
                         <button onClick={()=>setPayingId(null)} style={{background:"none",border:"none",color:"var(--text3)",fontSize:12,cursor:"pointer"}}>Cancel</button>
                       </div>
                     ) : (
-                      <button onClick={()=>{setPayingId(e.id); setPayAmount("");}} style={{marginTop:10,padding:"6px 12px",borderRadius:8,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Record Payment</button>
+                      <button onClick={()=>{setPayingId(e.id); setPayAmount(String(remaining)); setPayDate(new Date().toISOString().split("T")[0]);}} style={{marginTop:10,padding:"6px 12px",borderRadius:8,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Record Payment</button>
                     )
                   )}
                 </div>
