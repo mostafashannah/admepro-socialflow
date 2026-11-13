@@ -33338,6 +33338,468 @@ function SignInHistory() {
   );
 }
 
+// ════════════════════════════════════════════════════════════════
+// WEBSITE TAB — admepro.com analytics + content control (admins).
+// Analytics come from site-track.js on the website → site_events.
+// Content edits are commits to the website's GitHub repo (website-admin.php);
+// Hostinger redeploys the site automatically after each save.
+// ════════════════════════════════════════════════════════════════
+const wApi = {
+  get: async (action, params={}) => {
+    const q = new URLSearchParams({action, ...params});
+    const r = await fetch(window.location.origin+"/website-admin.php?"+q.toString());
+    const d = await r.json().catch(()=>({error:"Bad response"}));
+    if(!r.ok) throw new Error(d.error||("HTTP "+r.status));
+    return d;
+  },
+  post: async (action, body) => {
+    const r = await fetch(window.location.origin+"/website-admin.php?action="+action,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const d = await r.json().catch(()=>({error:"Bad response"}));
+    if(!r.ok) throw new Error(d.error||("HTTP "+r.status));
+    return d;
+  },
+};
+const wCard = {background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:16,minWidth:0};
+const wInput = {width:"100%",padding:"9px 11px",borderRadius:9,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13,boxSizing:"border-box",fontFamily:"inherit"};
+const wLabel = {fontSize:11,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:5,display:"block"};
+const wBtn = (primary)=>({padding:"8px 14px",borderRadius:9,border:primary?"none":"1px solid var(--border2)",background:primary?"var(--accent)":"var(--surface)",color:primary?"#fff":"var(--text)",fontWeight:700,fontSize:12,cursor:"pointer"});
+const wFmtSecs = s => { s=Math.round(s||0); return s>=60?`${Math.floor(s/60)}m ${s%60}s`:`${s}s`; };
+const wSlug = t => String(t||"").toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,70);
+const wFlag = cc => (cc && cc.length===2 && cc!=="??") ? String.fromCodePoint(...[...cc.toUpperCase()].map(c=>127397+c.charCodeAt(0))) : "🌐";
+
+// Image → webp (max 2000px) as base64, for uploads.
+async function wToWebp(file, max=2000, quality=0.86) {
+  if(/svg|gif/i.test(file.type)) return {b64: await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(String(fr.result).split(",")[1]);fr.readAsDataURL(file);}), ext: file.type.includes("svg")?"svg":"gif"};
+  const img = await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=URL.createObjectURL(file); });
+  const k = Math.min(1, max/Math.max(img.width,img.height));
+  const c = document.createElement("canvas"); c.width=Math.round(img.width*k); c.height=Math.round(img.height*k);
+  c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+  const url = c.toDataURL("image/webp", quality);
+  return {b64: url.split(",")[1], ext:"webp"};
+}
+
+function WBiField({label, value, onChange, area=false, max=null, rows=3}) {
+  const v = (value && typeof value==="object") ? value : {en: value||"", ar:""};
+  const set = (k,x) => onChange({...v, [k]:x});
+  const box = (k) => {
+    const len = String(v[k]||"").length;
+    const over = max && len>max;
+    return (
+      <div style={{flex:"1 1 260px",minWidth:0}}>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"var(--text3)",marginBottom:3}}><span>{k==="en"?"English":"العربية"}</span>{max&&<span style={{color:over?"#ef4444":"var(--text3)",fontWeight:over?800:500}}>{len}/{max}</span>}</div>
+        {area ? <textarea dir={k==="ar"?"rtl":"ltr"} rows={rows} value={v[k]||""} onChange={e=>set(k,e.target.value)} style={{...wInput,resize:"vertical"}}/>
+              : <input dir={k==="ar"?"rtl":"ltr"} value={v[k]||""} onChange={e=>set(k,e.target.value)} style={wInput}/>}
+      </div>);
+  };
+  return (<div><span style={wLabel}>{label}</span><div style={{display:"flex",gap:10,flexWrap:"wrap"}}>{box("en")}{box("ar")}</div></div>);
+}
+
+function WBars({rows, k="k", v="v", color="var(--accent)", fmt=x=>x, label=x=>x}) {
+  const max = Math.max(1,...(rows||[]).map(r=>Number(r[v])||0));
+  if(!rows?.length) return <p style={{fontSize:12,color:"var(--text3)"}}>No data yet.</p>;
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:7}}>
+      {rows.map((r,i)=>(
+        <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12}}>
+          <span style={{width:"38%",minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:"var(--text2)"}} title={String(r[k])}>{label(r[k], r)}</span>
+          <div style={{flex:1,height:8,borderRadius:99,background:"var(--surface2)",overflow:"hidden"}}><div style={{width:`${(Number(r[v])||0)/max*100}%`,height:"100%",borderRadius:99,background:color}}/></div>
+          <b style={{width:44,textAlign:"right",color:"var(--text)"}}>{fmt(r[v])}</b>
+        </div>))}
+    </div>);
+}
+
+function WebsiteOverview() {
+  const [days, setDays] = useState(30);
+  const [d, setD] = useState(null); const [err, setErr] = useState("");
+  const load = () => { setErr(""); wApi.get("stats",{days}).then(setD).catch(e=>setErr(e.message)); };
+  useEffect(()=>{ setD(null); load(); const id=setInterval(load,60000); return ()=>clearInterval(id); },[days]); // eslint-disable-line react-hooks/exhaustive-deps
+  if(err) return <div style={wCard}><p style={{color:"#ef4444",fontSize:13}}>{err}</p></div>;
+  if(!d) return <div style={{padding:40,display:"flex",justifyContent:"center"}}><Spinner size={20}/></div>;
+  if(d.setup==="missing_table") return <div style={wCard}><p style={{fontWeight:800,marginBottom:6}}>One-time setup needed</p><p style={{fontSize:13,color:"var(--text2)"}}>Run <code>migration-website.sql</code> on the server (see the Setup tab), then add the tracker to the website.</p></div>;
+  const T = d.totals;
+  const delta = (a,b) => { if(!b) return null; const p=Math.round((a-b)/b*100); return <span style={{fontSize:11,fontWeight:800,color:p>=0?"#10b981":"#ef4444"}}>{p>=0?"▲":"▼"} {Math.abs(p)}%</span>; };
+  const kpi = (label, value, sub, color, extra) => (
+    <div style={{...wCard,borderTop:`3px solid ${color}`}}>
+      <p style={{fontSize:10,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>{label}</p>
+      <p style={{fontSize:26,fontWeight:800,fontFamily:"'Montserrat',sans-serif",lineHeight:1.2,marginTop:4}}>{value}</p>
+      <p style={{fontSize:11,color:"var(--text3)",display:"flex",gap:6,alignItems:"center"}}>{extra}{sub}</p>
+    </div>);
+  const maxV = Math.max(1,...d.series.map(x=>+x.visitors));
+  const dayMap = Object.fromEntries(d.series.map(x=>[x.day,x]));
+  const allDays = Array.from({length:d.days},(_,i)=>{ const t=new Date(d.from+"T12:00:00"); t.setDate(t.getDate()+i); return t.toISOString().slice(0,10); });
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+        {[7,30,90,365].map(n=><button key={n} onClick={()=>setDays(n)} style={{...wBtn(days===n),borderRadius:99}}>{n===365?"12 months":`${n} days`}</button>)}
+        <span style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:700,color:d.live?"#10b981":"var(--text3)"}}><span style={{width:8,height:8,borderRadius:"50%",background:d.live?"#10b981":"var(--text3)",boxShadow:d.live?"0 0 0 4px #10b98133":"none"}}/>{d.live} on the site now</span>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>
+        {kpi("Visitors", T.visitors.toLocaleString(), "vs previous period", "#6366f1", delta(T.visitors,T.prev_visitors))}
+        {kpi("Page views", T.views.toLocaleString(), "vs previous period", "#0ea5e9", delta(T.views,T.prev_views))}
+        {kpi("Avg. time on page", wFmtSecs(T.avg_secs), "per visit", "#8b5cf6")}
+        {kpi("Bounce rate", T.bounce==null?"—":T.bounce+"%", "saw one page only", T.bounce>70?"#ef4444":"#f59e0b")}
+        {kpi("Website leads", T.leads, "forms submitted", "#10b981")}
+        {kpi("Conversion", T.conversion==null?"—":T.conversion+"%", "visitors → leads", "#d90b2c")}
+      </div>
+      <div style={wCard}>
+        <p style={{fontWeight:800,fontSize:14,marginBottom:10}}>Visitors per day</p>
+        <div style={{display:"flex",alignItems:"flex-end",gap:2,height:150}}>
+          {allDays.map(day=>{ const x=dayMap[day]; const v=x?+x.visitors:0; return (
+            <div key={day} title={`${day}: ${v} visitors, ${x?x.views:0} views`} style={{flex:1,minWidth:2,height:`${Math.max(2,v/maxV*100)}%`,borderRadius:"4px 4px 0 0",background:v?"linear-gradient(180deg,#8b5cf6,#6366f1)":"var(--surface2)"}}/>); })}
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"var(--text3)",marginTop:4}}><span>{d.from}</span><span>{d.to}</span></div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(320px,1fr))",gap:14}}>
+        <div style={wCard}><p style={{fontWeight:800,fontSize:14,marginBottom:10}}>Top pages</p>
+          <WBars rows={d.pages.slice(0,10)} k="path" v="views" color="#6366f1" label={(p,r)=><a href={d.site+p} target="_blank" rel="noreferrer" style={{color:"var(--text2)"}}>{r.title?`${r.title.replace(/\s*[|–-]\s*admepro.*$/i,"")}`:p}</a>}/></div>
+        <div style={wCard}><p style={{fontWeight:800,fontSize:14,marginBottom:10}}>Where visitors come from</p>
+          <WBars rows={d.sources} k="source" v="visitors" color="#0ea5e9"/></div>
+        <div style={wCard}><p style={{fontWeight:800,fontSize:14,marginBottom:10}}>Countries</p>
+          <WBars rows={d.countries} color="#10b981" label={c=>`${wFlag(c)} ${c==="??"?"Unknown":c}`}/></div>
+        <div style={wCard}><p style={{fontWeight:800,fontSize:14,marginBottom:10}}>Devices & browsers</p>
+          <WBars rows={d.devices} color="#f59e0b" label={x=>x?x[0].toUpperCase()+x.slice(1):"—"}/><div style={{height:14}}/><WBars rows={d.browsers} color="#94a3b8"/></div>
+        <div style={wCard}><p style={{fontWeight:800,fontSize:14,marginBottom:10}}>Contact clicks</p>
+          <WBars rows={d.clicks} color="#d90b2c"/><p style={{fontSize:11,color:"var(--text3)",marginTop:10}}>Taps on phone, email and WhatsApp links. English vs Arabic views: {(d.langs||[]).map(l=>`${l.k} ${l.v}`).join(" · ")||"—"}</p></div>
+        <div style={wCard}><p style={{fontWeight:800,fontSize:14,marginBottom:10}}>Campaigns (UTM)</p>
+          {d.campaigns.length ? <WBars rows={d.campaigns} k="campaign" v="visitors" color="#ec4899" label={(c,r)=>`${c} · ${r.source||""}`}/> : <p style={{fontSize:12,color:"var(--text3)"}}>Add <code>?utm_source=…&utm_campaign=…</code> to ad links to see them here.</p>}
+          {d.live_pages.length>0&&<><p style={{fontWeight:800,fontSize:13,margin:"14px 0 8px"}}>Being viewed right now</p><WBars rows={d.live_pages} k="path" color="#10b981"/></>}</div>
+      </div>
+    </div>);
+}
+
+// Generic list → editor shell for projects / posts / pages.
+function WContentList({dir, onOpen, onNew, newLabel}) {
+  const [items, setItems] = useState(null); const [err, setErr] = useState(""); const [q, setQ] = useState("");
+  useEffect(()=>{ wApi.get("list",{dir}).then(r=>{ if(r.connected===false) setErr(r.error+" (see the Setup tab)"); else setItems(r.items||{}); }).catch(e=>setErr(e.message)); },[dir]);
+  if(err) return <div style={wCard}><p style={{color:"#ef4444",fontSize:13}}>{err}</p></div>;
+  if(!items) return <div style={{padding:40,display:"flex",justifyContent:"center"}}><Spinner size={20}/></div>;
+  const keys = Object.keys(items).filter(k=>items[k].json && (!q || k.includes(q.toLowerCase()))).sort();
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <input placeholder="Search…" value={q} onChange={e=>setQ(e.target.value)} style={{...wInput,maxWidth:280}}/>
+        {onNew&&<button onClick={onNew} style={{...wBtn(true),marginLeft:"auto"}}>+ {newLabel}</button>}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:8}}>
+        {keys.map(k=>(
+          <button key={k} onClick={()=>onOpen(k, items[k])} style={{...wCard,padding:12,textAlign:"left",cursor:"pointer",display:"flex",flexDirection:"column",gap:3,color:"var(--text)"}}>
+            <span style={{fontSize:13,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{k.replace(/-/g," ")}</span>
+            <span style={{fontSize:11,color:"var(--text3)"}}>{dir==="projects"?`${(items[k].images||[]).length} images`:items[k].json.split("/").pop()}</span>
+          </button>))}
+      </div>
+      {!keys.length&&<p style={{fontSize:13,color:"var(--text3)"}}>Nothing found.</p>}
+    </div>);
+}
+
+function WSaveBar({dirty, saving, onSave, onBack, msg, extra}) {
+  return (
+    <div style={{position:"sticky",top:0,zIndex:5,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",padding:"10px 0",background:"var(--surface)",borderBottom:"1px solid var(--border)"}}>
+      <button onClick={onBack} style={wBtn(false)}>← Back</button>
+      {extra}
+      <span style={{marginLeft:"auto",fontSize:12,color:msg?.err?"#ef4444":"#10b981",fontWeight:700}}>{msg?.t||""}</span>
+      <button onClick={onSave} disabled={!dirty||saving} style={{...wBtn(true),opacity:!dirty||saving?0.5:1}}>{saving?"Publishing…":"Save & publish"}</button>
+    </div>);
+}
+
+function WImagePick({label, onPicked, busy}) {
+  const ref = useRef(null);
+  return (<>
+    <button onClick={()=>ref.current?.click()} disabled={busy} style={wBtn(false)}>{busy?"Uploading…":label}</button>
+    <input ref={ref} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{ const f=e.target.files?.[0]; e.target.value=""; if(f) onPicked(f); }}/>
+  </>);
+}
+
+function WebsiteProjects({root}) {
+  const [open, setOpen] = useState(null); // {slug, path, sha, data, images, isNew}
+  const [raw, setRaw] = useState(""); const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null);
+  const [cover, setCover] = useState(null); const [uploading, setUploading] = useState(false);
+  const base = (root?root+"/":"")+"projects/";
+  const openProject = async (slug, item) => {
+    setMsg(null); setCover(null);
+    const r = await wApi.get("get",{path:item.json});
+    const data = JSON.parse(r.content);
+    setOpen({slug, path:item.json, sha:r.sha, data, images:item.images||[]}); setRaw(JSON.stringify(data.sections||[],null,2)); setDirty(false);
+    if(data.cover) wApi.get("get",{path:base+slug+"/"+data.cover}).then(c=>c.base64&&setCover("data:image/webp;base64,"+c.base64)).catch(()=>{});
+  };
+  const newProject = async () => {
+    const title = window.prompt("Project name (e.g. Gold's Gym Elite launch)"); if(!title) return;
+    const slug = wSlug(title); if(!slug) return;
+    let data;
+    try { const t = await wApi.get("get",{path:base+"_template/project.json"}); data = JSON.parse(t.content); delete data._help; }
+    catch(e) { data = {title:"",client:{en:"",ar:""},order:99,published:false,featured:false,categories:[],tags:[],cover:"images/cover.webp",seo:{title:{en:"",ar:""},description:{en:"",ar:""}},summary:{en:"",ar:""},meta:{},sections:[],date:""}; }
+    data.title = title; data.published = false; data.date = new Date().toISOString().slice(0,10);
+    setOpen({slug, path:base+slug+"/project.json", sha:null, data, images:[], isNew:true}); setRaw(JSON.stringify(data.sections||[],null,2)); setDirty(true); setCover(null); setMsg({t:"New project — saved as hidden until you tick Published."});
+  };
+  if(!open) return <WContentList dir="projects" onOpen={openProject} onNew={newProject} newLabel="New project"/>;
+  const d = open.data;
+  const set = (k,v) => { setOpen(o=>({...o,data:{...o.data,[k]:v}})); setDirty(true); };
+  const save = async () => {
+    let sections;
+    try { sections = JSON.parse(raw||"[]"); } catch(e) { setMsg({err:true,t:"Sections JSON has an error — fix it first."}); return; }
+    setSaving(true); setMsg(null);
+    try {
+      const body = {...d, sections};
+      const r = await wApi.post("put",{path:open.path, sha:open.sha, content:JSON.stringify(body,null,2)+"\n", message:`${open.isNew?"Add":"Update"} project: ${d.title}`});
+      setOpen(o=>({...o, sha:r.sha, isNew:false, data:body})); setDirty(false); setMsg({t:`Published (${r.commit}) — live in ~1–2 min`});
+    } catch(e) { setMsg({err:true,t:e.message}); }
+    setSaving(false);
+  };
+  const uploadImg = async (file, asCover) => {
+    setUploading(true); setMsg(null);
+    try {
+      const {b64, ext} = await wToWebp(file);
+      const name = asCover ? `cover.${ext}` : `${wSlug(file.name.replace(/\.[^.]+$/,""))||"image"}-${Date.now().toString(36)}.${ext}`;
+      const r = await wApi.post("upload",{path:base+open.slug+"/images/"+name, base64:b64, message:`Image for ${d.title}: ${name}`});
+      setOpen(o=>({...o, images:[...new Set([...(o.images||[]), name])]}));
+      if(asCover) { set("cover","images/"+name); setCover("data:image/"+ext+";base64,"+b64); }
+      setMsg({t:`Uploaded ${name} (${r.commit}). Use it as "images/${name}" in a section.`});
+    } catch(e) { setMsg({err:true,t:e.message}); }
+    setUploading(false);
+  };
+  const cats = ["branding","creative","digital","production"];
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <WSaveBar dirty={dirty} saving={saving} onSave={save} onBack={()=>{ if(!dirty||window.confirm("Leave without saving?")) setOpen(null); }} msg={msg}
+        extra={<a href={`https://admepro.com/portfolio/${open.slug}/`} target="_blank" rel="noreferrer" style={{fontSize:12,fontWeight:700,color:"var(--accent)"}}>View on site ↗</a>}/>
+      <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 260px",gap:14,alignItems:"start"}} className="w-proj-grid">
+        <div style={{...wCard,display:"flex",flexDirection:"column",gap:14}}>
+          <div><span style={wLabel}>Project title</span><input value={d.title||""} onChange={e=>set("title",e.target.value)} style={wInput}/></div>
+          <WBiField label="Client" value={d.client} onChange={v=>set("client",v)}/>
+          <WBiField label="Summary (2–3 sentences)" value={d.summary} onChange={v=>set("summary",v)} area/>
+          <WBiField label="SEO title" value={d.seo?.title} onChange={v=>set("seo",{...(d.seo||{}),title:v})} max={60}/>
+          <WBiField label="SEO description" value={d.seo?.description} onChange={v=>set("seo",{...(d.seo||{}),description:v})} area rows={2} max={155}/>
+          <div>
+            <span style={wLabel}>Sections (advanced — text, images and layout of the case study)</span>
+            <textarea value={raw} onChange={e=>{setRaw(e.target.value);setDirty(true);}} rows={14} spellCheck={false} style={{...wInput,fontFamily:"monospace",fontSize:12}}/>
+            <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Each section has a label, heading, text (en/ar paragraphs) and media like <code>{`{"type":"image","src":"images/name.webp","alt":"…"}`}</code>. Layouts: grid-2, grid-3, full.</p>
+          </div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{...wCard,display:"flex",flexDirection:"column",gap:10}}>
+            <span style={wLabel}>Cover</span>
+            <div style={{aspectRatio:"4/3",borderRadius:10,background:"var(--surface2)",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>{cover?<img src={cover} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span style={{fontSize:11,color:"var(--text3)"}}>{d.cover||"No cover"}</span>}</div>
+            <WImagePick label="Upload cover" busy={uploading} onPicked={f=>uploadImg(f,true)}/>
+            <WImagePick label="+ Add image" busy={uploading} onPicked={f=>uploadImg(f,false)}/>
+            {(open.images||[]).length>0&&<p style={{fontSize:11,color:"var(--text3)",wordBreak:"break-all"}}>{open.images.join(" · ")}</p>}
+          </div>
+          <div style={{...wCard,display:"flex",flexDirection:"column",gap:10}}>
+            <label style={{display:"flex",gap:8,alignItems:"center",fontSize:13,fontWeight:700}}><input type="checkbox" checked={!!d.published} onChange={e=>set("published",e.target.checked)}/> Published</label>
+            <label style={{display:"flex",gap:8,alignItems:"center",fontSize:13,fontWeight:700}}><input type="checkbox" checked={!!d.featured} onChange={e=>set("featured",e.target.checked)}/> Featured on home</label>
+            <div><span style={wLabel}>Order (lower = first)</span><input type="number" value={d.order??99} onChange={e=>set("order",Number(e.target.value))} style={wInput}/></div>
+            <div><span style={wLabel}>Date</span><input type="date" value={d.date||""} onChange={e=>set("date",e.target.value)} style={wInput}/></div>
+            <div><span style={wLabel}>Categories</span><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{cats.map(c=>{ const on=(d.categories||[]).includes(c); return <button key={c} onClick={()=>set("categories", on?(d.categories||[]).filter(x=>x!==c):[...(d.categories||[]),c])} style={{...wBtn(on),borderRadius:99,padding:"5px 10px"}}>{c}</button>; })}</div></div>
+            <div><span style={wLabel}>Tags (comma separated)</span><input value={(d.tags||[]).join(", ")} onChange={e=>set("tags",e.target.value.split(",").map(x=>x.trim()).filter(Boolean))} style={wInput}/></div>
+          </div>
+        </div>
+      </div>
+      <style>{`@media (max-width:820px){.w-proj-grid{grid-template-columns:1fr !important}}`}</style>
+    </div>);
+}
+
+function WebsiteInsights() {
+  const [open, setOpen] = useState(null); const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null);
+  const [aiBusy, setAiBusy] = useState(false); const [uploading, setUploading] = useState(false); const [preview, setPreview] = useState(false);
+  const [rootDir, setRootDir] = useState("src/content");
+  useEffect(()=>{ wApi.get("status").then(s=>{ if(s.root!==undefined) setRootDir(s.root); }).catch(()=>{}); },[]);
+  const openPost = async (slug, item) => { setMsg(null); const r = await wApi.get("get",{path:item.json}); setOpen({path:item.json, sha:r.sha, data:JSON.parse(r.content)}); setDirty(false); setPreview(false); };
+  const newPost = () => {
+    const title = window.prompt("Article title"); if(!title) return;
+    const slug = wSlug(title);
+    setOpen({path:(rootDir?rootDir+"/":"")+"posts/"+slug+".json", sha:null, isNew:true, data:{slug, published:false, date:new Date().toISOString().slice(0,10), title, seoTitle:title.slice(0,60), description:"", cover:"", lang:"en", bodyHtml:""}});
+    setDirty(true); setMsg({t:"New article — hidden until you tick Published."});
+  };
+  if(!open) return <WContentList dir="posts" onOpen={openPost} onNew={newPost} newLabel="New article"/>;
+  const d = open.data; const set=(k,v)=>{ setOpen(o=>({...o,data:{...o.data,[k]:v}})); setDirty(true); };
+  const save = async () => {
+    setSaving(true); setMsg(null);
+    try { const r = await wApi.post("put",{path:open.path, sha:open.sha, content:JSON.stringify(d,null,2)+"\n", message:`${open.isNew?"Add":"Update"} article: ${d.title}`});
+      setOpen(o=>({...o,sha:r.sha,isNew:false})); setDirty(false); setMsg({t:`Published (${r.commit}) — live in ~1–2 min`}); }
+    catch(e) { setMsg({err:true,t:e.message}); }
+    setSaving(false);
+  };
+  const writeWithSara = async () => {
+    const brief = window.prompt("What should the article cover? (key points, audience, keywords)", d.description||""); if(brief===null) return;
+    setAiBusy(true); setMsg(null);
+    try {
+      const prompt = `Write a website blog article for admepro (an AI-powered marketing, branding and production agency in Cairo serving Egypt and the GCC).\nTitle: ${d.title}\nLanguage: ${d.lang==="ar"?"Arabic":"English"}\nBrief: ${brief}\n\nReturn ONLY clean HTML for the article body (no <html>/<body>, no title h1): 900–1300 words, short paragraphs <p>, 4–6 <h2> sections, one <ul> list, a closing call to action to contact admepro. SEO-friendly, natural, no fluff, no fake statistics.`;
+      const html = await agentAI("content_creator", "Website article", prompt, 3500);
+      const clean = String(html||"").replace(/^```html?|```$/g,"").trim();
+      if(!clean) throw new Error("Sara returned nothing — try again.");
+      set("bodyHtml", clean);
+      if(!d.description) {
+        const desc = await agentAI("content_creator","Article meta description",`Write one SEO meta description (140–155 characters) for this article titled "${d.title}". Return only the sentence.`, 120);
+        set("description", String(desc||"").trim().replace(/^"|"$/g,""));
+      }
+      setMsg({t:"Draft written — review and edit before publishing."});
+    } catch(e) { setMsg({err:true,t:e.message}); }
+    setAiBusy(false);
+  };
+  const uploadCover = async file => {
+    setUploading(true);
+    try { const {b64, ext} = await wToWebp(file, 1800); const name=`${d.slug||wSlug(d.title)}.${ext}`;
+      const r = await wApi.post("upload",{path:"src/assets/img/site/blog/"+name, base64:b64, message:`Cover for article: ${d.title}`});
+      set("cover","/assets/img/site/blog/"+name); setMsg({t:`Cover uploaded (${r.commit})`}); }
+    catch(e) { setMsg({err:true,t:e.message}); }
+    setUploading(false);
+  };
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <WSaveBar dirty={dirty} saving={saving} onSave={save} onBack={()=>{ if(!dirty||window.confirm("Leave without saving?")) setOpen(null); }} msg={msg}
+        extra={<button onClick={writeWithSara} disabled={aiBusy} style={wBtn(false)}>{aiBusy?"Sara is writing…":"✨ Write with Sara"}</button>}/>
+      <div style={{...wCard,display:"flex",flexDirection:"column",gap:12}}>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          <div style={{flex:"2 1 300px"}}><span style={wLabel}>Title</span><input value={d.title||""} onChange={e=>set("title",e.target.value)} style={wInput}/></div>
+          <div style={{flex:"1 1 160px"}}><span style={wLabel}>Date</span><input type="date" value={d.date||""} onChange={e=>set("date",e.target.value)} style={wInput}/></div>
+          <div style={{flex:"1 1 120px"}}><span style={wLabel}>Language</span><select value={d.lang||"en"} onChange={e=>set("lang",e.target.value)} style={wInput}><option value="en">English</option><option value="ar">Arabic</option></select></div>
+        </div>
+        <div><span style={wLabel}>SEO title <span style={{color:(d.seoTitle||"").length>60?"#ef4444":"var(--text3)"}}>{(d.seoTitle||"").length}/60</span></span><input value={d.seoTitle||""} onChange={e=>set("seoTitle",e.target.value)} style={wInput}/></div>
+        <div><span style={wLabel}>Meta description <span style={{color:(d.description||"").length>155?"#ef4444":"var(--text3)"}}>{(d.description||"").length}/155</span></span><textarea rows={2} value={d.description||""} onChange={e=>set("description",e.target.value)} style={{...wInput,resize:"vertical"}}/></div>
+        <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+          <label style={{display:"flex",gap:8,alignItems:"center",fontSize:13,fontWeight:700}}><input type="checkbox" checked={!!d.published} onChange={e=>set("published",e.target.checked)}/> Published</label>
+          <WImagePick label={d.cover?"Replace cover":"Upload cover"} busy={uploading} onPicked={uploadCover}/>
+          {d.cover&&<span style={{fontSize:11,color:"var(--text3)"}}>{d.cover}</span>}
+          <a href={`https://admepro.com/${d.lang==="ar"?"ar/":""}blog/${d.slug}/`} target="_blank" rel="noreferrer" style={{fontSize:12,fontWeight:700,color:"var(--accent)",marginLeft:"auto"}}>View on site ↗</a>
+        </div>
+        <div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}><span style={wLabel}>Article (HTML)</span><button onClick={()=>setPreview(p=>!p)} style={wBtn(false)}>{preview?"Edit":"Preview"}</button></div>
+          {preview ? <div dir={d.lang==="ar"?"rtl":"ltr"} style={{...wInput,minHeight:300,lineHeight:1.7,fontSize:14}} dangerouslySetInnerHTML={{__html:sanitizeHtmlBasic(d.bodyHtml||"")}}/>
+                   : <textarea rows={18} value={d.bodyHtml||""} onChange={e=>set("bodyHtml",e.target.value)} spellCheck={false} style={{...wInput,fontFamily:"monospace",fontSize:12}}/>}
+        </div>
+      </div>
+    </div>);
+}
+// Preview only: strip scripts/handlers before showing article HTML inside SocialFlow.
+function sanitizeHtmlBasic(h) { return String(h).replace(/<\s*(script|style|iframe|object|embed)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi,"").replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi,"").replace(/javascript:/gi,""); }
+
+function WebsitePages() {
+  const [open, setOpen] = useState(null); const [raw, setRaw] = useState(""); const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false); const [msg, setMsg] = useState(null); const [adv, setAdv] = useState(false);
+  const openPage = async (slug, item) => { setMsg(null); const r = await wApi.get("get",{path:item.json}); const data=JSON.parse(r.content); setOpen({slug, path:item.json, sha:r.sha, data}); setRaw(JSON.stringify(data,null,2)); setDirty(false); setAdv(false); };
+  if(!open) return (<>
+    <p style={{fontSize:12,color:"var(--text3)",marginBottom:10}}>Edit each page's Google title and description, or every text on the page under "All texts".</p>
+    <WContentList dir="pages" onOpen={openPage}/>
+  </>);
+  const d = open.data;
+  const setSeo = (k,v) => { const nd = {...d, seo:{...(d.seo||{}),[k]:v}}; setOpen(o=>({...o,data:nd})); setRaw(JSON.stringify(nd,null,2)); setDirty(true); };
+  const save = async () => {
+    let body; try { body = JSON.parse(raw); } catch(e) { setMsg({err:true,t:"The JSON has an error — fix it first."}); return; }
+    setSaving(true); setMsg(null);
+    try { const r = await wApi.post("put",{path:open.path, sha:open.sha, content:JSON.stringify(body,null,2)+"\n", message:`Update page: ${open.slug}`}); setOpen(o=>({...o,sha:r.sha,data:body})); setDirty(false); setMsg({t:`Published (${r.commit}) — live in ~1–2 min`}); }
+    catch(e) { setMsg({err:true,t:e.message}); }
+    setSaving(false);
+  };
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <WSaveBar dirty={dirty} saving={saving} onSave={save} onBack={()=>{ if(!dirty||window.confirm("Leave without saving?")) setOpen(null); }} msg={msg}
+        extra={<button onClick={()=>setAdv(a=>!a)} style={wBtn(adv)}>{adv?"SEO only":"All texts"}</button>}/>
+      <div style={{...wCard,display:"flex",flexDirection:"column",gap:14}}>
+        <p style={{fontWeight:800,fontSize:15,textTransform:"capitalize"}}>{open.slug} page</p>
+        {!adv ? (<>
+          <WBiField label="Google title" value={d.seo?.title} onChange={v=>setSeo("title",v)} max={60}/>
+          <WBiField label="Google description" value={d.seo?.description} onChange={v=>setSeo("description",v)} area rows={2} max={155}/>
+          <div style={{padding:12,borderRadius:10,background:"var(--surface2)"}}>
+            <p style={{fontSize:11,color:"var(--text3)",marginBottom:4}}>Google preview</p>
+            <p style={{fontSize:17,color:"#1a0dab",fontFamily:"Arial,sans-serif"}}>{(d.seo?.title?.en||"").slice(0,65)}</p>
+            <p style={{fontSize:12,color:"#006621",fontFamily:"Arial,sans-serif"}}>admepro.com › {open.slug==="home"?"":open.slug}</p>
+            <p style={{fontSize:13,color:"var(--text2)",fontFamily:"Arial,sans-serif"}}>{(d.seo?.description?.en||"").slice(0,160)}</p>
+          </div>
+        </>) : (
+          <div><span style={wLabel}>All texts on this page (English + Arabic)</span>
+            <textarea value={raw} onChange={e=>{setRaw(e.target.value);setDirty(true);}} rows={24} spellCheck={false} style={{...wInput,fontFamily:"monospace",fontSize:12}}/>
+            <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Change only the words between quotes. Keep the structure as it is.</p></div>
+        )}
+      </div>
+    </div>);
+}
+
+function WebsiteLeads({setPage}) {
+  const [d, setD] = useState(null); const [err, setErr] = useState("");
+  useEffect(()=>{ wApi.get("stats",{days:30}).then(setD).catch(e=>setErr(e.message)); },[]);
+  if(err) return <div style={wCard}><p style={{color:"#ef4444",fontSize:13}}>{err}</p></div>;
+  if(!d) return <div style={{padding:40,display:"flex",justifyContent:"center"}}><Spinner size={20}/></div>;
+  const leads = d.leads||[];
+  const th = {textAlign:"left",padding:"8px 10px",fontSize:11,color:"var(--text3)",fontWeight:800,textTransform:"uppercase"}; const td={padding:"9px 10px",fontSize:13,borderTop:"1px solid var(--border)",verticalAlign:"top"};
+  return (
+    <div style={{...wCard,padding:0,overflow:"hidden"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:14}}>
+        <p style={{fontWeight:800,fontSize:15}}>Website form submissions <span style={{color:"var(--text3)",fontWeight:600,fontSize:12}}>({leads.length})</span></p>
+        <button onClick={()=>setPage&&setPage("leads")} style={wBtn(false)}>Open in Leads →</button>
+      </div>
+      <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}>
+        <thead><tr><th style={th}>When</th><th style={th}>Name</th><th style={th}>Contact</th><th style={th}>Status</th><th style={th}>Message</th></tr></thead>
+        <tbody>{leads.map(l=>(<tr key={l.id}>
+          <td style={{...td,whiteSpace:"nowrap"}}>{fmtDateTime(l.created_at)}</td>
+          <td style={{...td,fontWeight:700}}>{l.name}{l.company?<div style={{fontSize:11,color:"var(--text3)",fontWeight:500}}>{l.company}</div>:null}</td>
+          <td style={td}>{l.phone&&<div>{l.phone}</div>}{l.email&&<div style={{fontSize:12,color:"var(--text3)"}}>{l.email}</div>}</td>
+          <td style={td}><Badge label={l.status||"new"} color={l.status==="won"?"#10b981":l.status==="lost"?"#ef4444":"#6366f1"} xs/></td>
+          <td style={{...td,maxWidth:360,fontSize:12,color:"var(--text2)"}}>{String(l.notes||"").slice(0,240)}</td>
+        </tr>))}</tbody></table></div>
+      {!leads.length&&<p style={{padding:16,fontSize:13,color:"var(--text3)"}}>No website leads yet.</p>}
+    </div>);
+}
+
+function WebsiteSetup() {
+  const [st, setSt] = useState(null);
+  useEffect(()=>{ wApi.get("status").then(setSt).catch(e=>setSt({connected:false,error:e.message})); },[]);
+  const snippet = `<script defer src="${window.location.origin}/site-track.js"></script>`;
+  const step = (n, title, body) => (<div style={{display:"flex",gap:12}}><span style={{width:26,height:26,borderRadius:"50%",background:"var(--accent)",color:"#fff",fontWeight:800,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{n}</span><div style={{minWidth:0,flex:1}}><p style={{fontWeight:800,fontSize:14,marginBottom:4}}>{title}</p>{body}</div></div>);
+  const code = t => <pre style={{...wInput,whiteSpace:"pre-wrap",wordBreak:"break-all",fontSize:12,margin:"6px 0 0"}}>{t}</pre>;
+  return (
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(340px,1fr))",gap:14,alignItems:"start"}}>
+      <div style={{...wCard,display:"flex",flexDirection:"column",gap:16}}>
+        <p style={{fontWeight:800,fontSize:15}}>Visitor analytics</p>
+        {step(1,"Create the analytics table (once)",code("mysql -u root -p socialflow < /var/www/socialflow/migration-website.sql"))}
+        {step(2,"Add this line to every page of admepro.com (in the site's <head>)",<>{code(snippet)}<button onClick={()=>{try{navigator.clipboard.writeText(snippet);}catch(e){}}} style={{...wBtn(false),marginTop:6}}>Copy</button></>)}
+        {step(3,"Count form submissions as conversions (optional)",<p style={{fontSize:12,color:"var(--text2)"}}>After a contact form is sent successfully, the site can call <code>window.sfTrackLead()</code>. Website leads are counted anyway from SocialFlow's Leads.</p>)}
+        <p style={{fontSize:11,color:"var(--text3)"}}>No cookies, no personal data: visitors are counted with an anonymous ID that changes daily, so no cookie banner is needed.</p>
+      </div>
+      <div style={{...wCard,display:"flex",flexDirection:"column",gap:12}}>
+        <p style={{fontWeight:800,fontSize:15}}>Content control (GitHub)</p>
+        {!st ? <Spinner size={16}/> : st.connected ? (<>
+          <p style={{fontSize:13,color:"#10b981",fontWeight:700}}>● Connected to {st.repo} ({st.branch}){st.can_write?"":" — read only! give the token write access"}</p>
+          <p style={{fontSize:12,color:"var(--text3)"}}>Content folder: <code>{st.root||"(repo root)"}</code> · every save becomes a commit and Hostinger republishes the site.</p>
+          <p style={{fontWeight:800,fontSize:13,marginTop:6}}>Recent changes</p>
+          {(st.commits||[]).map(c=>(<div key={c.sha} style={{fontSize:12,display:"flex",gap:8}}><code style={{color:"var(--text3)"}}>{c.sha}</code><span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.msg}</span><span style={{color:"var(--text3)",whiteSpace:"nowrap"}}>{c.at?fmtDateTime(c.at):""}</span></div>))}
+        </>) : (<>
+          <p style={{fontSize:13,color:"#ef4444",fontWeight:700}}>Not connected</p>
+          <p style={{fontSize:12,color:"var(--text2)"}}>{st.error}</p>
+          {step(1,"Create a GitHub token",<p style={{fontSize:12,color:"var(--text2)"}}>GitHub → Settings → Developer settings → Fine-grained tokens → Generate. Repository access: only the website repo. Permissions: <b>Contents: Read and write</b>.</p>)}
+          {step(2,"Add it to config.php on the server",code(`define('WEBSITE_GITHUB_REPO', 'owner/website-repo');\ndefine('WEBSITE_GITHUB_TOKEN', 'github_pat_...');\ndefine('WEBSITE_GITHUB_BRANCH', 'main');\ndefine('WEBSITE_CONTENT_ROOT', 'src/content');`))}
+          {step(3,"Reload this tab",<p style={{fontSize:12,color:"var(--text2)"}}>Projects, Insights and Pages unlock once it says Connected.</p>)}
+        </>)}
+      </div>
+    </div>);
+}
+
+function WebsitePage({setPage}) {
+  const [tab, setTab] = useState(()=>{ try{ return localStorage.getItem("sf_website_tab")||"overview"; }catch(e){ return "overview"; } });
+  const [root, setRoot] = useState("src/content");
+  useEffect(()=>{ try{ localStorage.setItem("sf_website_tab",tab); }catch(e){} },[tab]);
+  useEffect(()=>{ wApi.get("status").then(s=>{ if(s.root!==undefined) setRoot(s.root); }).catch(()=>{}); },[]);
+  const tabs = [["overview","Overview"],["projects","Projects"],["insights","Insights"],["pages","Pages & SEO"],["leads","Leads"],["setup","Setup"]];
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
+      <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+        <div>
+          <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:"clamp(20px,5vw,28px)",fontWeight:800}}>Website</h1>
+          <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>admepro.com — visitors, content and leads in one place</p>
+        </div>
+        <a href="https://admepro.com" target="_blank" rel="noreferrer" style={{...wBtn(false),textDecoration:"none"}}>Open admepro.com ↗</a>
+      </div>
+      <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",overflowX:"auto"}}>
+        {tabs.map(([k,l])=><button key={k} onClick={()=>setTab(k)} style={{padding:"9px 16px",fontSize:13,fontWeight:600,whiteSpace:"nowrap",borderBottom:`2px solid ${tab===k?"var(--accent)":"transparent"}`,color:tab===k?"var(--accent)":"var(--text2)"}}>{l}</button>)}
+      </div>
+      {tab==="overview"&&<WebsiteOverview/>}
+      {tab==="projects"&&<WebsiteProjects root={root}/>}
+      {tab==="insights"&&<WebsiteInsights/>}
+      {tab==="pages"&&<WebsitePages/>}
+      {tab==="leads"&&<WebsiteLeads setPage={setPage}/>}
+      {tab==="setup"&&<WebsiteSetup/>}
+    </div>);
+}
+
 function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, integrationLogs, onAddIntegration, onUpdateIntegration, onDeleteIntegration, onRetryIntegration, emailSettings, onSaveEmailSettings, team, posts, clients, timelogs, perfLogs, accentColor, brandingAssets, onSaveBrandingAssets, wallpaper, emailLogs, activityLogs, onRefreshLogs, systemSessions, onRefreshSessions, assets, onFindDuplicateAssets, onRemoveDuplicateAssets, onBackfillSaraMemory, backfillRunning}) {
   const [settingsTab, setSettingsTab] = usePersistentState("sf_tab_settings","branding");
   const [f,setF] = useState({
@@ -45174,6 +45636,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       ...(isDesignerRole(currentUser?.role)?[
         {key:"brand_guidelines_tool", label:"Brand Guidelines", ico:Icons.palette||Icons.sparkle},
       ]:[]),
+      ...(isAdmin?[{key:"website", label:"Website", ico:Icons.globe}]:[]),
       ...(isAdmin?[
         // "Agents" page hidden for now — the agent crew is managed from
         // Settings → AI Agents instead.
@@ -50536,7 +50999,7 @@ function App() {
     setImpersonatorUser(null);
     setPage(returnPage);
   };
-  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","mai_reports","rewards","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment"];
+  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","mai_reports","rewards","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment","website"];
   const [page,setPage_] = useState(()=>{
     try{
       // A contact-report email sent internally links straight to
@@ -50546,7 +51009,7 @@ function App() {
       // to avoid getting stuck on a detail page that hasn't loaded data yet
       const hash = window.location.hash.replace("#","");
       // Only use hash/localStorage if it's a top-level list page (not a detail context)
-      const SAFE_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","mai_reports","rewards","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment"];
+      const SAFE_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","mai_reports","rewards","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment","website"];
       if(hash && SAFE_PAGES.includes(hash)) return hash;
       const stored = localStorage.getItem("sf_page");
       return (stored && SAFE_PAGES.includes(stored)) ? stored : "home";
@@ -55393,6 +55856,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             posts={data.posts||[]}
           />
         )}
+        {page==="website"&&currentUser?.role==="admin"&&<WebsitePage setPage={setPage}/>}
         {page==="recruitment"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.manage_recruitment"))&&(
           <RecruitmentPage currentUser={currentUser} appSettings={appSettings} onSaveSettings={saveAppSettings} team={data.team||[]} clients={data.clients||[]} onInviteUser={inviteUser} comments={data.comments||[]} onAddComment={handleAddApplicationComment}/>
         )}
