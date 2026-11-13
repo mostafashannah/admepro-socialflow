@@ -458,6 +458,8 @@ if ($mode === 'digest') {
             [$ok, $raw] = fin_send_with_attachment($m['email'], '[SocialFlow] Daily report — '.$now->format('d M Y'), $html, $fin['filename'] ?? null, $fin['csv'] ?? '');
             log_email($insertLog, $m['email'], '[SocialFlow] Daily brief', $ok, $raw, $now);
         }
+        // No WhatsApp brief on the weekend (Friday/Saturday, Cairo) — the email still goes out.
+        if ($sendWa && in_array($now->format('N'), ['5','6'], true) && !$testEmail) $sendWa = false;
         if ($sendWa) {
             $waText = "📋 *End-of-day brief — ".$now->format('D j M')."*\nGood evening ".strip_tags($first).".\n".brief_to_whatsapp($body)."\n\nFull details: socialflow.admepro.com";
             if (mb_strlen($waText) > 3800) $waText = mb_substr($waText, 0, 3790).'…';
