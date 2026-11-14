@@ -33928,9 +33928,10 @@ function wMakeThumb(blob, name) {
     const timer=setTimeout(()=>done(null),12000);
     if(W_IS_IMG(name)){ const im=new Image(); im.onload=()=>{clearTimeout(timer);draw(im,im.naturalWidth,im.naturalHeight);}; im.onerror=()=>{clearTimeout(timer);done(null);}; im.src=url; }
     else if(W_IS_VID(name)){ const v=document.createElement("video"); v.muted=true; v.playsInline=true; v.preload="auto"; v.crossOrigin="anonymous";
+      let drawn=false; const grab=()=>{ if(drawn||!v.videoWidth) return; drawn=true; clearTimeout(timer); draw(v,v.videoWidth,v.videoHeight); };
       v.onloadedmetadata=()=>{ try{ v.currentTime=Math.min(1,(v.duration||2)/2); }catch(e){} };
-      v.onseeked=()=>{ clearTimeout(timer); draw(v,v.videoWidth,v.videoHeight); };
-      v.onerror=()=>{clearTimeout(timer);done(null);}; v.src=url; }
+      v.onseeked=grab; v.onloadeddata=()=>setTimeout(grab,1500);
+      v.onerror=()=>{clearTimeout(timer);done(null);}; v.src=url; try{ v.load(); }catch(e){} }
     else { clearTimeout(timer); done(null); }
   });
 }
@@ -33986,18 +33987,24 @@ function WebsiteFiles() {
   const shown=(items||[]).filter(it=>!folder||it.folder===folder).sort((a,b)=>sort==="old"?ts(a)-ts(b):sort==="name"?a.name.localeCompare(b.name):sort==="size"?b.size-a.size:ts(b)-ts(a));
   const fmtAdded=it=>{ const t=Date.parse(it.added||""); return isNaN(t)?"":new Date(t).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}); };
   const missing=(items||[]).filter(it=>!thumbs[it.path]&&(W_IS_IMG(it.name)||W_IS_VID(it.name))&&it.size<=40*1024*1024);
+  const [prevRes,setPrevRes]=useState(null);
   const backfill=async()=>{
-    setPrev({n:0,total:missing.length}); 
+    setPrevRes(null); setPrev({n:0,total:missing.length}); const fails=[]; let ok=0;
     for(let i=0;i<missing.length;i++){ const it=missing[i]; setPrev({n:i,total:missing.length,name:it.name});
       try{ const q=it.path.startsWith("release:")?"asset="+it.path.slice(8):"path="+encodeURIComponent(it.path);
-        const resp=await fetch(window.location.origin+"/website-admin.php?action=inbox_raw&"+q); if(!resp.ok) continue; const blob=await resp.blob(); await saveThumb(it.path,blob,it.name); }catch(e){} }
-    setPrev(null); load();
+        const resp=await fetch(window.location.origin+"/website-admin.php?action=inbox_raw&"+q);
+        if(!resp.ok){ let m="HTTP "+resp.status; try{ const j=await resp.json(); if(j.error) m=j.error; }catch(e){} fails.push(it.name+": "+m); continue; }
+        const blob=await resp.blob(); const good=await saveThumb(it.path,blob,it.name); if(good) ok++; else fails.push(it.name+": could not make a picture from it");
+      }catch(e){ fails.push(it.name+": "+e.message); } }
+    setPrev(null); setPrevRes({ok,fails}); load();
   };
+  const [moving,setMoving]=useState(null); const [newName,setNewName]=useState(""); const [moveBusy,setMoveBusy]=useState(false);
+  const doMove=async f=>{ if(!f||!moving) return; setMoveBusy(true); try{ await wApi.post("inbox_move",{path:moving.path,folder:f}); setMoving(null); setNewName(""); await load(); }catch(e){ alert(e.message); } finally{ setMoveBusy(false); } };
   const Thumb=({it,h,w})=>{ const d=thumbs[it.path]; return d?<img src={d} alt="" style={{width:w,height:h,objectFit:"cover",borderRadius:10,display:"block",background:"var(--surface2)"}}/>:<div style={{width:w,height:h,borderRadius:10,background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:h>80?34:22,flexShrink:0}}>{W_ICON(it.name)}</div>; };
   const Actions=({it})=><>
     <button onClick={()=>copy(it.cmd||it.path)} style={wBtn(false)}>{it.cmd?"Copy download command":"Copy path"}</button>
     <a href={it.url} target="_blank" rel="noreferrer" style={{...wBtn(false),textDecoration:"none"}}>Open ↗</a>
-    <button onClick={()=>moveTo(it)} style={wBtn(false)}>Move</button>
+    <button onClick={()=>{ setNewName(""); setMoving(it); }} style={wBtn(false)}>Move</button>
     <button onClick={()=>del(it.path)} style={{...wBtn(false),color:"#dc2626"}}>Delete</button></>;
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -34037,6 +34044,16 @@ function WebsiteFiles() {
           <button style={wBtn(false)} onClick={load}>Refresh</button>
         </div>
         {prev&&<p style={{fontSize:12,color:"var(--text2)"}}>Creating previews… {prev.n+1} of {prev.total}{prev.name?` · ${prev.name}`:""}</p>}
+        {prevRes&&<div style={{fontSize:12,background:"var(--surface2)",borderRadius:10,padding:"8px 12px"}}><b>{prevRes.ok} preview{prevRes.ok===1?"":"s"} created.</b>{prevRes.fails.length>0&&<> {prevRes.fails.length} could not be made:<ul style={{margin:"4px 0 0",paddingLeft:18,color:"#b45309"}}>{prevRes.fails.slice(0,8).map((f,i)=><li key={i}>{f}</li>)}</ul></>}</div>}
+        {moving&&<Modal open onClose={()=>setMoving(null)} title="Move to a folder" width={420}>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <p style={{fontSize:13,color:"var(--text2)"}}>Move <b>{moving.name}</b> to:</p>
+            <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:260,overflowY:"auto"}}>
+              {folders.filter(f=>f!==moving.folder).map(f=><button key={f} disabled={moveBusy} onClick={()=>doMove(f)} style={{...wBtn(false),textAlign:"left",padding:"11px 14px",fontSize:13}}>📁 {f} <span style={{color:"var(--text3)",fontWeight:500}}>({counts[f]||0})</span></button>)}
+              {folders.filter(f=>f!==moving.folder).length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No other folders yet — create one below.</p>}
+            </div>
+            <div style={{display:"flex",gap:6}}><input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Or a new folder name…" style={{...wInput,flex:1}}/><button style={wBtn(true)} disabled={moveBusy||!newName.trim()} onClick={()=>doMove(newName.trim())}>Create & move</button></div>
+          </div></Modal>}
         {err&&<p style={{fontSize:12,color:"#dc2626"}}>{err}</p>}
         {items===null&&!err?<Spinner size={16}/>:items&&shown.length===0?<p style={{fontSize:12,color:"var(--text3)"}}>{folder?"This folder is empty — drop files above to add them.":"No files yet."}</p>:
         view==="cards"?
