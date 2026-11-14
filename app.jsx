@@ -33995,7 +33995,7 @@ function WebsiteFiles() {
     const fl=(items||[]).filter(it=>it.folder===folder); const small=fl.filter(it=>!it.big), big=fl.filter(it=>it.big); const repo=info?.repo||"";
     const L=[`Use the files in my "${folder}" folder from the ${repo} GitHub repo.`+(useFor.trim()?` Purpose: ${useFor.trim()}.`:"")];
     if(small.length){ L.push("",`1) ${small.length} file${small.length===1?"":"s"} on the inbox branch, folder inbox/${folder}/`,`   https://github.com/${repo}/tree/inbox/inbox/${encodeURIComponent(folder)}`,`   Get them with: git fetch origin inbox && git checkout origin/inbox -- inbox/${folder}`); }
-    if(big.length){ L.push("",`${small.length?"2":"1"}) ${big.length} big file${big.length===1?"":"s"} on the GitHub release "inbox-files"`,`   Get them with: gh release download inbox-files -R ${repo} -p "${folder}~*" --dir inbox/${folder}`,`   (each file name starts with "${folder}~"; remove that prefix when you copy it into the site)`); }
+    if(big.length){ L.push("",`${small.length?"2":"1"}) ${big.length} big file${big.length===1?"":"s"} on the GitHub release "inbox-files"`,`   Get them with: gh release download inbox-files -R ${repo} -p "${folder}___*" --dir inbox/${folder}`,`   (each file name starts with "${folder}___"; remove that prefix when you copy it into the site)`); }
     L.push("","Files:",...fl.map(it=>`- ${it.name} (${fmtSize(it.size)})${it.big?" [big]":""}`));
     L.push("","Copy the files into the site where needed, optimise images and videos, and show me the changes before committing. Then delete these files from the inbox (the inbox branch folder and the release files) so nothing is left behind. Don't publish anything unfinished.");
     return L.join("\n");
