@@ -235,14 +235,53 @@ if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete'], true)) {
     $ibUrl = fn($p) => "https://github.com/$REPO/blob/$IB/" . implode('/', array_map('rawurlencode', explode('/', $p)));
     if ($action === 'inbox_list') {
         [$c, $r] = gh('GET', "/repos/$REPO/git/trees/$IB?recursive=1", $TOKEN);
-        if ($c === 404) wOut(200, ['items' => [], 'repo' => $REPO]);
-        if ($c !== 200) wOut(502, ['error' => "GitHub HTTP $c"]);
         $items = [];
-        foreach ($r['tree'] ?? [] as $t) if ($t['type'] === 'blob' && strpos($t['path'], 'inbox/') === 0) $items[] = ['path' => $t['path'], 'size' => (int)($t['size'] ?? 0), 'url' => $ibUrl($t['path'])];
-        usort($items, fn($a, $b) => strcmp($b['path'], $a['path']));
+        $relL = null; [$cl, $rl] = gh('GET', "/repos/$REPO/releases/tags/inbox-files", $TOKEN);
+        if ($cl === 200) foreach ($rl['assets'] ?? [] as $a) $items[] = ['path' => 'release:' . $a['id'], 'name' => $a['name'], 'size' => (int)$a['size'], 'url' => $rl['html_url'], 'big' => true, 'date' => substr((string)$a['created_at'], 0, 10), 'cmd' => 'gh release download inbox-files -R ' . $REPO . ' -p "' . $a['name'] . '"'];
+        if ($c === 404) wOut(200, ['items' => $items, 'repo' => $REPO]);
+        if ($c !== 200) wOut(502, ['error' => "GitHub HTTP $c"]);
+        foreach ($r['tree'] ?? [] as $t) if ($t['type'] === 'blob' && strpos($t['path'], 'inbox/') === 0) $items[] = ['path' => $t['path'], 'name' => basename($t['path']), 'size' => (int)($t['size'] ?? 0), 'url' => $ibUrl($t['path']), 'date' => explode('/', $t['path'])[1] ?? ''];
+        usort($items, fn($a, $b) => strcmp($b['date'] . $b['name'], $a['date'] . $a['name']));
         wOut(200, ['items' => array_slice($items, 0, 300), 'repo' => $REPO, 'branch' => $IB]);
     }
+    // ── Big files (22–200 MB): streamed to a GitHub *release asset* (tag "inbox-files"). Git itself can't hold files over 100 MB. ──
+    $RT = 'inbox-files';
+    $relGet = function ($create) use ($REPO, $TOKEN, $RT, $BRANCH) {
+        [$c, $r] = gh('GET', "/repos/$REPO/releases/tags/$RT", $TOKEN);
+        if ($c === 200) return $r;
+        if (!$create) return null;
+        [$c2, $r2] = gh('POST', "/repos/$REPO/releases", $TOKEN, ['tag_name' => $RT, 'target_commitish' => $BRANCH, 'name' => 'Inbox files', 'body' => 'Large files uploaded from the SocialFlow Website tab for the website chat. Not part of the site.', 'prerelease' => true, 'draft' => false]);
+        return $c2 === 201 ? $r2 : null;
+    };
+    if ($action === 'inbox_big') {
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') wOut(405, ['error' => 'POST only']);
+        @set_time_limit(1800); @ignore_user_abort(true);
+        $name = preg_replace('/[^A-Za-z0-9._\- ]+/u', '-', basename((string)($_GET['name'] ?? '')));
+        $name = trim(preg_replace('/\s+/', '-', $name), '.-');
+        if ($name === '' || !preg_match('/\.(jpe?g|png|webp|gif|svg|mp4|mov|webm|pdf|docx?|xlsx?|pptx?|txt|csv|json|zip|md)$/i', $name)) wOut(400, ['error' => 'This file type is not allowed here.']);
+        $len = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
+        if ($len <= 0) wOut(400, ['error' => 'Empty upload (or the server upload limit was exceeded — see the note under the uploader).']);
+        if ($len > 200 * 1024 * 1024) wOut(400, ['error' => 'File too large (max 200 MB).']);
+        $rel = $relGet(true); if (!$rel) wOut(502, ['error' => 'Could not create the "inbox-files" release — the GitHub token needs Contents: read and write.']);
+        foreach ($rel['assets'] ?? [] as $a) if ($a['name'] === $name) $name = preg_replace('/(\.[^.]+)$/', '-' . date('His') . '$1', $name);
+        $in = fopen('php://input', 'r');
+        $ch = curl_init("https://uploads.github.com/repos/$REPO/releases/" . (int)$rel['id'] . "/assets?name=" . rawurlencode($name));
+        curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDSIZE => $len, CURLOPT_READFUNCTION => function ($c, $fd, $n) use ($in) { return (string)fread($in, $n); },
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 1700, CURLOPT_CONNECTTIMEOUT => 20,
+            CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $TOKEN, 'Accept: application/vnd.github+json', 'User-Agent: SocialFlow-Website-Tab', 'Content-Type: ' . (preg_match('/^[\w.+-]+\/[\w.+-]+$/', (string)($_SERVER['CONTENT_TYPE'] ?? '')) ? $_SERVER['CONTENT_TYPE'] : 'application/octet-stream'), 'Content-Length: ' . $len]]);
+        $res = curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); $cerr = curl_error($ch); curl_close($ch); fclose($in);
+        $j = json_decode((string)$res, true);
+        if ($code !== 201) wOut(502, ['error' => 'GitHub upload failed' . ($cerr ? ": $cerr" : " (HTTP $code)") . (isset($j['message']) ? ' — ' . $j['message'] : '')]);
+        try { $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), 'website_inbox_upload', 'website', ?, 'success', ?)")->execute(['release:' . $name, $who]); } catch (Throwable $e) {}
+        wOut(200, ['ok' => true, 'path' => 'release:' . $j['id'], 'name' => $j['name'], 'size' => (int)$j['size'], 'cmd' => 'gh release download ' . $RT . ' -R ' . $REPO . ' -p "' . $j['name'] . '"']);
+    }
     $in = json_decode((string)file_get_contents('php://input'), true) ?: [];
+    if ($action === 'inbox_delete' && strpos((string)($in['path'] ?? ''), 'release:') === 0) {
+        $aid = (int)substr((string)$in['path'], 8);
+        [$c] = gh('DELETE', "/repos/$REPO/releases/assets/$aid", $TOKEN);
+        if ($c !== 204) wOut(502, ['error' => "GitHub HTTP $c"]);
+        wOut(200, ['ok' => true]);
+    }
     if ($action === 'inbox_delete') {
         $p = trim((string)($in['path'] ?? ''), '/');
         if (strpos($p, 'inbox/') !== 0 || strpos($p, '..') !== false) wOut(400, ['error' => 'Path not allowed']);
@@ -258,7 +297,7 @@ if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete'], true)) {
     if ($name === '' || !preg_match('/\.(jpe?g|png|webp|gif|svg|mp4|mov|webm|pdf|docx?|xlsx?|pptx?|txt|csv|json|zip|md)$/i', $name)) wOut(400, ['error' => 'This file type is not allowed here (images, video, PDF, Office files, text and zip are).']);
     $b64 = preg_replace('#^data:[^;]*;base64,#', '', (string)($in['base64'] ?? ''));
     if ($b64 === '') wOut(400, ['error' => 'Empty file']);
-    if (strlen($b64) > 30 * 1024 * 1024) wOut(400, ['error' => 'File too large (max about 22 MB). Compress it, or send a link instead.']);
+    if (strlen($b64) > 30 * 1024 * 1024) wOut(400, ['error' => 'File too large for this route (use the big-file route above 22 MB).']);
     [$cr, $rr] = gh('GET', "/repos/$REPO/git/ref/heads/$IB", $TOKEN);
     if ($cr === 404) {       // first time: create the inbox branch from main
         [$cm, $rm] = gh('GET', "/repos/$REPO/git/ref/heads/$BRANCH", $TOKEN);

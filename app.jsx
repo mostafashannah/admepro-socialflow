@@ -33925,11 +33925,17 @@ function WebsiteFiles() {
   const upload=async files=>{
     const list=[...files]; if(!list.length) return; setBusy(true);
     for(const f of list){
-      const id=f.name+Date.now(); setLog(l=>[{id,name:f.name,st:"uploading"},...l]);
+      const id=f.name+Date.now(); setLog(l=>[{id,name:f.name,st:"uploading",big:f.size>22*1024*1024},...l]);
       try{
-        if(f.size>22*1024*1024) throw new Error("Too large (max about 22 MB)");
-        const b64=await readB64(f); const r=await wApi.post("inbox_upload",{name:f.name,base64:b64});
-        setLog(l=>l.map(x=>x.id===id?{...x,st:"done",path:r.path}:x));
+        if(f.size>200*1024*1024) throw new Error("Too large (max 200 MB)");
+        let r;
+        if(f.size<=22*1024*1024){ const b64=await readB64(f); r=await wApi.post("inbox_upload",{name:f.name,base64:b64}); }
+        else { // big file: sent as-is (not base64) and streamed on to GitHub as a release file
+          const resp=await fetch(window.location.origin+"/website-admin.php?action=inbox_big&name="+encodeURIComponent(f.name),{method:"POST",headers:{"Content-Type":f.type||"application/octet-stream"},body:f});
+          r=await resp.json().catch(()=>({error:"The server rejected the upload — its upload limit is probably still low (see the note below)."}));
+          if(!resp.ok) throw new Error(r.error||("HTTP "+resp.status));
+        }
+        setLog(l=>l.map(x=>x.id===id?{...x,st:"done",path:r.path,cmd:r.cmd}:x));
       }catch(e){ setLog(l=>l.map(x=>x.id===id?{...x,st:"error",msg:e.message}:x)); }
     }
     setBusy(false); load();
@@ -33945,11 +33951,12 @@ function WebsiteFiles() {
           style={{border:`2px dashed ${over?"var(--accent)":"var(--border2)"}`,background:over?"var(--accent)10":"var(--surface2)",borderRadius:14,padding:"26px 14px",textAlign:"center",cursor:"pointer",fontSize:13,color:"var(--text2)"}}>
           {busy?"Uploading…":"Drop files here, or tap to choose"}
           <input type="file" multiple hidden disabled={busy} onChange={e=>{ upload(e.target.files); e.target.value=""; }}/>
-          <div style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Images, video (mp4, mov, webm), PDF, Office files, zip · up to about 22 MB each</div>
+          <div style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Images, video (mp4, mov, webm), PDF, Office files, zip · up to 200 MB each</div>
         </label>
         {log.length>0&&<div style={{display:"flex",flexDirection:"column",gap:4}}>{log.slice(0,8).map(x=><div key={x.id} style={{fontSize:12,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
           <span>{x.st==="done"?"✅":x.st==="error"?"⚠️":"⏳"}</span><b>{x.name}</b>
-          {x.st==="done"&&<button onClick={()=>copy(x.path)} style={{fontSize:11,color:"var(--accent)",fontWeight:700}}>Copy path</button>}
+          {x.st==="uploading"&&x.big&&<span style={{color:"var(--text3)"}}>big file — keep this page open, it can take a few minutes</span>}
+          {x.st==="done"&&<button onClick={()=>copy(x.cmd||x.path)} style={{fontSize:11,color:"var(--accent)",fontWeight:700}}>{x.cmd?"Copy download command":"Copy path"}</button>}
           {x.st==="error"&&<span style={{color:"#dc2626"}}>{x.msg}</span>}</div>)}</div>}
       </div>
       <div style={{...wCard,display:"flex",flexDirection:"column",gap:8}}>
@@ -33957,11 +33964,11 @@ function WebsiteFiles() {
         {err&&<p style={{fontSize:12,color:"#dc2626"}}>{err}</p>}
         {items===null&&!err?<Spinner size={16}/>:items&&items.length===0?<p style={{fontSize:12,color:"var(--text3)"}}>No files yet.</p>:
         (items||[]).map(it=><div key={it.path} style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",padding:"8px 10px",border:"1px solid var(--border)",borderRadius:10,fontSize:12}}>
-          <div style={{flex:"1 1 240px",minWidth:0}}><a href={it.url} target="_blank" rel="noreferrer" style={{fontWeight:700,color:"var(--text)",display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.path.split("/").pop()}</a><span style={{color:"var(--text3)"}}>{it.path.split("/")[1]} · {fmtSize(it.size)}</span></div>
-          <button onClick={()=>copy(it.path)} style={wBtn(false)}>Copy path</button>
+          <div style={{flex:"1 1 240px",minWidth:0}}><a href={it.url} target="_blank" rel="noreferrer" style={{fontWeight:700,color:"var(--text)",display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.name||it.path.split("/").pop()}</a><span style={{color:"var(--text3)"}}>{it.date} · {fmtSize(it.size)}{it.big?" · big file":""}</span></div>
+          <button onClick={()=>copy(it.cmd||it.path)} style={wBtn(false)}>{it.cmd?"Copy download command":"Copy path"}</button>
           <a href={it.url} target="_blank" rel="noreferrer" style={{...wBtn(false),textDecoration:"none"}}>Open ↗</a>
           <button onClick={()=>del(it.path)} style={{...wBtn(false),color:"#dc2626"}}>Delete</button></div>)}
-        {info&&<div style={{fontSize:11,color:"var(--text3)",lineHeight:1.6,borderTop:"1px solid var(--border)",paddingTop:8}}>To use a file, tell the website chat: <i>“Use the file inbox/… from the <b>inbox</b> branch of {info.repo} on the page … (fetch that branch, copy the file into the site, then delete it from the inbox).”</i> “Open” needs you to be signed in to GitHub.</div>}
+        {info&&<div style={{fontSize:11,color:"var(--text3)",lineHeight:1.7,borderTop:"1px solid var(--border)",paddingTop:8}}>To use a file, tell the website chat: <i>“Use the file inbox/… from the <b>inbox</b> branch of {info.repo} on the page … (fetch that branch, copy the file into the site, then delete it from the inbox).”</i> For files marked <b>big</b> (over 22 MB) say instead: <i>“Download the file with this command … then add it to the page … and delete the inbox file.”</i> (Copy the command with the button.) “Open” needs you to be signed in to GitHub.<br/>Uploads over a few MB need the server's upload limit raised once (PHP <code>post_max_size</code> and the web server's body limit to 210M).</div>}
       </div>
     </div>);
 }
