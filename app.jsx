@@ -34481,13 +34481,17 @@ function SeoCard({r,onChange}) {
             :<div style={{fontSize:12,color:"#166534",background:"#10b98112",borderRadius:8,padding:"6px 9px"}} dir="auto">{c.after}</div>}
         </div>):(
         <div key={i} style={{border:"1px solid var(--border)",borderRadius:10,padding:10,display:"flex",flexDirection:"column",gap:6}}>
-          <span style={{fontSize:11,color:"var(--text3)"}}>New draft post · {c.json.lang==="ar"?"Arabic":"English"} · ~{String(c.json.bodyHtml||"").replace(/<[^>]+>/g," ").split(/\s+/).filter(Boolean).length} words · saved unpublished</span>
+          <span style={{fontSize:11,color:"var(--text3)"}}>New draft post · English + Arabic · ~{String(c.json.bodyHtml||"").replace(/<[^>]+>/g," ").split(/\s+/).filter(Boolean).length} words (EN) · saved unpublished{!c.json.ar&&" · old single-language format: reject and re-run"}</span>
           {pending?<>
-            <input dir="auto" value={postEdits[i]?.title??c.json.title} onChange={e=>setPostEdits(x=>({...x,[i]:{...(x[i]||{}),title:e.target.value}}))} style={{...wInput,fontWeight:700}}/>
-            <input dir="auto" value={postEdits[i]?.seoTitle??c.json.seoTitle??""} onChange={e=>setPostEdits(x=>({...x,[i]:{...(x[i]||{}),seoTitle:e.target.value}}))} placeholder="Google title" style={wInput}/>
-            <textarea dir="auto" value={postEdits[i]?.description??c.json.description??""} onChange={e=>setPostEdits(x=>({...x,[i]:{...(x[i]||{}),description:e.target.value}}))} rows={2} placeholder="Google description" style={{...wInput,resize:"vertical"}}/></>
-            :<p style={{fontWeight:700,fontSize:13}} dir="auto">{c.json.title}</p>}
-          <details><summary style={{fontSize:12,color:"var(--accent)",cursor:"pointer"}}>Read the draft</summary><div dir="auto" style={{fontSize:13,lineHeight:1.7,marginTop:8,maxHeight:360,overflowY:"auto"}} dangerouslySetInnerHTML={{__html:String(c.json.bodyHtml||"").replace(/<script[\s\S]*?<\/script>/gi,"").replace(/ on\w+="[^"]*"/gi,"")}}/></details>
+            <input value={postEdits[i]?.title??c.json.title} onChange={e=>setPostEdits(x=>({...x,[i]:{...(x[i]||{}),title:e.target.value}}))} style={{...wInput,fontWeight:700}}/>
+            <input value={postEdits[i]?.seoTitle??c.json.seoTitle??""} onChange={e=>setPostEdits(x=>({...x,[i]:{...(x[i]||{}),seoTitle:e.target.value}}))} placeholder="Google title (English)" style={wInput}/>
+            <textarea value={postEdits[i]?.description??c.json.description??""} onChange={e=>setPostEdits(x=>({...x,[i]:{...(x[i]||{}),description:e.target.value}}))} rows={2} placeholder="Google description (English)" style={{...wInput,resize:"vertical"}}/>
+            {c.json.ar&&<>
+              <input dir="rtl" value={postEdits[i]?.ar_title??c.json.ar.title} onChange={e=>setPostEdits(x=>({...x,[i]:{...(x[i]||{}),ar_title:e.target.value}}))} style={{...wInput,fontWeight:700}}/>
+              <input dir="rtl" value={postEdits[i]?.ar_seoTitle??c.json.ar.seoTitle??""} onChange={e=>setPostEdits(x=>({...x,[i]:{...(x[i]||{}),ar_seoTitle:e.target.value}}))} placeholder="Google title (Arabic)" style={wInput}/>
+              <textarea dir="rtl" value={postEdits[i]?.ar_description??c.json.ar.description??""} onChange={e=>setPostEdits(x=>({...x,[i]:{...(x[i]||{}),ar_description:e.target.value}}))} rows={2} placeholder="Google description (Arabic)" style={{...wInput,resize:"vertical"}}/></>}</>
+            :<p style={{fontWeight:700,fontSize:13}}>{c.json.title}</p>}
+          {[["Read the English draft",c.json.bodyHtml,"ltr"],["قراءة النسخة العربية",c.json.ar?.bodyHtml,"rtl"]].map(([lbl,html,dir])=>html?<details key={dir}><summary style={{fontSize:12,color:"var(--accent)",cursor:"pointer"}}>{lbl}</summary><div dir={dir} style={{fontSize:13,lineHeight:1.7,marginTop:8,maxHeight:360,overflowY:"auto"}} dangerouslySetInnerHTML={{__html:String(html).replace(/<script[\s\S]*?<\/script>/gi,"").replace(/ on\w+="[^"]*"/gi,"")}}/></details>:null)}
           <span style={{fontSize:11,color:"var(--text3)"}}>After approving, open it in Insights to add a cover image and tick Published.</span>
         </div>))}
       {(r.manual_steps||[]).length>0&&<div style={{background:"var(--surface2)",borderRadius:10,padding:"10px 12px"}}>

@@ -191,11 +191,11 @@ function seoRun(PDO $pdo, $by, $jobFile = null) {
         . "{\"type\":\"meta|content|technical|conversion|offsite\",\"priority\":1-100,\"title\":\"short action title\",\"why\":\"2-3 sentences citing the actual numbers\",\n"
         . " \"evidence\":{\"query\":\"main search\",\"page\":\"url or path\",\"impressions\":0,\"clicks\":0,\"position\":0,\"markets\":[\"EG\",\"SA\"]},\n"
         . " \"changes\":[ {\"path\":\"<an exact path from the list>\",\"op\":\"set\",\"field\":\"dotted.path.to.an.EXISTING.string\",\"after\":\"new text\"} ,\n"
-        . "              {\"path\":\"<content root>/posts/<new-slug>.json\",\"op\":\"create_post\",\"json\":{\"slug\":\"\",\"date\":\"YYYY-MM-DD\",\"title\":\"\",\"seoTitle\":\"≤60 chars\",\"description\":\"140-155 chars\",\"lang\":\"en|ar\",\"cover\":\"\",\"bodyHtml\":\"<h2>…</h2><p>…</p>\"}} ],\n"
+        . "              {\"path\":\"<content root>/posts/<new-slug>.json\",\"op\":\"create_post\",\"json\":{\"slug\":\"\",\"date\":\"YYYY-MM-DD\",\"lang\":\"en\",\"title\":\"English title\",\"seoTitle\":\"≤60 chars\",\"description\":\"140-155 chars\",\"bodyHtml\":\"<h2>…</h2><p>…</p>\",\"ar\":{\"title\":\"\",\"seoTitle\":\"\",\"description\":\"\",\"bodyHtml\":\"<h2>…</h2><p>…</p>\"}}} ],\n"
         . " \"manual_steps\":[\"things only a person can do, e.g. Google Business Profile, reviews, directories, backlinks\"]}\n\n"
         . "Rules:\n"
         . "- meta: improve the title (≤60 chars) and description (140-155 chars) of pages that rank 4-30 or have many impressions and low clicks, matching the real query wording. Edit en and ar separately (field e.g. seo.title.en, seo.description.ar). Only 'set' on fields that already exist in the file as strings.\n"
-        . "- content: new posts are ALWAYS drafts (the system forces published=false). 900-1500 words of genuinely useful, specific content, structured with h2/h3, internal links to existing pages, a clear call to action. For Gulf markets write natural Gulf-friendly Arabic, not a literal translation. One topic per post; never thin or duplicate content.\n"
+        . "- content: every new post is BILINGUAL and ALWAYS a draft (the system forces published=false). The top-level fields are the ENGLISH article (lang is always \"en\") and the Arabic version goes inside the \"ar\" object, written as its own natural Arabic article (Gulf-friendly when the topic targets the Gulf), not a literal translation. 900-1500 words per language, structured with h2/h3, a clear call to action. Links in the English body start with / (e.g. /contact-us/, /project/zen/, /blog/...); links in the Arabic body start with /ar/ (e.g. /ar/contact-us/). Only link to pages that exist in the file list. Never mention offices or studios outside New Cairo. One topic per post; never thin or duplicate content.\n"
         . "- conversion: pages with traffic but weak engagement or no contact clicks: propose text changes to existing string fields (headline, CTA wording).\n"
         . "- technical / offsite: no file changes needed unless a text field fits; put the work in manual_steps with concrete, ordered instructions.\n"
         . "- Never touch code, design, URLs or slugs of existing pages. Keep brand tone: confident, clear, no hype.\n"
@@ -227,9 +227,13 @@ function seoRun(PDO $pdo, $by, $jobFile = null) {
             $path = seoSafePath($ch['path'] ?? '', $root); if (!$path) continue;
             if (($ch['op'] ?? '') === 'create_post') {
                 if (!preg_match('#/posts/[a-z0-9\-]+\.json$#', $path) || in_array($path, $ctx['content_files'], true)) continue;
-                $j = (array)($ch['json'] ?? []); if (empty($j['title']) || empty($j['bodyHtml'])) continue;
-                foreach (['title', 'seoTitle', 'description', 'bodyHtml'] as $k) if (isset($j[$k]) && seoCleanText($j[$k]) === null) continue 2;
-                $j['slug'] = basename($path, '.json'); $j['published'] = false; $j['date'] = $j['date'] ?? date('Y-m-d'); $j['cover'] = $j['cover'] ?? ''; $j['lang'] = ($j['lang'] ?? 'en') === 'ar' ? 'ar' : 'en';
+                $j = (array)($ch['json'] ?? []); $ar = (array)($j['ar'] ?? []);
+                if (empty($j['title']) || empty($j['bodyHtml']) || empty($ar['title']) || empty($ar['bodyHtml'])) continue;   // both languages are required
+                foreach (['title', 'seoTitle', 'description', 'bodyHtml'] as $k) { if (isset($j[$k]) && seoCleanText($j[$k]) === null) continue 2; if (isset($ar[$k]) && seoCleanText($ar[$k]) === null) continue 2; }
+                $post = ['slug' => basename($path, '.json'), 'published' => false, 'date' => $j['date'] ?? date('Y-m-d'), 'cover' => '', 'lang' => 'en',
+                    'title' => $j['title'], 'seoTitle' => $j['seoTitle'] ?? '', 'description' => $j['description'] ?? '', 'bodyHtml' => $j['bodyHtml'],
+                    'ar' => ['title' => $ar['title'], 'seoTitle' => $ar['seoTitle'] ?? '', 'description' => $ar['description'] ?? '', 'bodyHtml' => $ar['bodyHtml']]];
+                $j = $post;
                 $changes[] = ['path' => $path, 'op' => 'create_post', 'json' => $j];
             } elseif (($ch['op'] ?? '') === 'set' && in_array($path, $ctx['content_files'], true)) {
                 $field = (string)($ch['field'] ?? ''); $after = seoCleanText($ch['after'] ?? ''); if ($field === '' || $after === null || $after === '') continue;
@@ -272,7 +276,8 @@ function seoApprove(PDO $pdo, $id, $by, $onlySafe = false) {
         if ($list[0]['op'] === 'create_post') {
             if ($cur) { $err = "A post already exists at $path"; break; }
             $json = $list[0]['json']; $json['published'] = false;
-            $content = json_encode($json, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n"; $msg = 'SEO draft post: ' . ($json['title'] ?? $path);
+            if (empty($json['ar']['title']) || empty($json['ar']['bodyHtml']) || ($json['lang'] ?? 'en') !== 'en') { $err = 'This draft uses the old single-language format — reject it and run the agent again.'; break; }
+            $content = seoEncode($json, ''); $msg = 'SEO draft post: ' . ($json['title'] ?? $path);
         } else {
             if (!$cur) { $err = "File not found: $path"; break; }
             $unchanged = 0;
@@ -395,7 +400,7 @@ case 'save_changes': {
         if (!isset($cur[$i])) continue; $clean = seoCleanText(is_array($txt) ? '' : $txt); if ($clean === null) gOut(400, ['error' => 'Scripts are not allowed']);
         if ($cur[$i]['op'] === 'set') $cur[$i]['after'] = $clean;
     }
-    foreach ((array)($b['post_edits'] ?? []) as $i => $p) if (isset($cur[$i]) && $cur[$i]['op'] === 'create_post' && is_array($p)) foreach (['title', 'seoTitle', 'description'] as $k) if (isset($p[$k]) && seoCleanText($p[$k]) !== null) $cur[$i]['json'][$k] = $p[$k];
+    foreach ((array)($b['post_edits'] ?? []) as $i => $p) if (isset($cur[$i]) && $cur[$i]['op'] === 'create_post' && is_array($p)) foreach (['title', 'seoTitle', 'description'] as $k) { if (isset($p[$k]) && seoCleanText($p[$k]) !== null) $cur[$i]['json'][$k] = $p[$k]; if (isset($p['ar_' . $k]) && seoCleanText($p['ar_' . $k]) !== null) $cur[$i]['json']['ar'][$k] = $p['ar_' . $k]; }
     $pdo->prepare("UPDATE seo_suggestions SET changes=? WHERE id=?")->execute([json_encode($cur, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $id]);
     gOut(200, ['ok' => true]);
 }
