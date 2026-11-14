@@ -33914,6 +33914,58 @@ function WebsiteLeads({setPage}) {
     </div>);
 }
 
+
+// Files for the website repo chat: uploaded to a separate Git branch ("inbox"), not kept on this server and never published.
+function WebsiteFiles() {
+  const [items,setItems]=useState(null); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false); const [log,setLog]=useState([]); const [over,setOver]=useState(false); const [info,setInfo]=useState(null);
+  const load=()=>wApi.get("inbox_list").then(r=>{ if(r.connected===false) setErr(r.error); else { setItems(r.items||[]); setInfo({repo:r.repo,branch:r.branch}); setErr(""); } }).catch(e=>setErr(e.message));
+  useEffect(()=>{load();},[]);
+  const fmtSize=n=>n>1048576?(n/1048576).toFixed(1)+" MB":Math.max(1,Math.round(n/1024))+" KB";
+  const readB64=f=>new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(String(fr.result).split(",")[1]||""); fr.onerror=()=>rej(new Error("Could not read the file")); fr.readAsDataURL(f); });
+  const upload=async files=>{
+    const list=[...files]; if(!list.length) return; setBusy(true);
+    for(const f of list){
+      const id=f.name+Date.now(); setLog(l=>[{id,name:f.name,st:"uploading"},...l]);
+      try{
+        if(f.size>22*1024*1024) throw new Error("Too large (max about 22 MB)");
+        const b64=await readB64(f); const r=await wApi.post("inbox_upload",{name:f.name,base64:b64});
+        setLog(l=>l.map(x=>x.id===id?{...x,st:"done",path:r.path}:x));
+      }catch(e){ setLog(l=>l.map(x=>x.id===id?{...x,st:"error",msg:e.message}:x)); }
+    }
+    setBusy(false); load();
+  };
+  const copy=t=>{ try{ navigator.clipboard.writeText(t); }catch(e){} };
+  const del=async p=>{ if(!confirm("Delete this file from the inbox?")) return; try{ await wApi.post("inbox_delete",{path:p}); load(); }catch(e){ alert(e.message); } };
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{...wCard,display:"flex",flexDirection:"column",gap:10}}>
+        <p style={{fontWeight:800,fontSize:15}}>Files for the website</p>
+        <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>Upload photos, videos or documents here, then tell the website chat to use them. They're stored in your website's GitHub repository on a separate <b>inbox</b> branch, <b>not on the SocialFlow server</b>, and nothing is published until the website chat moves a file into the site.</p>
+        <label onDragOver={e=>{e.preventDefault();setOver(true);}} onDragLeave={()=>setOver(false)} onDrop={e=>{e.preventDefault();setOver(false);upload(e.dataTransfer.files);}}
+          style={{border:`2px dashed ${over?"var(--accent)":"var(--border2)"}`,background:over?"var(--accent)10":"var(--surface2)",borderRadius:14,padding:"26px 14px",textAlign:"center",cursor:"pointer",fontSize:13,color:"var(--text2)"}}>
+          {busy?"Uploading…":"Drop files here, or tap to choose"}
+          <input type="file" multiple hidden disabled={busy} onChange={e=>{ upload(e.target.files); e.target.value=""; }}/>
+          <div style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Images, video (mp4, mov, webm), PDF, Office files, zip · up to about 22 MB each</div>
+        </label>
+        {log.length>0&&<div style={{display:"flex",flexDirection:"column",gap:4}}>{log.slice(0,8).map(x=><div key={x.id} style={{fontSize:12,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <span>{x.st==="done"?"✅":x.st==="error"?"⚠️":"⏳"}</span><b>{x.name}</b>
+          {x.st==="done"&&<button onClick={()=>copy(x.path)} style={{fontSize:11,color:"var(--accent)",fontWeight:700}}>Copy path</button>}
+          {x.st==="error"&&<span style={{color:"#dc2626"}}>{x.msg}</span>}</div>)}</div>}
+      </div>
+      <div style={{...wCard,display:"flex",flexDirection:"column",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}><p style={{fontWeight:800,fontSize:14,flex:1}}>In the inbox{items?` (${items.length})`:""}</p><button style={wBtn(false)} onClick={load}>Refresh</button></div>
+        {err&&<p style={{fontSize:12,color:"#dc2626"}}>{err}</p>}
+        {items===null&&!err?<Spinner size={16}/>:items&&items.length===0?<p style={{fontSize:12,color:"var(--text3)"}}>No files yet.</p>:
+        (items||[]).map(it=><div key={it.path} style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",padding:"8px 10px",border:"1px solid var(--border)",borderRadius:10,fontSize:12}}>
+          <div style={{flex:"1 1 240px",minWidth:0}}><a href={it.url} target="_blank" rel="noreferrer" style={{fontWeight:700,color:"var(--text)",display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.path.split("/").pop()}</a><span style={{color:"var(--text3)"}}>{it.path.split("/")[1]} · {fmtSize(it.size)}</span></div>
+          <button onClick={()=>copy(it.path)} style={wBtn(false)}>Copy path</button>
+          <a href={it.url} target="_blank" rel="noreferrer" style={{...wBtn(false),textDecoration:"none"}}>Open ↗</a>
+          <button onClick={()=>del(it.path)} style={{...wBtn(false),color:"#dc2626"}}>Delete</button></div>)}
+        {info&&<div style={{fontSize:11,color:"var(--text3)",lineHeight:1.6,borderTop:"1px solid var(--border)",paddingTop:8}}>To use a file, tell the website chat: <i>“Use the file inbox/… from the <b>inbox</b> branch of {info.repo} on the page … (fetch that branch, copy the file into the site, then delete it from the inbox).”</i> “Open” needs you to be signed in to GitHub.</div>}
+      </div>
+    </div>);
+}
+
 function WebsiteSetup() {
   const [st, setSt] = useState(null);
   useEffect(()=>{ wApi.get("status").then(setSt).catch(e=>setSt({connected:false,error:e.message})); },[]);
@@ -33959,7 +34011,7 @@ function WebsitePage({setPage}) {
   const [root, setRoot] = useState("src/content");
   useEffect(()=>{ try{ localStorage.setItem("sf_website_tab",tab); }catch(e){} },[tab]);
   useEffect(()=>{ wApi.get("status").then(s=>{ if(s.root!==undefined) setRoot(s.root); }).catch(()=>{}); },[]);
-  const tabs = [["overview","Overview"],["projects","Projects"],["insights","Insights"],["pages","Pages & SEO"],["leads","Leads"],["seo","SEO agent"],["setup","Setup"]];
+  const tabs = [["overview","Overview"],["projects","Projects"],["insights","Insights"],["pages","Pages & SEO"],["leads","Leads"],["seo","SEO agent"],["files","Files"],["setup","Setup"]];
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
       <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
@@ -33978,6 +34030,7 @@ function WebsitePage({setPage}) {
       {tab==="pages"&&<WebsitePages/>}
       {tab==="leads"&&<WebsiteLeads setPage={setPage}/>}
       {tab==="seo"&&<SeoAgentTab/>}
+      {tab==="files"&&<WebsiteFiles/>}
       {tab==="setup"&&<WebsiteSetup/>}
     </div>);
 }

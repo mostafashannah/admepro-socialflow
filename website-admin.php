@@ -226,4 +226,53 @@ if (in_array($action, ['put', 'upload'], true)) {
     wOut(200, ['ok' => true, 'sha' => $r['content']['sha'] ?? null, 'commit' => substr($r['commit']['sha'] ?? '', 0, 7)]);
 }
 
+/* ─────────────────────────── Inbox: files for the website repo chat ───────────────────────────
+ * Files go straight from the browser through this script to GitHub, onto a separate branch ("inbox").
+ * Nothing is saved on this server, nothing is published, and the site build never sees them (it only builds main).   */
+if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete'], true)) {
+    if (!$REPO || !$TOKEN) wOut(200, ['connected' => false, 'error' => 'GitHub is not set up yet (see the Setup tab).']);
+    $IB = 'inbox'; $who = $s['email'] ?? 'admin';
+    $ibUrl = fn($p) => "https://github.com/$REPO/blob/$IB/" . implode('/', array_map('rawurlencode', explode('/', $p)));
+    if ($action === 'inbox_list') {
+        [$c, $r] = gh('GET', "/repos/$REPO/git/trees/$IB?recursive=1", $TOKEN);
+        if ($c === 404) wOut(200, ['items' => [], 'repo' => $REPO]);
+        if ($c !== 200) wOut(502, ['error' => "GitHub HTTP $c"]);
+        $items = [];
+        foreach ($r['tree'] ?? [] as $t) if ($t['type'] === 'blob' && strpos($t['path'], 'inbox/') === 0) $items[] = ['path' => $t['path'], 'size' => (int)($t['size'] ?? 0), 'url' => $ibUrl($t['path'])];
+        usort($items, fn($a, $b) => strcmp($b['path'], $a['path']));
+        wOut(200, ['items' => array_slice($items, 0, 300), 'repo' => $REPO, 'branch' => $IB]);
+    }
+    $in = json_decode((string)file_get_contents('php://input'), true) ?: [];
+    if ($action === 'inbox_delete') {
+        $p = trim((string)($in['path'] ?? ''), '/');
+        if (strpos($p, 'inbox/') !== 0 || strpos($p, '..') !== false) wOut(400, ['error' => 'Path not allowed']);
+        [$c0, $r0] = gh('GET', "/repos/$REPO/contents/" . $ghPath($p) . "?ref=$IB", $TOKEN);
+        if ($c0 !== 200) wOut(404, ['error' => 'File not found']);
+        [$c, $r] = gh('DELETE', "/repos/$REPO/contents/" . $ghPath($p), $TOKEN, ['message' => 'Remove ' . basename($p) . ' from inbox', 'sha' => $r0['sha'], 'branch' => $IB]);
+        if ($c !== 200) wOut(502, ['error' => "GitHub HTTP $c"]);
+        wOut(200, ['ok' => true]);
+    }
+    // upload
+    $name = preg_replace('/[^A-Za-z0-9._\- ]+/u', '-', basename((string)($in['name'] ?? '')));
+    $name = trim(preg_replace('/\s+/', '-', $name), '.-');
+    if ($name === '' || !preg_match('/\.(jpe?g|png|webp|gif|svg|mp4|mov|webm|pdf|docx?|xlsx?|pptx?|txt|csv|json|zip|md)$/i', $name)) wOut(400, ['error' => 'This file type is not allowed here (images, video, PDF, Office files, text and zip are).']);
+    $b64 = preg_replace('#^data:[^;]*;base64,#', '', (string)($in['base64'] ?? ''));
+    if ($b64 === '') wOut(400, ['error' => 'Empty file']);
+    if (strlen($b64) > 30 * 1024 * 1024) wOut(400, ['error' => 'File too large (max about 22 MB). Compress it, or send a link instead.']);
+    [$cr, $rr] = gh('GET', "/repos/$REPO/git/ref/heads/$IB", $TOKEN);
+    if ($cr === 404) {       // first time: create the inbox branch from main
+        [$cm, $rm] = gh('GET', "/repos/$REPO/git/ref/heads/$BRANCH", $TOKEN);
+        if ($cm !== 200) wOut(502, ['error' => "Could not read the $BRANCH branch (HTTP $cm)"]);
+        [$cc, $rc] = gh('POST', "/repos/$REPO/git/refs", $TOKEN, ['ref' => "refs/heads/$IB", 'sha' => $rm['object']['sha']]);
+        if ($cc !== 201) wOut(502, ['error' => "Could not create the inbox branch (HTTP $cc) — the token needs Contents: read and write. " . ($rc['message'] ?? '')]);
+    } elseif ($cr !== 200) wOut(502, ['error' => "GitHub HTTP $cr"]);
+    $path = 'inbox/' . (new DateTime('now', new DateTimeZone('Africa/Cairo')))->format('Y-m-d') . '/' . $name;
+    [$ce] = gh('GET', "/repos/$REPO/contents/" . $ghPath($path) . "?ref=$IB", $TOKEN);
+    if ($ce === 200) $path = preg_replace('/(\.[^.]+)$/', '-' . date('His') . '$1', $path);
+    [$c, $r] = gh('PUT', "/repos/$REPO/contents/" . $ghPath($path), $TOKEN, ['message' => "Inbox: $name\n\nUploaded from the SocialFlow Website tab by $who", 'content' => $b64, 'branch' => $IB]);
+    if ($c !== 200 && $c !== 201) wOut(502, ['error' => "GitHub HTTP $c: " . ($r['message'] ?? '')]);
+    try { $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), 'website_inbox_upload', 'website', ?, 'success', ?)")->execute([$path, $who]); } catch (Throwable $e) {}
+    wOut(200, ['ok' => true, 'path' => $path, 'url' => $ibUrl($path), 'size' => (int)($r['content']['size'] ?? 0)]);
+}
+
 wOut(400, ['error' => 'Unknown action']);
