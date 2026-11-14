@@ -33931,9 +33931,18 @@ function WebsiteFiles() {
         let r;
         if(f.size<=22*1024*1024){ const b64=await readB64(f); r=await wApi.post("inbox_upload",{name:f.name,base64:b64}); }
         else { // big file: sent as-is (not base64) and streamed on to GitHub as a release file
-          const resp=await fetch(window.location.origin+"/website-admin.php?action=inbox_big&name="+encodeURIComponent(f.name),{method:"POST",headers:{"Content-Type":f.type||"application/octet-stream"},body:f});
-          r=await resp.json().catch(()=>({error:"The server rejected the upload — its upload limit is probably still low (see the note below)."}));
-          if(!resp.ok) throw new Error(r.error||("HTTP "+resp.status));
+          r=await new Promise((res,rej)=>{
+            const xhr=new XMLHttpRequest(); const t0=Date.now();
+            xhr.open("POST",window.location.origin+"/website-admin.php?action=inbox_big&name="+encodeURIComponent(f.name));
+            xhr.setRequestHeader("Content-Type",f.type||"application/octet-stream");
+            try{ const tok=sfSession.get(); if(tok) xhr.setRequestHeader("X-SF-Session",tok); xhr.setRequestHeader("apikey",SB_KEY); }catch(e){}
+            xhr.upload.onprogress=ev=>{ if(!ev.lengthComputable) return; const pct=Math.round(ev.loaded/ev.total*100); const secs=(Date.now()-t0)/1000; const speed=ev.loaded/Math.max(secs,0.5); const left=Math.max(0,Math.round((ev.total-ev.loaded)/speed));
+              setLog(l=>l.map(x=>x.id===id?{...x,pct,eta:left,mb:(ev.loaded/1048576).toFixed(0)+" / "+(ev.total/1048576).toFixed(0)+" MB"}:x)); };
+            xhr.onload=()=>{ let j=null; try{ j=JSON.parse(xhr.responseText); }catch(e){} if(xhr.status>=200&&xhr.status<300&&j) res(j); else rej(new Error((j&&j.error)||(xhr.status===413?"The server upload limit is still too low (nginx).":"The server rejected the upload (HTTP "+xhr.status+")."))); };
+            xhr.onerror=()=>rej(new Error("The connection dropped during the upload. Try again."));
+            xhr.ontimeout=()=>rej(new Error("The upload timed out."));
+            xhr.send(f);
+          });
         }
         setLog(l=>l.map(x=>x.id===id?{...x,st:"done",path:r.path,cmd:r.cmd}:x));
       }catch(e){ setLog(l=>l.map(x=>x.id===id?{...x,st:"error",msg:e.message}:x)); }
@@ -33949,13 +33958,15 @@ function WebsiteFiles() {
         <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>Upload photos, videos or documents here, then tell the website chat to use them. They're stored in your website's GitHub repository on a separate <b>inbox</b> branch, <b>not on the SocialFlow server</b>, and nothing is published until the website chat moves a file into the site.</p>
         <label onDragOver={e=>{e.preventDefault();setOver(true);}} onDragLeave={()=>setOver(false)} onDrop={e=>{e.preventDefault();setOver(false);upload(e.dataTransfer.files);}}
           style={{border:`2px dashed ${over?"var(--accent)":"var(--border2)"}`,background:over?"var(--accent)10":"var(--surface2)",borderRadius:14,padding:"26px 14px",textAlign:"center",cursor:"pointer",fontSize:13,color:"var(--text2)"}}>
-          {busy?"Uploading…":"Drop files here, or tap to choose"}
+          {busy?("Uploading…"+((log.find(x=>x.st==="uploading"&&x.pct!=null)||{}).pct!=null?" "+log.find(x=>x.st==="uploading"&&x.pct!=null).pct+"%":"")):"Drop files here, or tap to choose"}
           <input type="file" multiple hidden disabled={busy} onChange={e=>{ upload(e.target.files); e.target.value=""; }}/>
           <div style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Images, video (mp4, mov, webm), PDF, Office files, zip · up to 200 MB each</div>
         </label>
         {log.length>0&&<div style={{display:"flex",flexDirection:"column",gap:4}}>{log.slice(0,8).map(x=><div key={x.id} style={{fontSize:12,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
           <span>{x.st==="done"?"✅":x.st==="error"?"⚠️":"⏳"}</span><b>{x.name}</b>
-          {x.st==="uploading"&&x.big&&<span style={{color:"var(--text3)"}}>big file — keep this page open, it can take a few minutes</span>}
+          {x.st==="uploading"&&x.big&&<div style={{flexBasis:"100%",display:"flex",flexDirection:"column",gap:4}}>
+            <div style={{height:8,borderRadius:99,background:"var(--surface2)",overflow:"hidden"}}><div style={{width:`${x.pct||0}%`,height:"100%",background:"linear-gradient(90deg,#10b981,#059669)",transition:"width .25s"}}/></div>
+            <span style={{color:"var(--text3)"}}>{x.pct==null?"Starting…":x.pct>=100?"100% — sending to GitHub, almost done…":`${x.pct}% · ${x.mb}${x.eta!=null?` · about ${x.eta>=60?Math.ceil(x.eta/60)+" min":x.eta+" s"} left`:""}`} · keep this page open</span></div>}
           {x.st==="done"&&<button onClick={()=>copy(x.cmd||x.path)} style={{fontSize:11,color:"var(--accent)",fontWeight:700}}>{x.cmd?"Copy download command":"Copy path"}</button>}
           {x.st==="error"&&<span style={{color:"#dc2626"}}>{x.msg}</span>}</div>)}</div>}
       </div>
