@@ -11601,6 +11601,9 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
         </div>
       )}
 
+      {/* Website summary — above Finance */}
+      {viewer?.role==="admin"&&<WebsiteDashSummary setPage={setPage}/>}
+
       {/* Finance */}
       {!isDirector&&<div style={card}>
         {head("Finance", `${today.toLocaleDateString(undefined,{month:"long",year:"numeric"})} · cash actually received and spent`, Icons.wallet, "linear-gradient(135deg,#10b981,#0ea5e9)", link("Open Finance","finance"))}
@@ -12007,7 +12010,6 @@ No markdown, no explanation.`;
 
       {/* ════ OVERVIEW TAB ════ */}
       {tab==="overview"&&(isAdmin||currentUser?.role==="account_director")&&<AdminControlCenter viewer={currentUser} data={{...data, appSettings}} setPage={setPage} onDecideLeaveRequest={onDecideLeaveRequest} onOpenPost={onOpenPost} onlineEmails={liveMemberEmails} onlineClients={liveClients}/>}
-      {tab==="overview"&&isAdmin&&<div style={{marginTop:16}}><WebsiteDashSummary setPage={setPage}/></div>}
       {!isAdmin&&currentUser?.role!=="account_director"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <LeaderApprovals posts={data.posts} team={team} currentUser={currentUser} onOpen={onOpenPost}/>
