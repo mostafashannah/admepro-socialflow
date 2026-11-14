@@ -11386,8 +11386,35 @@ function TimeBreakdown({rows}) {
     </table></div>
   );
 }
+// A dashboard section the admin can rearrange: drag the ⠿ handle (mouse) or tap ▲▼ (touch). Renders nothing when it has no content.
+function AdmSlot({id,idx,last,drag,over,setDrag,setOver,onMove,onDrop,children}) {
+  const ref = useRef(null);
+  if(React.Children.toArray(children).length===0) return null;
+  const btn = {width:22,height:22,borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text3)",fontSize:11,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",padding:0};
+  return (
+    <div ref={ref} style={{order:idx,position:"relative",display:"flex",flexDirection:"column",gap:16,opacity:drag===id?0.45:1,outline:over===id&&drag&&drag!==id?"2px dashed var(--accent)":"none",outlineOffset:4,borderRadius:16,transition:"opacity .12s"}}
+      onDragOver={e=>{ if(drag){ e.preventDefault(); if(over!==id) setOver(id); } }}
+      onDrop={e=>{ e.preventDefault(); onDrop(drag,id); setDrag(null); setOver(null); }}>
+      <div style={{display:"flex",justifyContent:"flex-end",gap:4,height:22,marginBottom:-8,opacity:.5}} onMouseEnter={e=>e.currentTarget.style.opacity=1} onMouseLeave={e=>e.currentTarget.style.opacity=.55}>
+        <button title="Move up" onClick={()=>onMove(id,-1)} disabled={idx===0} style={{...btn,opacity:idx===0?.35:1}}>▲</button>
+        <button title="Move down" onClick={()=>onMove(id,1)} disabled={idx===last} style={{...btn,opacity:idx===last?.35:1}}>▼</button>
+        <span title="Drag to rearrange" draggable onDragStart={e=>{ try{ e.dataTransfer.effectAllowed="move"; e.dataTransfer.setData("text/plain",id); if(ref.current) e.dataTransfer.setDragImage(ref.current,24,24); }catch(err){} setDrag(id); }} onDragEnd={()=>{ setDrag(null); setOver(null); }} style={{...btn,cursor:"grab",fontSize:14}}>⠿</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, onlineEmails, onlineClients=[], viewer=null}) {
   const isDirector = viewer?.role==="account_director"; // same centre, no finance, only her own approvals
+  // Sections can be rearranged (drag the ⠿ handle, or use ▲▼ on touch screens); the order is remembered on this device.
+  const ADM_DEFAULT = ["actions","website","finance","today","online","team","pipeline"];
+  const [admOrder,setAdmOrder] = useState(()=>{ try{ const v=JSON.parse(localStorage.getItem("sf_admin_dash_order")||"null"); if(Array.isArray(v)) return [...v.filter(x=>ADM_DEFAULT.includes(x)),...ADM_DEFAULT.filter(x=>!v.includes(x))]; }catch(e){} return ADM_DEFAULT; });
+  const [admDrag,setAdmDrag] = useState(null); const [admOver,setAdmOver] = useState(null);
+  const saveOrder = o => { setAdmOrder(o); try{ localStorage.setItem("sf_admin_dash_order",JSON.stringify(o)); }catch(e){} };
+  const moveSlot = (id,dir) => { const a=[...admOrder]; const k=a.indexOf(id); const t=k+dir; if(t<0||t>=a.length) return; [a[k],a[t]]=[a[t],a[k]]; saveOrder(a); };
+  const dropSlot = (dragId,targetId) => { if(!dragId||dragId===targetId) return; const a=admOrder.filter(x=>x!==dragId); a.splice(a.indexOf(targetId),0,dragId); saveOrder(a); };
+  const slot = (id) => ({id, idx:admOrder.indexOf(id), last:admOrder.length-1, drag:admDrag, over:admOver, setDrag:setAdmDrag, setOver:setAdmOver, onMove:moveSlot, onDrop:dropSlot});
   const {isMobile} = useResponsive();
   const posts = data.posts||[], team = data.team||[], clients = (data.clients||[]).filter(c=>c.status!=="hidden"&&c.status!=="archived");
   const invoices = data.invoices||[], payments = data.payments||[], subs = data.subscriptions||[], subPays = data.subscriptionPayments||[], expenses = data.expenses||[];
@@ -11540,7 +11567,7 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
       {/* Needs your action */}
-      {actions.length>0 ? (
+      <AdmSlot {...slot("actions")}>{actions.length>0 ? (
         <FoldCard id="adm_actions" title="Needs your action" sub={`${actions.reduce((a,x)=>a+x.n,0)} things waiting for you · ${actions.map(a=>a.n+" "+a.l).slice(0,4).join(" · ")}`} color="#ef4444" defaultOpen>
         <div style={{...card,borderLeft:"4px solid #ef4444"}}>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -11584,13 +11611,13 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
         <div style={{...card,display:"flex",alignItems:"center",gap:10,borderLeft:"4px solid #10b981"}}>
           <Ico d={Icons.check} size={18} stroke="#10b981"/><p style={{fontSize:14,fontWeight:700}}>All clear — nothing waiting for your decision.</p>
         </div>
-      )}
+      )}</AdmSlot>
 
       {/* Website summary — above Finance */}
-      {viewer?.role==="admin"&&<WebsiteDashSummary setPage={setPage}/>}
+      <AdmSlot {...slot("website")}>{viewer?.role==="admin"&&<WebsiteDashSummary setPage={setPage}/>}</AdmSlot>
 
       {/* Finance */}
-      {!isDirector&&<div style={card}>
+      <AdmSlot {...slot("finance")}>{!isDirector&&<div style={card}>
         {head("Finance", `${today.toLocaleDateString(undefined,{month:"long",year:"numeric"})} · cash actually received and spent`, Icons.wallet, "linear-gradient(135deg,#10b981,#0ea5e9)", link("Open Finance","finance"))}
         <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(auto-fit,minmax(170px,1fr))",gap:12}}>
           {[
@@ -11635,10 +11662,10 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
             </div>}
           </div>
         </div>
-      </div>}
+      </div>}</AdmSlot>
 
       {/* Today */}
-      <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(auto-fit,minmax(160px,1fr))",gap:12}}>
+      <AdmSlot {...slot("today")}><div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(auto-fit,minmax(160px,1fr))",gap:12}}>
         {tile("Due today", dueToday.length, `${dueToday.filter(p=>["approved","scheduled","published","client_approval"].includes(p.stage)).length} already delivered`, "#6366f1", Icons.calendar, ()=>setPage("my_timeline"))}
         {tile("Finished today", doneToday, "task stages completed", "#10b981", Icons.check)}
         {tile("Delayed now", delayed, delayed?"open tasks past due":"everyone on time", delayed?"#ef4444":"#10b981", Icons.alert, ()=>setPage("my_timeline"))}
@@ -11651,10 +11678,10 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
           {head("Team time today", "Worked = timer time · Delayed = open tasks past due · Actual = both", Icons.clock, "", null)}
           <TimeBreakdown rows={[{label:"Team",n:workingToday.length,worked:teamSecs,delayed:teamDly,names:workingToday.map(m=>m.name).join(", ")},{label:"Without account",n:prodToday.length,worked:prodSecs,delayed:prodDly,names:prodToday.map(m=>m.name).join(", ")}]}/>
         </div>
-      )}
+      )}</AdmSlot>
 
       {/* Online now — real presence (last_seen heartbeat), team + client portal */}
-      {(()=>{ const onTeam = team.filter(m=>m.status==="active" && onlineEmails && onlineEmails.has(m.email)); return (
+      <AdmSlot {...slot("online")}>{(()=>{ const onTeam = team.filter(m=>m.status==="active" && onlineEmails && onlineEmails.has(m.email)); return (
         <div style={card}>
           {head("Online now", `${onTeam.length} team member${onTeam.length!==1?"s":""} · ${onlineClients.length} client${onlineClients.length!==1?"s":""} on the portal`, Icons.globe, "", null)}
           <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:16}}>
@@ -11675,9 +11702,9 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
                 </span>))}</div>}
             </div>
           </div>
-        </div>); })()}
+        </div>); })()}</AdmSlot>
 
-      <div style={{display:"grid",gridTemplateColumns:G,gap:16}}>
+      <AdmSlot {...slot("team")}><div style={{display:"grid",gridTemplateColumns:G,gap:16}}>
         {/* Team right now */}
         <div style={card}>
           {head("Team right now", `${teamNow.filter(t=>t.working).length} working on a task · ${teamNow.filter(t=>t.delayed).length} with delays`, Icons.users, "linear-gradient(135deg,#6366f1,#8b5cf6)", link("Timeline","my_timeline"))}
@@ -11703,9 +11730,9 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
               </div>); })}
           </div>
         </div>
-      </div>
+      </div></AdmSlot>
 
-      <div style={{display:"grid",gridTemplateColumns:G,gap:16}}>
+      <AdmSlot {...slot("pipeline")}><div style={{display:"grid",gridTemplateColumns:G,gap:16}}>
         {/* Pipeline */}
         <div style={card}>
           {head("Pipeline", `${pipe.reduce((a,p)=>a+p.n,0)} in progress · ${pipe.reduce((a,p)=>a+p.od,0)} overdue`, Icons.flow, "linear-gradient(135deg,#f97316,#ef4444)", link("All tasks","tasks"))}
@@ -11733,7 +11760,8 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
               </div>))}
           </div>
         </div>
-      </div>
+      </div></AdmSlot>
+      {admOrder.join()!==ADM_DEFAULT.join()&&<button onClick={()=>saveOrder(ADM_DEFAULT)} style={{order:99,alignSelf:"flex-end",fontSize:11,color:"var(--text3)"}}>Reset dashboard order</button>}
     </div>
   );
 }
