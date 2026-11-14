@@ -229,7 +229,7 @@ if (in_array($action, ['put', 'upload'], true)) {
 /* ─────────────────────────── Inbox: files for the website repo chat ───────────────────────────
  * Files go straight from the browser through this script to GitHub, onto a separate branch ("inbox").
  * Nothing is saved on this server, nothing is published, and the site build never sees them (it only builds main).   */
-if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete'], true)) {
+if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big'], true)) {
     if (!$REPO || !$TOKEN) wOut(200, ['connected' => false, 'error' => 'GitHub is not set up yet (see the Setup tab).']);
     $IB = 'inbox'; $who = $s['email'] ?? 'admin';
     $ibUrl = fn($p) => "https://github.com/$REPO/blob/$IB/" . implode('/', array_map('rawurlencode', explode('/', $p)));
