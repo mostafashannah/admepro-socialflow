@@ -33976,7 +33976,7 @@ const gPill = (on)=>({padding:"6px 12px",borderRadius:999,fontSize:12,fontWeight
 const gPct = (a,b)=> b? Math.round((a||0)*100/b)+"%" : "—";
 const G_STATUS_COLORS = {draft:"#6b7280",scheduled:"#2563eb",sending:"#d97706",sent:"#16a34a",cancelled:"#9ca3af",new:"#2563eb",approved:"#7c3aed",contacted:"#d97706",replied:"#0891b2",won:"#16a34a",rejected:"#9ca3af"};
 const GBadge = ({s})=><span style={{fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:999,background:(G_STATUS_COLORS[s]||"#6b7280")+"1f",color:G_STATUS_COLORS[s]||"#6b7280",textTransform:"capitalize"}}>{s}</span>;
-const GSetupNote = ({err})=> err ? <div style={{...gCard,borderColor:"#f59e0b",background:"#f59e0b14",fontSize:13}}>{err}{/migration/i.test(err)&&<div style={{marginTop:6,fontFamily:"monospace",fontSize:12}}>mysql -u root -p socialflow &lt; /var/www/socialflow/migration-marketing.sql</div>}</div> : null;
+const GSetupNote = ({err})=> err ? <div style={{...gCard,borderColor:"#f59e0b",background:"#f59e0b14",fontSize:13}}>{err}{/migration/i.test(err)&&<div style={{marginTop:6,fontFamily:"monospace",fontSize:12}}>mysql -u root -p socialflow &lt; /var/www/socialflow/{(err.match(/migration-[a-z-]+\.sql/i)||["migration-marketing.sql"])[0]}</div>}</div> : null;
 
 function MarketingPage() {
   const [tab, setTab] = useState(()=>{ try{ return localStorage.getItem("sf_mkt_tab")||"campaigns"; }catch(e){ return "campaigns"; } });
@@ -34444,6 +34444,15 @@ function SeoAgentTab() {
 }
 
 
+
+// Common searches in this industry (my own selection, not measured volumes) — add them, then watch which ones start ranking.
+const SEO_KEYWORD_SETS = {
+  brand:{label:"Your brand",list:["admepro","admepro egypt","admepro agency"]},
+  egypt_en:{label:"Egypt (English)",list:["marketing agency in egypt","digital marketing agency egypt","advertising agency egypt","advertising agency cairo","social media agency egypt","social media management egypt","branding agency egypt","branding agency cairo","video production cairo","video production company egypt","creative agency cairo","performance marketing agency egypt","seo agency egypt","web design company egypt","content creation agency egypt","graphic design company egypt","real estate marketing egypt","ai marketing agency egypt","digital marketing company new cairo","marketing agency new cairo"]},
+  egypt_ar:{label:"Egypt (Arabic)",list:["شركة تسويق الكتروني في مصر","وكالة تسويق في مصر","شركة دعاية واعلان في مصر","شركة اعلانات في القاهرة","ادارة صفحات السوشيال ميديا","شركة براندنج في مصر","شركة انتاج فيديو في القاهرة","شركة تصميم جرافيك في مصر","وكالة سوشيال ميديا في مصر"]},
+  gulf_en:{label:"Gulf (English)",list:["marketing agency saudi arabia","digital marketing agency riyadh","advertising agency riyadh","branding agency saudi arabia","social media agency saudi arabia","performance marketing agency saudi arabia","marketing agency dubai","digital marketing agency uae","branding agency dubai","video production company dubai","creative agency dubai","marketing agency kuwait","marketing agency qatar","digital marketing agency doha","marketing agency bahrain","marketing agency oman","ai marketing agency gcc","marketing agency gcc"]},
+  gulf_ar:{label:"Gulf (Arabic)",list:["شركة تسويق في السعودية","وكالة تسويق رقمي الرياض","شركة دعاية واعلان في الرياض","شركة براندنج في السعودية","شركة تسويق في دبي","شركة تسويق الكتروني في الكويت","وكالة اعلانات قطر","شركة انتاج فيديو في الرياض"]},
+};
 function SeoRankings() {
   const [d,setD]=useState(null); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false); const [watch,setWatch]=useState(null); const [saved,setSaved]=useState(false);
   const load=()=>seoApi.get("rankings").then(x=>{setD(x);setErr("");setWatch(w=>w===null?x.watch_list:w);}).catch(e=>setErr(e.message));
@@ -34482,7 +34491,11 @@ function SeoRankings() {
       </div>
       <div style={{...wCard,display:"flex",flexDirection:"column",gap:8}}>
         <p style={{fontWeight:800,fontSize:14}}>Keywords you want to rank for</p>
-        <textarea value={watch??""} onChange={e=>setWatch(e.target.value)} rows={4} style={{...wInput,resize:"vertical"}} placeholder={"One per line, e.g.\nmarketing agency in egypt\nadvertising agency cairo\nvideo production cairo\nمكتب تسويق في السعودية"}/>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+          <span style={{fontSize:11,color:"var(--text3)"}}>Add a ready-made list:</span>
+          {Object.entries(SEO_KEYWORD_SETS).map(([k,v])=><button key={k} style={gPill(false)} onClick={()=>setWatch(w=>{ const cur=(w||"").split(/\n+/).map(x=>x.trim()).filter(Boolean); const seen=new Set(cur.map(x=>x.toLowerCase())); return [...cur,...v.list.filter(x=>!seen.has(x.toLowerCase()))].join("\n"); })}>{v.label} ({v.list.length})</button>)}
+        </div>
+        <textarea value={watch??""} onChange={e=>setWatch(e.target.value)} rows={8} style={{...wInput,resize:"vertical"}} placeholder={"One per line, e.g.\nmarketing agency in egypt\nadvertising agency cairo\nvideo production cairo\nمكتب تسويق في السعودية"}/>
         <div style={{display:"flex",gap:8,alignItems:"center"}}><button style={wBtn(true)} onClick={saveWatch}>Save keywords</button>{saved&&<span style={{fontSize:12,color:"#16a34a"}}>Saved</span>}</div>
         {(d?.watch||[]).length>0&&<table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><tbody>{d.watch.map(w=><tr key={w.query} style={{borderTop:"1px solid var(--border)"}}>
           <td style={{padding:"7px 4px",fontWeight:600}} dir="auto">{w.query}</td>

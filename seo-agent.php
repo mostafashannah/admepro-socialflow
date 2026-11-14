@@ -404,7 +404,7 @@ case 'list': {
     $st->execute($in); gOut(200, ['rows' => array_map($row, $st->fetchAll(PDO::FETCH_ASSOC))]);
 }
 case 'snapshot': { [$ok, $n] = seoSnapshot($pdo); gOut($ok ? 200 : 400, $ok ? ['ok' => true, 'count' => $n] : ['error' => $n]); }
-case 'watch': { seoSave($pdo, 'watch', mb_substr(implode("\n", array_slice(array_filter(array_map('trim', preg_split('/[\r\n,]+/', (string)($b['list'] ?? '')))), 0, 40)), 0, 3000)); gOut(200, ['ok' => true]); }
+case 'watch': { seoSave($pdo, 'watch', mb_substr(implode("\n", array_slice(array_filter(array_map('trim', preg_split('/[\r\n,]+/', (string)($b['list'] ?? '')))), 0, 80)), 0, 6000)); gOut(200, ['ok' => true]); }
 case 'rankings': {
     $batches = $pdo->query("SELECT taken_at, COUNT(*) n, SUM(clicks) clicks, SUM(impressions) impressions, SUM(position*impressions)/NULLIF(SUM(impressions),0) avgpos, SUM(position<=10) page1, SUM(position<=3) top3, SUM(position<=20) top20 FROM seo_rank_snapshots GROUP BY taken_at ORDER BY taken_at DESC LIMIT 12")->fetchAll(PDO::FETCH_ASSOC);
     $kw = []; $watch = array_values(array_filter(array_map('trim', explode("\n", seoSetting($pdo, 'watch', '')))));
