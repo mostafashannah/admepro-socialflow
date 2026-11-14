@@ -11541,8 +11541,8 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
     <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
       {/* Needs your action */}
       {actions.length>0 ? (
+        <FoldCard id="adm_actions" title="Needs your action" sub={`${actions.reduce((a,x)=>a+x.n,0)} things waiting for you · ${actions.map(a=>a.n+" "+a.l).slice(0,4).join(" · ")}`} color="#ef4444" defaultOpen>
         <div style={{...card,borderLeft:"4px solid #ef4444"}}>
-          {head("Needs your action", `${actions.reduce((a,x)=>a+x.n,0)} things waiting for you`, Icons.alert, "linear-gradient(135deg,#ef4444,#f59e0b)")}
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             {actions.map((a,i)=>(
               <button key={i} onClick={()=>setOpenAct(o=>o===a.k?null:a.k)} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:10,border:`1px solid ${openAct===a.k?a.c:"var(--border2)"}`,background:openAct===a.k?a.c+"14":"var(--surface2)",color:"var(--text)",cursor:"pointer",fontSize:13,fontWeight:600}}>
@@ -11579,25 +11579,10 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
               </div>))}
           </div>}
         </div>
+        </FoldCard>
       ) : (
         <div style={{...card,display:"flex",alignItems:"center",gap:10,borderLeft:"4px solid #10b981"}}>
           <Ico d={Icons.check} size={18} stroke="#10b981"/><p style={{fontSize:14,fontWeight:700}}>All clear — nothing waiting for your decision.</p>
-        </div>
-      )}
-
-      {/* Today */}
-      <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(auto-fit,minmax(160px,1fr))",gap:12}}>
-        {tile("Due today", dueToday.length, `${dueToday.filter(p=>["approved","scheduled","published","client_approval"].includes(p.stage)).length} already delivered`, "#6366f1", Icons.calendar, ()=>setPage("my_timeline"))}
-        {tile("Finished today", doneToday, "task stages completed", "#10b981", Icons.check)}
-        {tile("Delayed now", delayed, delayed?"open tasks past due":"everyone on time", delayed?"#ef4444":"#10b981", Icons.alert, ()=>setPage("my_timeline"))}
-        {tile("Going live today", liveToday.length, `${liveReady} scheduled / published`, liveToday.length&&liveReady<liveToday.length?"#f59e0b":"#0ea5e9", Icons.send)}
-        {tile("Tracked today", hrsToday.toFixed(1)+"h", "team timer hours", "#8b5cf6", Icons.clock)}
-      </div>
-
-      {!isDirector&&(
-        <div style={card}>
-          {head("Team time today", "Worked = timer time · Delayed = open tasks past due · Actual = both", Icons.clock, "", null)}
-          <TimeBreakdown rows={[{label:"Team",n:workingToday.length,worked:teamSecs,delayed:teamDly,names:workingToday.map(m=>m.name).join(", ")},{label:"Without account",n:prodToday.length,worked:prodSecs,delayed:prodDly,names:prodToday.map(m=>m.name).join(", ")}]}/>
         </div>
       )}
 
@@ -11651,6 +11636,22 @@ function AdminControlCenter({data, setPage, onDecideLeaveRequest, onOpenPost, on
           </div>
         </div>
       </div>}
+
+      {/* Today */}
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(auto-fit,minmax(160px,1fr))",gap:12}}>
+        {tile("Due today", dueToday.length, `${dueToday.filter(p=>["approved","scheduled","published","client_approval"].includes(p.stage)).length} already delivered`, "#6366f1", Icons.calendar, ()=>setPage("my_timeline"))}
+        {tile("Finished today", doneToday, "task stages completed", "#10b981", Icons.check)}
+        {tile("Delayed now", delayed, delayed?"open tasks past due":"everyone on time", delayed?"#ef4444":"#10b981", Icons.alert, ()=>setPage("my_timeline"))}
+        {tile("Going live today", liveToday.length, `${liveReady} scheduled / published`, liveToday.length&&liveReady<liveToday.length?"#f59e0b":"#0ea5e9", Icons.send)}
+        {tile("Tracked today", hrsToday.toFixed(1)+"h", "team timer hours", "#8b5cf6", Icons.clock)}
+      </div>
+
+      {!isDirector&&(
+        <div style={card}>
+          {head("Team time today", "Worked = timer time · Delayed = open tasks past due · Actual = both", Icons.clock, "", null)}
+          <TimeBreakdown rows={[{label:"Team",n:workingToday.length,worked:teamSecs,delayed:teamDly,names:workingToday.map(m=>m.name).join(", ")},{label:"Without account",n:prodToday.length,worked:prodSecs,delayed:prodDly,names:prodToday.map(m=>m.name).join(", ")}]}/>
+        </div>
+      )}
 
       {/* Online now — real presence (last_seen heartbeat), team + client portal */}
       {(()=>{ const onTeam = team.filter(m=>m.status==="active" && onlineEmails && onlineEmails.has(m.email)); return (
