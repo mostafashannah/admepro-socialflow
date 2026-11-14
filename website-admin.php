@@ -229,20 +229,35 @@ if (in_array($action, ['put', 'upload'], true)) {
 /* ─────────────────────────── Inbox: files for the website repo chat ───────────────────────────
  * Files go straight from the browser through this script to GitHub, onto a separate branch ("inbox").
  * Nothing is saved on this server, nothing is published, and the site build never sees them (it only builds main).   */
-if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big'], true)) {
+if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big', 'inbox_raw', 'inbox_thumb_put'], true)) {
     if (!$REPO || !$TOKEN) wOut(200, ['connected' => false, 'error' => 'GitHub is not set up yet (see the Setup tab).']);
     $IB = 'inbox'; $who = $s['email'] ?? 'admin';
     $ibUrl = fn($p) => "https://github.com/$REPO/blob/$IB/" . implode('/', array_map('rawurlencode', explode('/', $p)));
+    // Small preview pictures live in one index file on the inbox branch: {file path or "release:ID": data-URI}.
+    $thGet = function () use ($REPO, $TOKEN, $IB, $ghPath) {
+        [$c, $r] = gh('GET', "/repos/$REPO/contents/inbox/_thumbs.json?ref=$IB", $TOKEN);
+        if ($c !== 200) return [[], null];
+        $raw = base64_decode((string)($r['content'] ?? ''));
+        if ($raw === '' && !empty($r['sha'])) { [$cb, $rb] = gh('GET', "/repos/$REPO/git/blobs/" . $r['sha'], $TOKEN); if ($cb === 200) $raw = base64_decode((string)($rb['content'] ?? '')); }
+        $j = json_decode($raw, true);
+        return [is_array($j) ? $j : [], $r['sha'] ?? null];
+    };
+    $thPut = function (array $idx, $sha, $msg) use ($REPO, $TOKEN, $IB, $ghPath) {
+        $body = ['message' => $msg, 'content' => base64_encode(json_encode($idx, JSON_UNESCAPED_SLASHES)), 'branch' => $IB]; if ($sha) $body['sha'] = $sha;
+        [$c] = gh('PUT', "/repos/$REPO/contents/inbox/_thumbs.json", $TOKEN, $body);
+        return $c === 200 || $c === 201;
+    };
     if ($action === 'inbox_list') {
+        [$thumbs] = $thGet();
         [$c, $r] = gh('GET', "/repos/$REPO/git/trees/$IB?recursive=1", $TOKEN);
         $items = [];
         $relL = null; [$cl, $rl] = gh('GET', "/repos/$REPO/releases/tags/inbox-files", $TOKEN);
         if ($cl === 200) foreach ($rl['assets'] ?? [] as $a) $items[] = ['path' => 'release:' . $a['id'], 'name' => $a['name'], 'size' => (int)$a['size'], 'url' => $rl['html_url'], 'big' => true, 'date' => substr((string)$a['created_at'], 0, 10), 'cmd' => 'gh release download inbox-files -R ' . $REPO . ' -p "' . $a['name'] . '"'];
-        if ($c === 404) wOut(200, ['items' => $items, 'repo' => $REPO]);
+        if ($c === 404) wOut(200, ['items' => $items, 'repo' => $REPO, 'thumbs' => (object)$thumbs]);
         if ($c !== 200) wOut(502, ['error' => "GitHub HTTP $c"]);
-        foreach ($r['tree'] ?? [] as $t) if ($t['type'] === 'blob' && strpos($t['path'], 'inbox/') === 0) $items[] = ['path' => $t['path'], 'name' => basename($t['path']), 'size' => (int)($t['size'] ?? 0), 'url' => $ibUrl($t['path']), 'date' => explode('/', $t['path'])[1] ?? ''];
+        foreach ($r['tree'] ?? [] as $t) if ($t['type'] === 'blob' && strpos($t['path'], 'inbox/') === 0 && $t['path'] !== 'inbox/_thumbs.json') $items[] = ['path' => $t['path'], 'name' => basename($t['path']), 'size' => (int)($t['size'] ?? 0), 'url' => $ibUrl($t['path']), 'date' => explode('/', $t['path'])[1] ?? ''];
         usort($items, fn($a, $b) => strcmp($b['date'] . $b['name'], $a['date'] . $a['name']));
-        wOut(200, ['items' => array_slice($items, 0, 300), 'repo' => $REPO, 'branch' => $IB]);
+        wOut(200, ['items' => array_slice($items, 0, 300), 'repo' => $REPO, 'branch' => $IB, 'thumbs' => (object)$thumbs]);
     }
     // ── Big files (22–200 MB): streamed to a GitHub *release asset* (tag "inbox-files"). Git itself can't hold files over 100 MB. ──
     $RT = 'inbox-files';
@@ -275,11 +290,39 @@ if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big'
         try { $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), 'website_inbox_upload', 'website', ?, 'success', ?)")->execute(['release:' . $name, $who]); } catch (Throwable $e) {}
         wOut(200, ['ok' => true, 'path' => 'release:' . $j['id'], 'name' => $j['name'], 'size' => (int)$j['size'], 'cmd' => 'gh release download ' . $RT . ' -R ' . $REPO . ' -p "' . $j['name'] . '"']);
     }
+    // Streams one inbox file to the browser (used to build previews). Passes straight through; nothing is stored here.
+    if ($action === 'inbox_raw') {
+        @set_time_limit(300);
+        $aid = (int)($_GET['asset'] ?? 0); $p = trim((string)($_GET['path'] ?? ''), '/');
+        if ($aid) { [$cm, $rm] = gh('GET', "/repos/$REPO/releases/assets/$aid", $TOKEN); if ($cm !== 200) wOut(404, ['error' => 'Not found']); $size = (int)$rm['size']; $nm = $rm['name']; $url = "https://api.github.com/repos/$REPO/releases/assets/$aid"; $accept = 'application/octet-stream'; }
+        else {
+            if (strpos($p, 'inbox/') !== 0 || strpos($p, '..') !== false || $p === 'inbox/_thumbs.json') wOut(400, ['error' => 'Path not allowed']);
+            [$cm, $rm] = gh('GET', "/repos/$REPO/contents/" . $ghPath($p) . "?ref=$IB", $TOKEN); if ($cm !== 200) wOut(404, ['error' => 'Not found']);
+            $size = (int)$rm['size']; $nm = basename($p); $url = "https://api.github.com/repos/$REPO/contents/" . $ghPath($p) . "?ref=$IB"; $accept = 'application/vnd.github.raw';
+        }
+        if ($size > 60 * 1024 * 1024) wOut(413, ['error' => 'Too large for a preview']);
+        $types = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp', 'gif' => 'image/gif', 'svg' => 'image/svg+xml', 'mp4' => 'video/mp4', 'mov' => 'video/quicktime', 'webm' => 'video/webm', 'pdf' => 'application/pdf'];
+        $ct = $types[strtolower(pathinfo($nm, PATHINFO_EXTENSION))] ?? 'application/octet-stream';
+        header_remove('Content-Type'); header('Content-Type: ' . $ct); header('Content-Length: ' . $size); header('Cache-Control: private, max-age=600'); header('Content-Security-Policy: sandbox'); header('X-Content-Type-Options: nosniff');
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [CURLOPT_FOLLOWLOCATION => true, CURLOPT_TIMEOUT => 280, CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $TOKEN, 'Accept: ' . $accept, 'User-Agent: SocialFlow-Website-Tab'],
+            CURLOPT_WRITEFUNCTION => function ($c, $d) { echo $d; return strlen($d); }]);
+        curl_exec($ch); curl_close($ch); exit;
+    }
     $in = json_decode((string)file_get_contents('php://input'), true) ?: [];
+    if ($action === 'inbox_thumb_put') {
+        $key = (string)($in['path'] ?? ''); $data = (string)($in['data'] ?? '');
+        if (!preg_match('#^(inbox/[^\s]+|release:\d+)$#', $key) || strpos($key, '..') !== false) wOut(400, ['error' => 'Bad key']);
+        if (!preg_match('#^data:image/jpeg;base64,[A-Za-z0-9+/=]+$#', $data) || strlen($data) > 60000) wOut(400, ['error' => 'Bad preview']);
+        [$idx, $sha] = $thGet(); $idx[$key] = $data;
+        if (!$thPut($idx, $sha, 'Inbox preview')) wOut(502, ['error' => 'Could not save the preview']);
+        wOut(200, ['ok' => true]);
+    }
     if ($action === 'inbox_delete' && strpos((string)($in['path'] ?? ''), 'release:') === 0) {
         $aid = (int)substr((string)$in['path'], 8);
         [$c] = gh('DELETE', "/repos/$REPO/releases/assets/$aid", $TOKEN);
         if ($c !== 204) wOut(502, ['error' => "GitHub HTTP $c"]);
+        [$ix, $sh] = $thGet(); if (isset($ix[$in['path']])) { unset($ix[$in['path']]); $thPut($ix, $sh, 'Remove preview'); }
         wOut(200, ['ok' => true]);
     }
     if ($action === 'inbox_delete') {
@@ -289,6 +332,7 @@ if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big'
         if ($c0 !== 200) wOut(404, ['error' => 'File not found']);
         [$c, $r] = gh('DELETE', "/repos/$REPO/contents/" . $ghPath($p), $TOKEN, ['message' => 'Remove ' . basename($p) . ' from inbox', 'sha' => $r0['sha'], 'branch' => $IB]);
         if ($c !== 200) wOut(502, ['error' => "GitHub HTTP $c"]);
+        [$ix, $sh] = $thGet(); if (isset($ix[$p])) { unset($ix[$p]); $thPut($ix, $sh, 'Remove preview'); }
         wOut(200, ['ok' => true]);
     }
     // upload

@@ -33915,13 +33915,35 @@ function WebsiteLeads({setPage}) {
 }
 
 
-// Files for the website repo chat: uploaded to a separate Git branch ("inbox"), not kept on this server and never published.
+// Files for the website repo chat: uploaded to a separate Git branch ("inbox") or, when big, as a GitHub release file. Not kept on this server, never published.
+const W_EXT = n => (String(n).split(".").pop()||"").toLowerCase();
+const W_IS_IMG = n => /^(jpe?g|png|webp|gif|svg)$/.test(W_EXT(n));
+const W_IS_VID = n => /^(mp4|mov|webm)$/.test(W_EXT(n));
+const W_ICON = n => W_IS_VID(n)?"🎬":W_IS_IMG(n)?"🖼️":W_EXT(n)==="pdf"?"📕":/^(docx?|txt|md)$/.test(W_EXT(n))?"📄":/^(xlsx?|csv)$/.test(W_EXT(n))?"📊":/^pptx?$/.test(W_EXT(n))?"📽️":W_EXT(n)==="zip"?"🗜️":"📎";
+// Small JPEG preview (about 240 px) from an image or a video frame, made in the browser.
+function wMakeThumb(blob, name) {
+  return new Promise(res=>{
+    const url=URL.createObjectURL(blob); const done=v=>{ try{URL.revokeObjectURL(url);}catch(e){} res(v); };
+    const draw=(el,w,h)=>{ try{ const k=Math.min(1,240/Math.max(w,h)); const c=document.createElement("canvas"); c.width=Math.max(1,Math.round(w*k)); c.height=Math.max(1,Math.round(h*k)); c.getContext("2d").drawImage(el,0,0,c.width,c.height); const d=c.toDataURL("image/jpeg",0.6); done(d.length<58000?d:null); }catch(e){ done(null); } };
+    const timer=setTimeout(()=>done(null),12000);
+    if(W_IS_IMG(name)){ const im=new Image(); im.onload=()=>{clearTimeout(timer);draw(im,im.naturalWidth,im.naturalHeight);}; im.onerror=()=>{clearTimeout(timer);done(null);}; im.src=url; }
+    else if(W_IS_VID(name)){ const v=document.createElement("video"); v.muted=true; v.playsInline=true; v.preload="auto"; v.crossOrigin="anonymous";
+      v.onloadedmetadata=()=>{ try{ v.currentTime=Math.min(1,(v.duration||2)/2); }catch(e){} };
+      v.onseeked=()=>{ clearTimeout(timer); draw(v,v.videoWidth,v.videoHeight); };
+      v.onerror=()=>{clearTimeout(timer);done(null);}; v.src=url; }
+    else { clearTimeout(timer); done(null); }
+  });
+}
 function WebsiteFiles() {
-  const [items,setItems]=useState(null); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false); const [log,setLog]=useState([]); const [over,setOver]=useState(false); const [info,setInfo]=useState(null);
-  const load=()=>wApi.get("inbox_list").then(r=>{ if(r.connected===false) setErr(r.error); else { setItems(r.items||[]); setInfo({repo:r.repo,branch:r.branch}); setErr(""); } }).catch(e=>setErr(e.message));
+  const [items,setItems]=useState(null); const [thumbs,setThumbs]=useState({}); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false); const [log,setLog]=useState([]); const [over,setOver]=useState(false); const [info,setInfo]=useState(null);
+  const [view,setView]=useState(()=>{ try{ return localStorage.getItem("sf_files_view")||"cards"; }catch(e){ return "cards"; } });
+  const [prev,setPrev]=useState(null);
+  useEffect(()=>{ try{ localStorage.setItem("sf_files_view",view); }catch(e){} },[view]);
+  const load=()=>wApi.get("inbox_list").then(r=>{ if(r.connected===false) setErr(r.error); else { setItems(r.items||[]); setThumbs(r.thumbs||{}); setInfo({repo:r.repo,branch:r.branch}); setErr(""); } }).catch(e=>setErr(e.message));
   useEffect(()=>{load();},[]);
   const fmtSize=n=>n>1048576?(n/1048576).toFixed(1)+" MB":Math.max(1,Math.round(n/1024))+" KB";
   const readB64=f=>new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(String(fr.result).split(",")[1]||""); fr.onerror=()=>rej(new Error("Could not read the file")); fr.readAsDataURL(f); });
+  const saveThumb=async(path,blob,name)=>{ const d=await wMakeThumb(blob,name); if(!d) return false; try{ await wApi.post("inbox_thumb_put",{path,data:d}); setThumbs(t=>({...t,[path]:d})); return true; }catch(e){ return false; } };
   const upload=async files=>{
     const list=[...files]; if(!list.length) return; setBusy(true);
     for(const f of list){
@@ -33945,17 +33967,31 @@ function WebsiteFiles() {
           });
         }
         setLog(l=>l.map(x=>x.id===id?{...x,st:"done",path:r.path,cmd:r.cmd}:x));
+        if(W_IS_IMG(f.name)||W_IS_VID(f.name)) await saveThumb(r.path,f,f.name);
       }catch(e){ setLog(l=>l.map(x=>x.id===id?{...x,st:"error",msg:e.message}:x)); }
     }
     setBusy(false); load();
   };
   const copy=t=>{ try{ navigator.clipboard.writeText(t); }catch(e){} };
   const del=async p=>{ if(!confirm("Delete this file from the inbox?")) return; try{ await wApi.post("inbox_delete",{path:p}); load(); }catch(e){ alert(e.message); } };
+  const missing=(items||[]).filter(it=>!thumbs[it.path]&&(W_IS_IMG(it.name)||W_IS_VID(it.name))&&it.size<=40*1024*1024);
+  const backfill=async()=>{
+    setPrev({n:0,total:missing.length}); 
+    for(let i=0;i<missing.length;i++){ const it=missing[i]; setPrev({n:i,total:missing.length,name:it.name});
+      try{ const q=it.path.startsWith("release:")?"asset="+it.path.slice(8):"path="+encodeURIComponent(it.path);
+        const resp=await fetch(window.location.origin+"/website-admin.php?action=inbox_raw&"+q); if(!resp.ok) continue; const blob=await resp.blob(); await saveThumb(it.path,blob,it.name); }catch(e){} }
+    setPrev(null); load();
+  };
+  const Thumb=({it,h,w})=>{ const d=thumbs[it.path]; return d?<img src={d} alt="" style={{width:w,height:h,objectFit:"cover",borderRadius:10,display:"block",background:"var(--surface2)"}}/>:<div style={{width:w,height:h,borderRadius:10,background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:h>80?34:22,flexShrink:0}}>{W_ICON(it.name)}</div>; };
+  const Actions=({it})=><>
+    <button onClick={()=>copy(it.cmd||it.path)} style={wBtn(false)}>{it.cmd?"Copy download command":"Copy path"}</button>
+    <a href={it.url} target="_blank" rel="noreferrer" style={{...wBtn(false),textDecoration:"none"}}>Open ↗</a>
+    <button onClick={()=>del(it.path)} style={{...wBtn(false),color:"#dc2626"}}>Delete</button></>;
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{...wCard,display:"flex",flexDirection:"column",gap:10}}>
         <p style={{fontWeight:800,fontSize:15}}>Files for the website</p>
-        <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>Upload photos, videos or documents here, then tell the website chat to use them. They're stored in your website's GitHub repository on a separate <b>inbox</b> branch, <b>not on the SocialFlow server</b>, and nothing is published until the website chat moves a file into the site.</p>
+        <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>Upload photos, videos or documents here, then tell the website chat to use them. They're stored in your website's GitHub repository (an <b>inbox</b> branch, or a release file when big), <b>not on the SocialFlow server</b>, and nothing is published until the website chat moves a file into the site.</p>
         <label onDragOver={e=>{e.preventDefault();setOver(true);}} onDragLeave={()=>setOver(false)} onDrop={e=>{e.preventDefault();setOver(false);upload(e.dataTransfer.files);}}
           style={{border:`2px dashed ${over?"var(--accent)":"var(--border2)"}`,background:over?"var(--accent)10":"var(--surface2)",borderRadius:14,padding:"26px 14px",textAlign:"center",cursor:"pointer",fontSize:13,color:"var(--text2)"}}>
           {busy?("Uploading…"+((log.find(x=>x.st==="uploading"&&x.pct!=null)||{}).pct!=null?" "+log.find(x=>x.st==="uploading"&&x.pct!=null).pct+"%":"")):"Drop files here, or tap to choose"}
@@ -33970,16 +34006,30 @@ function WebsiteFiles() {
           {x.st==="done"&&<button onClick={()=>copy(x.cmd||x.path)} style={{fontSize:11,color:"var(--accent)",fontWeight:700}}>{x.cmd?"Copy download command":"Copy path"}</button>}
           {x.st==="error"&&<span style={{color:"#dc2626"}}>{x.msg}</span>}</div>)}</div>}
       </div>
-      <div style={{...wCard,display:"flex",flexDirection:"column",gap:8}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}><p style={{fontWeight:800,fontSize:14,flex:1}}>In the inbox{items?` (${items.length})`:""}</p><button style={wBtn(false)} onClick={load}>Refresh</button></div>
+      <div style={{...wCard,display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <p style={{fontWeight:800,fontSize:14,flex:1}}>In the inbox{items?` (${items.length})`:""}</p>
+          <div style={{display:"flex",border:"1px solid var(--border2)",borderRadius:9,overflow:"hidden"}}>
+            {[["cards","▦ Cards"],["list","☰ List"]].map(([k,l])=><button key={k} onClick={()=>setView(k)} style={{padding:"7px 12px",fontSize:12,fontWeight:700,background:view===k?"var(--accent)":"var(--surface)",color:view===k?"#fff":"var(--text2)"}}>{l}</button>)}
+          </div>
+          {missing.length>0&&!prev&&<button style={wBtn(false)} onClick={backfill}>Create previews ({missing.length})</button>}
+          <button style={wBtn(false)} onClick={load}>Refresh</button>
+        </div>
+        {prev&&<p style={{fontSize:12,color:"var(--text2)"}}>Creating previews… {prev.n+1} of {prev.total}{prev.name?` · ${prev.name}`:""}</p>}
         {err&&<p style={{fontSize:12,color:"#dc2626"}}>{err}</p>}
         {items===null&&!err?<Spinner size={16}/>:items&&items.length===0?<p style={{fontSize:12,color:"var(--text3)"}}>No files yet.</p>:
-        (items||[]).map(it=><div key={it.path} style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",padding:"8px 10px",border:"1px solid var(--border)",borderRadius:10,fontSize:12}}>
-          <div style={{flex:"1 1 240px",minWidth:0}}><a href={it.url} target="_blank" rel="noreferrer" style={{fontWeight:700,color:"var(--text)",display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.name||it.path.split("/").pop()}</a><span style={{color:"var(--text3)"}}>{it.date} · {fmtSize(it.size)}{it.big?" · big file":""}</span></div>
-          <button onClick={()=>copy(it.cmd||it.path)} style={wBtn(false)}>{it.cmd?"Copy download command":"Copy path"}</button>
-          <a href={it.url} target="_blank" rel="noreferrer" style={{...wBtn(false),textDecoration:"none"}}>Open ↗</a>
-          <button onClick={()=>del(it.path)} style={{...wBtn(false),color:"#dc2626"}}>Delete</button></div>)}
-        {info&&<div style={{fontSize:11,color:"var(--text3)",lineHeight:1.7,borderTop:"1px solid var(--border)",paddingTop:8}}>To use a file, tell the website chat: <i>“Use the file inbox/… from the <b>inbox</b> branch of {info.repo} on the page … (fetch that branch, copy the file into the site, then delete it from the inbox).”</i> For files marked <b>big</b> (over 22 MB) say instead: <i>“Download the file with this command … then add it to the page … and delete the inbox file.”</i> (Copy the command with the button.) “Open” needs you to be signed in to GitHub.<br/>Uploads over a few MB need the server's upload limit raised once (PHP <code>post_max_size</code> and the web server's body limit to 210M).</div>}
+        view==="cards"?
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:12}}>
+            {(items||[]).map(it=><div key={it.path} style={{border:"1px solid var(--border)",borderRadius:14,padding:10,display:"flex",flexDirection:"column",gap:8,minWidth:0}}>
+              <a href={it.url} target="_blank" rel="noreferrer" style={{display:"block"}}><Thumb it={it} h={120} w="100%"/></a>
+              <div style={{minWidth:0}}><span style={{fontWeight:700,fontSize:12.5,display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={it.name}>{it.name}</span><span style={{fontSize:11,color:"var(--text3)"}}>{it.date} · {fmtSize(it.size)}{it.big?" · big":""}</span></div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Actions it={it}/></div></div>)}
+          </div>
+        :(items||[]).map(it=><div key={it.path} style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap",padding:"8px 10px",border:"1px solid var(--border)",borderRadius:10,fontSize:12}}>
+          <a href={it.url} target="_blank" rel="noreferrer" style={{flexShrink:0}}><Thumb it={it} h={56} w={56}/></a>
+          <div style={{flex:"1 1 200px",minWidth:0}}><a href={it.url} target="_blank" rel="noreferrer" style={{fontWeight:700,color:"var(--text)",display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.name}</a><span style={{color:"var(--text3)"}}>{it.date} · {fmtSize(it.size)}{it.big?" · big file":""}</span></div>
+          <Actions it={it}/></div>)}
+        {info&&<div style={{fontSize:11,color:"var(--text3)",lineHeight:1.7,borderTop:"1px solid var(--border)",paddingTop:8}}>To use a file, tell the website chat: <i>“Use the file inbox/… from the <b>inbox</b> branch of {info.repo} on the page … (fetch that branch, copy the file into the site, then delete it from the inbox).”</i> For files marked <b>big</b> (over 22 MB) say instead: <i>“Download the file with this command … then add it to the page … and delete the inbox file.”</i> (Copy the command with the button.) “Open” needs you to be signed in to GitHub. Previews are made in your browser from the file; “Create previews” also covers older uploads (images and videos up to 40 MB).</div>}
       </div>
     </div>);
 }
