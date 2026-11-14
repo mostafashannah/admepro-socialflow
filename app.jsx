@@ -34015,12 +34015,13 @@ function WebsiteFiles() {
     setPrev(null); setPrevRes({ok,fails}); await load(); flash(ok?`${ok} preview${ok===1?"":"s"} created ✓`:"No previews could be made",!ok);
   };
   const [moving,setMoving]=useState(null); const [newName,setNewName]=useState(""); const [moveBusy,setMoveBusy]=useState(false);
-  const doMove=async f=>{ if(!f||!moving) return; setMoveBusy(true); try{ await wApi.post("inbox_move",{path:moving.path,folder:f}); setMoving(null); setNewName(""); await load(); flash("Moved to "+f+" ✓"); }catch(e){ flash(e.message,true); } finally{ setMoveBusy(false); } };
+  const [moveErr,setMoveErr]=useState("");
+  const doMove=async f=>{ if(!f||!moving) return; setMoveBusy(true); setMoveErr(""); try{ await wApi.post("inbox_move",{path:moving.path,folder:f}); setMoving(null); setNewName(""); await load(); flash("Moved to "+f+" ✓"); }catch(e){ setMoveErr(e.message||"The move failed"); flash(e.message||"The move failed",true); } finally{ setMoveBusy(false); } };
   const Thumb=({it,h,w})=>{ const d=thumbs[it.path]; return d?<img src={d} alt="" style={{width:w,height:h,objectFit:"cover",borderRadius:10,display:"block",background:"var(--surface2)"}}/>:<div style={{width:w,height:h,borderRadius:10,background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:h>80?34:22,flexShrink:0}}>{W_ICON(it.name)}</div>; };
   const Actions=({it})=><>
     <button onClick={()=>copy(it.cmd||it.path)} style={wBtn(false)}>{it.cmd?"Copy download command":"Copy path"}</button>
     <a href={it.url} target="_blank" rel="noreferrer" style={{...wBtn(false),textDecoration:"none"}}>Open ↗</a>
-    <button onClick={()=>{ setNewName(""); setMoving(it); }} disabled={!!working[it.path]} style={wBtn(false)}>Move</button>
+    <button onClick={()=>{ setNewName(""); setMoveErr(""); setMoving(it); }} disabled={!!working[it.path]} style={wBtn(false)}>Move</button>
     <button onClick={()=>del(it.path)} disabled={!!working[it.path]} style={{...wBtn(false),color:"#dc2626"}}>{working[it.path]||"Delete"}</button></>;
   return (
     <div className="wf-root" style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -34082,6 +34083,8 @@ function WebsiteFiles() {
         {moving&&<Modal open onClose={()=>setMoving(null)} title="Move to a folder" width={420}>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             <p style={{fontSize:13,color:"var(--text2)"}}>Move <b>{moving.name}</b> to:</p>
+            {moveBusy&&<p style={{fontSize:12,fontWeight:700,color:"var(--accent)"}}>Moving… one moment</p>}
+            {moveErr&&<p style={{fontSize:12,color:"#dc2626",background:"#ef444412",borderRadius:8,padding:"8px 10px"}}>{moveErr}</p>}
             <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:260,overflowY:"auto"}}>
               {folders.filter(f=>f!==moving.folder).map(f=><button key={f} disabled={moveBusy} onClick={()=>doMove(f)} style={{...wBtn(false),textAlign:"left",padding:"11px 14px",fontSize:13}}>📁 {f} <span style={{color:"var(--text3)",fontWeight:500}}>({counts[f]||0})</span></button>)}
               {folders.filter(f=>f!==moving.folder).length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No other folders yet — create one below.</p>}

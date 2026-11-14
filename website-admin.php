@@ -354,12 +354,19 @@ if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big'
         if (strpos($src, 'inbox/') !== 0 || strpos($src, '..') !== false) wOut(400, ['error' => 'Path not allowed']);
         $dst = "inbox/$fo/" . basename($src); if ($dst === $src) wOut(200, ['ok' => true, 'path' => $src]);
         [$c0, $r0] = gh('GET', "/repos/$REPO/contents/" . $ghPath($src) . "?ref=$IB", $TOKEN); if ($c0 !== 200) wOut(404, ['error' => 'File not found']);
-        $content = $r0['content'] ?? '';
-        if ($content === '' || !empty($r0['truncated'])) { [$cb, $rb] = gh('GET', "/repos/$REPO/git/blobs/" . $r0['sha'], $TOKEN); if ($cb === 200) $content = $rb['content']; }
-        $content = preg_replace('/\s+/', '', (string)$content); if ($content === '') wOut(502, ['error' => 'Could not read the file']);
         [$ce] = gh('GET', "/repos/$REPO/contents/" . $ghPath($dst) . "?ref=$IB", $TOKEN); if ($ce === 200) $dst = preg_replace('/(\.[^.]+)$/', '-' . date('His') . '$1', $dst);
-        [$cp, $rp] = gh('PUT', "/repos/$REPO/contents/" . $ghPath($dst), $TOKEN, ['message' => 'Inbox: move ' . basename($src) . " to $fo", 'content' => $content, 'branch' => $IB]); if ($cp !== 200 && $cp !== 201) wOut(502, ['error' => "GitHub HTTP $cp: " . ($rp['message'] ?? '')]);
-        gh('DELETE', "/repos/$REPO/contents/" . $ghPath($src), $TOKEN, ['message' => 'Inbox: moved ' . basename($src), 'sha' => $r0['sha'], 'branch' => $IB]);
+        // Move inside Git without downloading the file: one commit that re-points the same file to its new path.
+        [$cr, $rr] = gh('GET', "/repos/$REPO/git/ref/heads/$IB", $TOKEN); if ($cr !== 200) wOut(502, ['error' => "GitHub HTTP $cr (branch)"]);
+        $parent = $rr['object']['sha'];
+        [$cc, $rc] = gh('GET', "/repos/$REPO/git/commits/$parent", $TOKEN); if ($cc !== 200) wOut(502, ['error' => "GitHub HTTP $cc (commit)"]);
+        [$ct, $rt] = gh('POST', "/repos/$REPO/git/trees", $TOKEN, ['base_tree' => $rc['tree']['sha'], 'tree' => [
+            ['path' => $dst, 'mode' => '100644', 'type' => 'blob', 'sha' => $r0['sha']],
+            ['path' => $src, 'mode' => '100644', 'type' => 'blob', 'sha' => null]]]);
+        if ($ct !== 201) wOut(502, ['error' => "GitHub HTTP $ct (tree): " . ($rt['message'] ?? '')]);
+        [$cn, $rn] = gh('POST', "/repos/$REPO/git/commits", $TOKEN, ['message' => 'Inbox: move ' . basename($src) . " to $fo", 'tree' => $rt['sha'], 'parents' => [$parent]]);
+        if ($cn !== 201) wOut(502, ['error' => "GitHub HTTP $cn (commit): " . ($rn['message'] ?? '')]);
+        [$cu, $ru] = gh('PATCH', "/repos/$REPO/git/refs/heads/$IB", $TOKEN, ['sha' => $rn['sha']]);
+        if ($cu !== 200) wOut(502, ['error' => "GitHub HTTP $cu (update): " . ($ru['message'] ?? '')]);
         [$ix, $sh] = $thGet(); if (isset($ix[$src])) { $ix[$dst] = $ix[$src]; unset($ix[$src]); $thPut($ix, $sh, 'Move preview'); }
         wOut(200, ['ok' => true, 'path' => $dst]);
     }
