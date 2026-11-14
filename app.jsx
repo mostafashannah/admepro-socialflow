@@ -46771,10 +46771,20 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     return ()=>{ clearInterval(t); window.removeEventListener("storage", sync); };
   },[proOpen]);
 
+  // Pull the saved chats from the server into this list (and into this browser's copy) — used when the list opens,
+  // so older conversations appear even if the Pro page itself hasn't synced them yet.
+  const pullProSessionsFromServer = () => {
+    const email = currentUser?.email; if(!email) return;
+    syncProSessionsWithServer(email, (updater)=>{
+      setProSessions(prev=>{ const n = typeof updater==="function" ? updater(prev) : updater; try{ saveProSessions(n,email); }catch(e){} return n; });
+    }, null);
+  };
+  useEffect(()=>{ pullProSessionsFromServer(); },[currentUser?.email]);
   const toggleProOpen = () => {
     setProOpen(o => {
       const next = !o;
       if(next){
+        setTimeout(pullProSessionsFromServer,0);
         setProSessions(loadProSessions(currentUser?.email));
         setProActiveId(loadActiveChatId(currentUser?.email));
         setOpenGroups(new Set()); // collapse other groups to make room
