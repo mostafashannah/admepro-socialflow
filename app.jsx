@@ -29890,7 +29890,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
         <div>
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Leads & CRM</h2>
-          <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{leads.length} leads · ${pipelineValue.toLocaleString()} pipeline</p>
+          <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{leadsScope.length} leads · ${pipelineValue.toLocaleString()} pipeline</p>
         </div>
         <div style={{display:"flex",gap:8}}>
           <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)"}}>
@@ -29915,7 +29915,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
       {/* Stats */}
       <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
         {[
-          {label:"Total Leads",val:leads.length,color:"#3b82f6"},
+          {label:"Total Leads",val:leadsScope.length,color:"#3b82f6"},
           {label:"Pipeline Value",val:`$${pipelineValue.toLocaleString()}`,color:"#8b5cf6"},
           {label:"Closed Won",val:`$${totalValue.toLocaleString()}`,color:"#10b981"},
           {label:"Overdue",val:overdueCount,color:overdueCount>0?"#ef4444":"#6b7280"},
@@ -46760,7 +46760,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
         const raw = localStorage.getItem(PRO_CHAT_SESSIONS_KEY(currentUser?.email));
         if(raw){
           const parsed = JSON.parse(raw);
-          setProSessions(prev => JSON.stringify(parsed)!==JSON.stringify(prev) ? parsed : prev);
+          setProSessions(prev => { const mg=mergeProLists(prev,parsed); return JSON.stringify(mg)!==JSON.stringify(prev)?mg:prev; });
         }
         const aid = localStorage.getItem(PRO_CHAT_ACTIVE_KEY(currentUser?.email))||"";
         setProActiveId(prev => aid!==prev ? aid : prev);
@@ -46776,7 +46776,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
   const pullProSessionsFromServer = () => {
     const email = currentUser?.email; if(!email) return;
     syncProSessionsWithServer(email, (updater)=>{
-      setProSessions(prev=>{ const n = typeof updater==="function" ? updater(prev) : updater; try{ saveProSessions(n,email); }catch(e){} return n; });
+      setProSessions(prev=>{ const n = mergeProLists(typeof updater==="function" ? updater(prev) : updater, loadProSessions(email)); try{ saveProSessions(n,email); window.dispatchEvent(new CustomEvent("sf-pro-sessions",{detail:{email,list:n}})); }catch(e){} return n; });
     }, null);
   };
   useEffect(()=>{ pullProSessionsFromServer(); },[currentUser?.email]);
@@ -48136,6 +48136,11 @@ const PRO_CHAT_ACTIVE_KEY = (email) => "sf_pro_chat_active_v2"+proChatEmailSuffi
 const PRO_CHAT_OPEN_KEY = "sf_pro_floating_open";
 const PRO_CHAT_SUGG_KEY = "sf_pro_floating_suggested";
 
+// Union of two chat lists by id (newer copy wins) — used so a stale browser copy can never hide chats that exist on the server.
+function mergeProLists(a,b){
+  const m=new Map(); [...(a||[]),...(b||[])].forEach(s=>{ const o=m.get(s.id); if(!o||new Date(s.updated_at||0)>new Date(o.updated_at||0)) m.set(s.id,s); });
+  return [...m.values()].sort((x,y)=>new Date(y.updated_at||y.created_at||0)-new Date(x.updated_at||x.created_at||0)).slice(0,50);
+}
 function loadProSessions(email){ try{ return JSON.parse(localStorage.getItem(PRO_CHAT_SESSIONS_KEY(email))||"[]"); }catch(e){ return []; } }
 function saveProSessions(s,email){ try{ localStorage.setItem(PRO_CHAT_SESSIONS_KEY(email), JSON.stringify((s||[]).slice(-50))); }catch(e){} }
 function loadActiveChatId(email){ try{ return localStorage.getItem(PRO_CHAT_ACTIVE_KEY(email))||""; }catch(e){ return ""; } }
@@ -48571,6 +48576,13 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
   // from another device/browser, or migrates pre-existing local-only history up).
   const lastSyncedSessionsRef = React.useRef(new Map());
   useEffect(()=>{ syncProSessionsWithServer(currentUser?.email, setSessions, lastSyncedSessionsRef); },[currentUser?.email]);
+  // The sidebar's chat list can bring in saved conversations too — merge them here so opening one never lands on a blank chat.
+  useEffect(()=>{
+    const on = (e)=>{ const d=e.detail||{}; if(!d.list || d.email!==currentUser?.email) return;
+      d.list.forEach(s=>{ if(!String(s.id).startsWith("local_")) lastSyncedSessionsRef.current.set(s.id,s); });
+      setSessions(prev=>mergeProLists(d.list,prev)); };
+    window.addEventListener("sf-pro-sessions",on); return ()=>window.removeEventListener("sf-pro-sessions",on);
+  },[currentUser?.email]);
   // Push changes up to the server, debounced so a fast burst of edits (typing,
   // streaming replies) doesn't fire an upsert per keystroke — and skip any
   // session whose object reference is unchanged since we last saw it (came
