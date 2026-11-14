@@ -260,15 +260,15 @@ if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big'
         $name = trim(preg_replace('/\s+/', '-', $name), '.-');
         if ($name === '' || !preg_match('/\.(jpe?g|png|webp|gif|svg|mp4|mov|webm|pdf|docx?|xlsx?|pptx?|txt|csv|json|zip|md)$/i', $name)) wOut(400, ['error' => 'This file type is not allowed here.']);
         $len = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
-        if ($len <= 0) wOut(400, ['error' => 'Empty upload (or the server upload limit was exceeded — see the note under the uploader).']);
+        if ($len <= 0) wOut(400, ['error' => 'The server received no data — its PHP upload limit (post_max_size) is probably lower than this file. Ask for it to be raised to 210M.']);
         if ($len > 200 * 1024 * 1024) wOut(400, ['error' => 'File too large (max 200 MB).']);
         $rel = $relGet(true); if (!$rel) wOut(502, ['error' => 'Could not create the "inbox-files" release — the GitHub token needs Contents: read and write.']);
         foreach ($rel['assets'] ?? [] as $a) if ($a['name'] === $name) $name = preg_replace('/(\.[^.]+)$/', '-' . date('His') . '$1', $name);
         $in = fopen('php://input', 'r');
         $ch = curl_init("https://uploads.github.com/repos/$REPO/releases/" . (int)$rel['id'] . "/assets?name=" . rawurlencode($name));
-        curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDSIZE => $len, CURLOPT_READFUNCTION => function ($c, $fd, $n) use ($in) { return (string)fread($in, $n); },
+        curl_setopt_array($ch, [CURLOPT_UPLOAD => true, CURLOPT_CUSTOMREQUEST => 'POST', CURLOPT_INFILESIZE => $len, CURLOPT_READFUNCTION => function ($c, $fd, $n) use ($in) { return (string)fread($in, $n); },
             CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 1700, CURLOPT_CONNECTTIMEOUT => 20,
-            CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $TOKEN, 'Accept: application/vnd.github+json', 'User-Agent: SocialFlow-Website-Tab', 'Content-Type: ' . (preg_match('/^[\w.+-]+\/[\w.+-]+$/', (string)($_SERVER['CONTENT_TYPE'] ?? '')) ? $_SERVER['CONTENT_TYPE'] : 'application/octet-stream'), 'Content-Length: ' . $len]]);
+            CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $TOKEN, 'Accept: application/vnd.github+json', 'User-Agent: SocialFlow-Website-Tab', 'Content-Type: ' . (preg_match('/^[\w.+-]+\/[\w.+-]+$/', (string)($_SERVER['CONTENT_TYPE'] ?? '')) ? $_SERVER['CONTENT_TYPE'] : 'application/octet-stream'), 'Expect:']]);
         $res = curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); $cerr = curl_error($ch); curl_close($ch); fclose($in);
         $j = json_decode((string)$res, true);
         if ($code !== 201) wOut(502, ['error' => 'GitHub upload failed' . ($cerr ? ": $cerr" : " (HTTP $code)") . (isset($j['message']) ? ' — ' . $j['message'] : '')]);
