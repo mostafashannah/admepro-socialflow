@@ -33939,6 +33939,8 @@ function WebsiteFiles() {
   const [items,setItems]=useState(null); const [thumbs,setThumbs]=useState({}); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false); const [log,setLog]=useState([]); const [over,setOver]=useState(false); const [info,setInfo]=useState(null);
   const [view,setView]=useState(()=>{ try{ return localStorage.getItem("sf_files_view")||"cards"; }catch(e){ return "cards"; } });
   const [prev,setPrev]=useState(null);
+  const [toast,setToast]=useState(null); const [working,setWorking]=useState({}); const [refreshing,setRefreshing]=useState(false);
+  const flash=(t,bad)=>{ setToast({t,bad,k:Date.now()}); setTimeout(()=>setToast(x=>x&&Date.now()-x.k>=1700?null:x),1800); };
   const [sort,setSort]=useState(()=>{ try{ return localStorage.getItem("sf_files_sort")||"new"; }catch(e){ return "new"; } });
   useEffect(()=>{ try{ localStorage.setItem("sf_files_sort",sort); }catch(e){} },[sort]);
   const [folders,setFolders]=useState([]); const [folder,setFolder]=useState(()=>{ try{ return localStorage.getItem("sf_files_folder")||""; }catch(e){ return ""; } });
@@ -33977,10 +33979,11 @@ function WebsiteFiles() {
     }
     setBusy(false); load();
   };
-  const copy=t=>{ try{ navigator.clipboard.writeText(t); }catch(e){} };
-  const del=async p=>{ if(!confirm("Delete this file from the inbox?")) return; try{ await wApi.post("inbox_delete",{path:p}); load(); }catch(e){ alert(e.message); } };
-  const newFolder=async()=>{ const n=prompt("Folder name (for example the project name):"); if(!n) return; try{ const r=await wApi.post("inbox_folder_create",{name:n}); await load(); setFolder(r.folder); }catch(e){ alert(e.message); } };
-  const delFolder=async f=>{ if(!confirm(`Delete the empty folder “${f}”?`)) return; try{ await wApi.post("inbox_folder_delete",{name:f}); if(folder===f) setFolder(""); load(); }catch(e){ alert(e.message); } };
+  const copy=t=>{ try{ navigator.clipboard.writeText(t); flash("Copied ✓"); }catch(e){ flash("Could not copy — select and copy manually",true); } };
+  const del=async p=>{ if(!confirm("Delete this file from the inbox?")) return; setWorking(w=>({...w,[p]:"Deleting…"})); try{ await wApi.post("inbox_delete",{path:p}); flash("Deleted ✓"); await load(); }catch(e){ flash(e.message,true); } finally{ setWorking(w=>{ const n={...w}; delete n[p]; return n; }); } };
+  const refresh=async()=>{ setRefreshing(true); await load(); setRefreshing(false); flash("Updated ✓"); };
+  const newFolder=async()=>{ const n=prompt("Folder name (for example the project name):"); if(!n) return; try{ flash("Creating folder…"); const r=await wApi.post("inbox_folder_create",{name:n}); await load(); setFolder(r.folder); flash("Folder created ✓"); }catch(e){ flash(e.message,true); } };
+  const delFolder=async f=>{ if(!confirm(`Delete the empty folder “${f}”?`)) return; try{ await wApi.post("inbox_folder_delete",{name:f}); if(folder===f) setFolder(""); flash("Folder deleted ✓"); load(); }catch(e){ flash(e.message,true); } };
   const moveTo=async it=>{ const n=prompt("Move “"+it.name+"” to which folder?\n\nExisting: "+(folders.join(", ")||"none")+"\n(Type a new name to create one.)",folder||""); if(!n) return; try{ await wApi.post("inbox_move",{path:it.path,folder:n}); load(); }catch(e){ alert(e.message); } };
   const counts={}; (items||[]).forEach(it=>{ counts[it.folder]=(counts[it.folder]||0)+1; });
   const ts=it=>{ const t=Date.parse(it.added||""); return isNaN(t)?(Date.parse(it.folder)||0):t; };
@@ -33996,18 +33999,20 @@ function WebsiteFiles() {
         if(!resp.ok){ let m="HTTP "+resp.status; try{ const j=await resp.json(); if(j.error) m=j.error; }catch(e){} fails.push(it.name+": "+m); continue; }
         const blob=await resp.blob(); const good=await saveThumb(it.path,blob,it.name); if(good) ok++; else fails.push(it.name+": could not make a picture from it");
       }catch(e){ fails.push(it.name+": "+e.message); } }
-    setPrev(null); setPrevRes({ok,fails}); load();
+    setPrev(null); setPrevRes({ok,fails}); await load(); flash(ok?`${ok} preview${ok===1?"":"s"} created ✓`:"No previews could be made",!ok);
   };
   const [moving,setMoving]=useState(null); const [newName,setNewName]=useState(""); const [moveBusy,setMoveBusy]=useState(false);
-  const doMove=async f=>{ if(!f||!moving) return; setMoveBusy(true); try{ await wApi.post("inbox_move",{path:moving.path,folder:f}); setMoving(null); setNewName(""); await load(); }catch(e){ alert(e.message); } finally{ setMoveBusy(false); } };
+  const doMove=async f=>{ if(!f||!moving) return; setMoveBusy(true); try{ await wApi.post("inbox_move",{path:moving.path,folder:f}); setMoving(null); setNewName(""); await load(); flash("Moved to "+f+" ✓"); }catch(e){ flash(e.message,true); } finally{ setMoveBusy(false); } };
   const Thumb=({it,h,w})=>{ const d=thumbs[it.path]; return d?<img src={d} alt="" style={{width:w,height:h,objectFit:"cover",borderRadius:10,display:"block",background:"var(--surface2)"}}/>:<div style={{width:w,height:h,borderRadius:10,background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:h>80?34:22,flexShrink:0}}>{W_ICON(it.name)}</div>; };
   const Actions=({it})=><>
     <button onClick={()=>copy(it.cmd||it.path)} style={wBtn(false)}>{it.cmd?"Copy download command":"Copy path"}</button>
     <a href={it.url} target="_blank" rel="noreferrer" style={{...wBtn(false),textDecoration:"none"}}>Open ↗</a>
-    <button onClick={()=>{ setNewName(""); setMoving(it); }} style={wBtn(false)}>Move</button>
-    <button onClick={()=>del(it.path)} style={{...wBtn(false),color:"#dc2626"}}>Delete</button></>;
+    <button onClick={()=>{ setNewName(""); setMoving(it); }} disabled={!!working[it.path]} style={wBtn(false)}>Move</button>
+    <button onClick={()=>del(it.path)} disabled={!!working[it.path]} style={{...wBtn(false),color:"#dc2626"}}>{working[it.path]||"Delete"}</button></>;
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+    <div className="wf-root" style={{display:"flex",flexDirection:"column",gap:14}}>
+      <style>{`.wf-root button,.wf-root a{transition:transform .08s,filter .12s,background .15s,opacity .15s;cursor:pointer}.wf-root button:hover:not(:disabled),.wf-root a:hover{filter:brightness(.96)}.wf-root button:active:not(:disabled),.wf-root a:active{transform:scale(.95);filter:brightness(.88)}.wf-root button:disabled{opacity:.55;cursor:progress}@keyframes wfpop{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}`}</style>
+      {toast&&<div key={toast.k} style={{position:"fixed",left:"50%",bottom:84,transform:"translateX(-50%)",zIndex:9999,background:toast.bad?"#b91c1c":"#111827",color:"#fff",padding:"10px 18px",borderRadius:99,fontSize:13,fontWeight:700,boxShadow:"0 6px 24px rgba(0,0,0,.3)",animation:"wfpop .18s ease-out",maxWidth:"88vw",textAlign:"center"}}>{toast.t}</div>}
       <div style={{...wCard,display:"flex",flexDirection:"column",gap:10}}>
         <p style={{fontWeight:800,fontSize:15}}>Files for the website</p>
         <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>Upload photos, videos or documents here, then tell the website chat to use them. They're stored in your website's GitHub repository (an <b>inbox</b> branch, or a release file when big), <b>not on the SocialFlow server</b>, and nothing is published until the website chat moves a file into the site.</p>
@@ -34040,8 +34045,8 @@ function WebsiteFiles() {
           <div style={{display:"flex",border:"1px solid var(--border2)",borderRadius:9,overflow:"hidden"}}>
             {[["cards","▦ Cards"],["list","☰ List"]].map(([k,l])=><button key={k} onClick={()=>setView(k)} style={{padding:"7px 12px",fontSize:12,fontWeight:700,background:view===k?"var(--accent)":"var(--surface)",color:view===k?"#fff":"var(--text2)"}}>{l}</button>)}
           </div>
-          {missing.length>0&&!prev&&<button style={wBtn(false)} onClick={backfill}>Create previews ({missing.length})</button>}
-          <button style={wBtn(false)} onClick={load}>Refresh</button>
+          {missing.length>0&&<button style={wBtn(false)} disabled={!!prev} onClick={backfill}>{prev?`Creating… ${prev.n+1}/${prev.total}`:`Create previews (${missing.length})`}</button>}
+          <button style={wBtn(false)} disabled={refreshing} onClick={refresh}>{refreshing?"Refreshing…":"Refresh"}</button>
         </div>
         {prev&&<p style={{fontSize:12,color:"var(--text2)"}}>Creating previews… {prev.n+1} of {prev.total}{prev.name?` · ${prev.name}`:""}</p>}
         {prevRes&&<div style={{fontSize:12,background:"var(--surface2)",borderRadius:10,padding:"8px 12px"}}><b>{prevRes.ok} preview{prevRes.ok===1?"":"s"} created.</b>{prevRes.fails.length>0&&<> {prevRes.fails.length} could not be made:<ul style={{margin:"4px 0 0",paddingLeft:18,color:"#b45309"}}>{prevRes.fails.slice(0,8).map((f,i)=><li key={i}>{f}</li>)}</ul></>}</div>}
