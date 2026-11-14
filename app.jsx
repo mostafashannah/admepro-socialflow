@@ -33948,7 +33948,7 @@ function WebsiteFiles() {
   useEffect(()=>{ try{ localStorage.setItem("sf_files_folder",folder); }catch(e){} },[folder]);
   const [uploadTo,setUploadTo]=useState(()=>{ try{ return localStorage.getItem("sf_files_folder")||""; }catch(e){ return ""; } });
   useEffect(()=>{ setUploadTo(folder); },[folder]);
-  const load=()=>wApi.get("inbox_list").then(r=>{ if(r.connected===false) setErr(r.error); else { setItems(r.items||[]); setThumbs(r.thumbs||{}); setFolders((r.folders||[]).filter(x=>x!=="_thumbs").sort((a,b)=>b.localeCompare(a))); setInfo({repo:r.repo,branch:r.branch}); setErr(""); } }).catch(e=>setErr(e.message));
+  const load=()=>wApi.get("inbox_list").then(r=>{ if(r.connected===false) setErr(r.error); else { setItems(r.items||[]); setSel(a=>a.filter(p=>(r.items||[]).some(x=>x.path===p))); setThumbs(r.thumbs||{}); setFolders((r.folders||[]).filter(x=>x!=="_thumbs").sort((a,b)=>b.localeCompare(a))); setInfo({repo:r.repo,branch:r.branch}); setErr(""); } }).catch(e=>setErr(e.message));
   useEffect(()=>{load();},[]);
   const fmtSize=n=>n>1048576?(n/1048576).toFixed(1)+" MB":Math.max(1,Math.round(n/1024))+" KB";
   const readB64=f=>new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(String(fr.result).split(",")[1]||""); fr.onerror=()=>rej(new Error("Could not read the file")); fr.readAsDataURL(f); });
@@ -33983,6 +33983,8 @@ function WebsiteFiles() {
   };
   const copy=t=>{ try{ navigator.clipboard.writeText(t); flash("Copied ✓"); }catch(e){ flash("Could not copy — select and copy manually",true); } };
   const del=async p=>{ if(!confirm("Delete this file from the inbox?")) return; setWorking(w=>({...w,[p]:"Deleting…"})); try{ await wApi.post("inbox_delete",{path:p}); flash("Deleted ✓"); await load(); }catch(e){ flash(e.message,true); } finally{ setWorking(w=>{ const n={...w}; delete n[p]; return n; }); } };
+  const delMany=async()=>{ if(!sel.length||!confirm(`Delete ${sel.length} file${sel.length===1?"":"s"} from the inbox? This can't be undone.`)) return; let ok=0,bad=0; for(const p of sel){ setWorking(w=>({...w,[p]:"Deleting…"})); try{ await wApi.post("inbox_delete",{path:p}); ok++; }catch(e){ bad++; } }
+    setWorking({}); setSel([]); await load(); flash(bad?`${ok} deleted, ${bad} failed`:`${ok} deleted ✓`,!!bad); };
   const refresh=async()=>{ setRefreshing(true); await load(); setRefreshing(false); flash("Updated ✓"); };
   const newFolder=async()=>{ const n=prompt("Folder name (for example the project name):"); if(!n) return; try{ flash("Creating folder…"); const r=await wApi.post("inbox_folder_create",{name:n}); await load(); setFolder(r.folder); setUploadTo(r.folder); flash("Folder created ✓"); }catch(e){ flash(e.message,true); } };
   const delFolder=async f=>{ if(!confirm(`Delete the empty folder “${f}”?`)) return; try{ await wApi.post("inbox_folder_delete",{name:f}); if(folder===f) setFolder(""); flash("Folder deleted ✓"); load(); }catch(e){ flash(e.message,true); } };
@@ -34014,9 +34016,10 @@ function WebsiteFiles() {
       }catch(e){ fails.push(it.name+": "+e.message); } }
     setPrev(null); setPrevRes({ok,fails}); await load(); flash(ok?`${ok} preview${ok===1?"":"s"} created ✓`:"No previews could be made",!ok);
   };
+  const [sel,setSel]=useState([]); const toggleSel=p=>setSel(a=>a.includes(p)?a.filter(x=>x!==p):[...a,p]);
   const [moving,setMoving]=useState(null); const [newName,setNewName]=useState(""); const [moveBusy,setMoveBusy]=useState(false);
   const [moveErr,setMoveErr]=useState("");
-  const doMove=async f=>{ if(!f||!moving) return; setMoveBusy(true); setMoveErr(""); try{ await wApi.post("inbox_move",{path:moving.path,folder:f}); setMoving(null); setNewName(""); await load(); flash("Moved to "+f+" ✓"); }catch(e){ setMoveErr(e.message||"The move failed"); flash(e.message||"The move failed",true); } finally{ setMoveBusy(false); } };
+  const doMove=async f=>{ if(!f||!moving) return; setMoveBusy(true); setMoveErr(""); try{ const list=moving.many||[moving]; const r=await wApi.post("inbox_move_many",{paths:list.map(x=>x.path),folder:f}); setMoving(null); setNewName(""); setSel([]); await load(); if(r.errors&&r.errors.length) flash(`${r.moved} moved, ${r.errors.length} failed: ${r.errors[0]}`,true); else flash(`${r.moved} file${r.moved===1?"":"s"} moved to ${f} ✓`); }catch(e){ setMoveErr(e.message||"The move failed"); flash(e.message||"The move failed",true); } finally{ setMoveBusy(false); } };
   const Thumb=({it,h,w})=>{ const d=thumbs[it.path]; return d?<img src={d} alt="" style={{width:w,height:h,objectFit:"cover",borderRadius:10,display:"block",background:"var(--surface2)"}}/>:<div style={{width:w,height:h,borderRadius:10,background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:h>80?34:22,flexShrink:0}}>{W_ICON(it.name)}</div>; };
   const Actions=({it})=><>
     <button onClick={()=>copy(it.cmd||it.path)} style={wBtn(false)}>{it.cmd?"Copy download command":"Copy path"}</button>
@@ -34069,6 +34072,13 @@ function WebsiteFiles() {
           {missing.length>0&&<button style={wBtn(false)} disabled={!!prev} onClick={backfill}>{prev?`Creating… ${prev.n+1}/${prev.total}`:`Create previews (${missing.length})`}</button>}
           <button style={wBtn(false)} disabled={refreshing} onClick={refresh}>{refreshing?"Refreshing…":"Refresh"}</button>
         </div>
+        {items&&shown.length>0&&<div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",padding:sel.length?"8px 12px":0,borderRadius:12,background:sel.length?"var(--accent)12":"transparent",position:sel.length?"sticky":"static",top:8,zIndex:5}}>
+          <button style={wBtn(false)} onClick={()=>setSel(sel.length===shown.length?[]:shown.map(x=>x.path))}>{sel.length===shown.length&&sel.length>0?"Clear selection":`Select all (${shown.length})`}</button>
+          {sel.length>0&&<><b style={{fontSize:13}}>{sel.length} selected</b>
+            <button style={wBtn(true)} onClick={()=>{ setNewName(""); setMoveErr(""); setMoving({many:shown.filter(x=>sel.includes(x.path))}); }}>Move to folder…</button>
+            <button style={{...wBtn(false),color:"#dc2626"}} onClick={delMany}>Delete</button>
+            <button style={wBtn(false)} onClick={()=>setSel([])}>Cancel</button></>}
+        </div>}
         {folder&&shown.length>0&&<div style={{border:"1px dashed var(--accent)",borderRadius:12,padding:"10px 12px",display:"flex",flexDirection:"column",gap:8,background:"var(--accent)08"}}>
           <p style={{fontSize:12,fontWeight:800}}>Give this whole folder to the website chat in one go</p>
           <input value={useFor} onChange={e=>setUseFor(e.target.value)} placeholder="Where to use them, e.g. the Zen project page (optional)" style={{...wInput,fontSize:12}}/>
@@ -34082,12 +34092,12 @@ function WebsiteFiles() {
         {prevRes&&<div style={{fontSize:12,background:"var(--surface2)",borderRadius:10,padding:"8px 12px"}}><b>{prevRes.ok} preview{prevRes.ok===1?"":"s"} created.</b>{prevRes.fails.length>0&&<> {prevRes.fails.length} could not be made:<ul style={{margin:"4px 0 0",paddingLeft:18,color:"#b45309"}}>{prevRes.fails.slice(0,8).map((f,i)=><li key={i}>{f}</li>)}</ul></>}</div>}
         {moving&&<Modal open onClose={()=>setMoving(null)} title="Move to a folder" width={420}>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            <p style={{fontSize:13,color:"var(--text2)"}}>Move <b>{moving.name}</b> to:</p>
+            <p style={{fontSize:13,color:"var(--text2)"}}>Move <b>{moving.many?`${moving.many.length} selected files`:moving.name}</b> to:</p>
             {moveBusy&&<p style={{fontSize:12,fontWeight:700,color:"var(--accent)"}}>Moving… one moment</p>}
             {moveErr&&<p style={{fontSize:12,color:"#dc2626",background:"#ef444412",borderRadius:8,padding:"8px 10px"}}>{moveErr}</p>}
             <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:260,overflowY:"auto"}}>
-              {folders.filter(f=>f!==moving.folder).map(f=><button key={f} disabled={moveBusy} onClick={()=>doMove(f)} style={{...wBtn(false),textAlign:"left",padding:"11px 14px",fontSize:13}}>📁 {f} <span style={{color:"var(--text3)",fontWeight:500}}>({counts[f]||0})</span></button>)}
-              {folders.filter(f=>f!==moving.folder).length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No other folders yet — create one below.</p>}
+              {folders.filter(f=>moving.many||f!==moving.folder).map(f=><button key={f} disabled={moveBusy} onClick={()=>doMove(f)} style={{...wBtn(false),textAlign:"left",padding:"11px 14px",fontSize:13}}>📁 {f} <span style={{color:"var(--text3)",fontWeight:500}}>({counts[f]||0})</span></button>)}
+              {folders.filter(f=>moving.many||f!==moving.folder).length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No other folders yet — create one below.</p>}
             </div>
             <div style={{display:"flex",gap:6}}><input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Or a new folder name…" style={{...wInput,flex:1}}/><button style={wBtn(true)} disabled={moveBusy||!newName.trim()} onClick={()=>doMove(newName.trim())}>Create & move</button></div>
           </div></Modal>}
@@ -34096,11 +34106,13 @@ function WebsiteFiles() {
         view==="cards"?
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:12}}>
             {shown.map(it=><div key={it.path} style={{border:"1px solid var(--border)",borderRadius:14,padding:10,display:"flex",flexDirection:"column",gap:8,minWidth:0}}>
-              <a href={it.url} target="_blank" rel="noreferrer" style={{display:"block"}}><Thumb it={it} h={120} w="100%"/></a>
+              <div style={{position:"relative"}}><a href={it.url} target="_blank" rel="noreferrer" style={{display:"block"}}><Thumb it={it} h={120} w="100%"/></a>
+                <input type="checkbox" checked={sel.includes(it.path)} onChange={()=>toggleSel(it.path)} style={{position:"absolute",top:8,left:8,width:22,height:22,accentColor:"var(--accent)",cursor:"pointer"}} aria-label="Select"/></div>
               <div style={{minWidth:0}}><span style={{fontWeight:700,fontSize:12.5,display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={it.name}>{it.name}</span><span style={{fontSize:11,color:"var(--text3)"}}>{!folder&&<>{it.folder} · </>}{fmtSize(it.size)}{it.big?" · big":""}{fmtAdded(it)?` · ${fmtAdded(it)}`:""}</span></div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Actions it={it}/></div></div>)}
           </div>
         :shown.map(it=><div key={it.path} style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap",padding:"8px 10px",border:"1px solid var(--border)",borderRadius:10,fontSize:12}}>
+          <input type="checkbox" checked={sel.includes(it.path)} onChange={()=>toggleSel(it.path)} style={{width:20,height:20,accentColor:"var(--accent)",flexShrink:0,cursor:"pointer"}} aria-label="Select"/>
           <a href={it.url} target="_blank" rel="noreferrer" style={{flexShrink:0}}><Thumb it={it} h={56} w={56}/></a>
           <div style={{flex:"1 1 200px",minWidth:0}}><a href={it.url} target="_blank" rel="noreferrer" style={{fontWeight:700,color:"var(--text)",display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.name}</a><span style={{color:"var(--text3)"}}>{!folder&&<>{it.folder} · </>}{fmtSize(it.size)}{it.big?" · big file":""}{fmtAdded(it)?` · added ${fmtAdded(it)}`:""}</span></div>
           <Actions it={it}/></div>)}

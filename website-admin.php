@@ -229,7 +229,7 @@ if (in_array($action, ['put', 'upload'], true)) {
 /* ─────────────────────────── Inbox: files for the website repo chat ───────────────────────────
  * Files go straight from the browser through this script to GitHub, onto a separate branch ("inbox").
  * Nothing is saved on this server, nothing is published, and the site build never sees them (it only builds main).   */
-if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big', 'inbox_raw', 'inbox_thumb_put', 'inbox_folder_create', 'inbox_folder_delete', 'inbox_move'], true)) {
+if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big', 'inbox_raw', 'inbox_thumb_put', 'inbox_folder_create', 'inbox_folder_delete', 'inbox_move', 'inbox_move_many'], true)) {
     if (!$REPO || !$TOKEN) wOut(200, ['connected' => false, 'error' => 'GitHub is not set up yet (see the Setup tab).']);
     $IB = 'inbox'; $who = $s['email'] ?? 'admin';
     $cleanFolder = function ($f) { $f = trim(preg_replace('/\s+/', '-', preg_replace('/[^A-Za-z0-9 _\-]+/u', '', (string)$f)), '-_ '); return mb_substr($f, 0, 50); };
@@ -342,6 +342,38 @@ if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big'
         [$cg, $rg] = gh('GET', "/repos/$REPO/contents/inbox/" . rawurlencode($fo) . "/.gitkeep?ref=$IB", $TOKEN);
         if ($cg === 200) gh('DELETE', "/repos/$REPO/contents/inbox/" . rawurlencode($fo) . "/.gitkeep", $TOKEN, ['message' => "Inbox: remove folder $fo", 'sha' => $rg['sha'], 'branch' => $IB]);
         wOut(200, ['ok' => true]);
+    }
+    if ($action === 'inbox_move_many') {                // several files at once: ONE commit for the Git files, a rename for each big file
+        $fo = $cleanFolder($in['folder'] ?? ''); $paths = array_values(array_unique(array_filter((array)($in['paths'] ?? []), 'is_string'))); if ($fo === '' || !$paths) wOut(400, ['error' => 'Choose files and a folder']);
+        if (count($paths) > 150) wOut(400, ['error' => 'Move at most 150 files at a time']);
+        $gitPaths = []; $rel = []; foreach ($paths as $pth) { $pth = trim($pth, '/'); if (strpos($pth, 'release:') === 0) $rel[] = (int)substr($pth, 8); elseif (strpos($pth, 'inbox/') === 0 && strpos($pth, '..') === false && $pth !== 'inbox/_thumbs.json') $gitPaths[] = $pth; }
+        $moved = 0; $errs = [];
+        foreach ($rel as $aid) {
+            [$cm, $rm] = gh('GET', "/repos/$REPO/releases/assets/$aid", $TOKEN); if ($cm !== 200) { $errs[] = "release file $aid not found"; continue; }
+            $base = strpos($rm['name'], '~') !== false ? explode('~', $rm['name'], 2)[1] : $rm['name'];
+            [$cp, $rp] = gh('PATCH', "/repos/$REPO/releases/assets/$aid", $TOKEN, ['name' => "$fo~$base"]); if ($cp === 200) $moved++; else $errs[] = $base . ': ' . ($rp['message'] ?? "HTTP $cp");
+        }
+        if ($gitPaths) {
+            [$cr, $rr] = gh('GET', "/repos/$REPO/git/ref/heads/$IB", $TOKEN); if ($cr !== 200) wOut(502, ['error' => "GitHub HTTP $cr (branch)"]);
+            $parent = $rr['object']['sha']; [$cc, $rc] = gh('GET', "/repos/$REPO/git/commits/$parent", $TOKEN); if ($cc !== 200) wOut(502, ['error' => "GitHub HTTP $cc (commit)"]);
+            [$ctr, $rtr] = gh('GET', "/repos/$REPO/git/trees/" . $rc['tree']['sha'] . '?recursive=1', $TOKEN); if ($ctr !== 200) wOut(502, ['error' => "GitHub HTTP $ctr (tree)"]);
+            $shaOf = []; foreach ($rtr['tree'] ?? [] as $t) if ($t['type'] === 'blob') $shaOf[$t['path']] = $t['sha'];
+            $entries = []; $taken = $shaOf; $map = [];
+            foreach ($gitPaths as $src) {
+                if (!isset($shaOf[$src])) { $errs[] = basename($src) . ': not found'; continue; }
+                $dst = "inbox/$fo/" . basename($src); if ($dst === $src) continue;
+                if (isset($taken[$dst])) $dst = preg_replace('/(\.[^.]+)$/', '-' . substr(md5($src), 0, 4) . '$1', $dst);
+                $taken[$dst] = true; $entries[] = ['path' => $dst, 'mode' => '100644', 'type' => 'blob', 'sha' => $shaOf[$src]]; $entries[] = ['path' => $src, 'mode' => '100644', 'type' => 'blob', 'sha' => null]; $map[$src] = $dst;
+            }
+            if ($entries) {
+                [$ct, $rt] = gh('POST', "/repos/$REPO/git/trees", $TOKEN, ['base_tree' => $rc['tree']['sha'], 'tree' => $entries]); if ($ct !== 201) wOut(502, ['error' => "GitHub HTTP $ct (tree): " . ($rt['message'] ?? '')]);
+                [$cn, $rn] = gh('POST', "/repos/$REPO/git/commits", $TOKEN, ['message' => 'Inbox: move ' . count($map) . " file(s) to $fo", 'tree' => $rt['sha'], 'parents' => [$parent]]); if ($cn !== 201) wOut(502, ['error' => "GitHub HTTP $cn (commit): " . ($rn['message'] ?? '')]);
+                [$cu, $ru] = gh('PATCH', "/repos/$REPO/git/refs/heads/$IB", $TOKEN, ['sha' => $rn['sha']]); if ($cu !== 200) wOut(502, ['error' => "GitHub HTTP $cu (update): " . ($ru['message'] ?? '')]);
+                $moved += count($map);
+                [$ix, $sh] = $thGet(); $ch = false; foreach ($map as $a1 => $b1) if (isset($ix[$a1])) { $ix[$b1] = $ix[$a1]; unset($ix[$a1]); $ch = true; } if ($ch) $thPut($ix, $sh, 'Move previews');
+            }
+        }
+        wOut(200, ['ok' => true, 'moved' => $moved, 'errors' => $errs]);
     }
     if ($action === 'inbox_move') {
         $fo = $cleanFolder($in['folder'] ?? ''); $src = trim((string)($in['path'] ?? ''), '/'); if ($fo === '') wOut(400, ['error' => 'Choose a folder']);
