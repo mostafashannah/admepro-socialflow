@@ -33985,6 +33985,17 @@ function WebsiteFiles() {
   const newFolder=async()=>{ const n=prompt("Folder name (for example the project name):"); if(!n) return; try{ flash("Creating folder…"); const r=await wApi.post("inbox_folder_create",{name:n}); await load(); setFolder(r.folder); flash("Folder created ✓"); }catch(e){ flash(e.message,true); } };
   const delFolder=async f=>{ if(!confirm(`Delete the empty folder “${f}”?`)) return; try{ await wApi.post("inbox_folder_delete",{name:f}); if(folder===f) setFolder(""); flash("Folder deleted ✓"); load(); }catch(e){ flash(e.message,true); } };
   const moveTo=async it=>{ const n=prompt("Move “"+it.name+"” to which folder?\n\nExisting: "+(folders.join(", ")||"none")+"\n(Type a new name to create one.)",folder||""); if(!n) return; try{ await wApi.post("inbox_move",{path:it.path,folder:n}); load(); }catch(e){ alert(e.message); } };
+  const [useFor,setUseFor]=useState("");
+  // One ready-made message for the website repo chat: the whole folder in one go (small files via git, big files via the release).
+  const folderBrief=()=>{
+    const fl=(items||[]).filter(it=>it.folder===folder); const small=fl.filter(it=>!it.big), big=fl.filter(it=>it.big); const repo=info?.repo||"";
+    const L=[`Use the files in my "${folder}" folder from the ${repo} GitHub repo.`+(useFor.trim()?` Purpose: ${useFor.trim()}.`:"")];
+    if(small.length){ L.push("",`1) ${small.length} file${small.length===1?"":"s"} on the inbox branch, folder inbox/${folder}/`,`   https://github.com/${repo}/tree/inbox/inbox/${encodeURIComponent(folder)}`,`   Get them with: git fetch origin inbox && git checkout origin/inbox -- inbox/${folder}`); }
+    if(big.length){ L.push("",`${small.length?"2":"1"}) ${big.length} big file${big.length===1?"":"s"} on the GitHub release "inbox-files"`,`   Get them with: gh release download inbox-files -R ${repo} -p "${folder}~*" --dir inbox/${folder}`,`   (each file name starts with "${folder}~"; remove that prefix when you copy it into the site)`); }
+    L.push("","Files:",...fl.map(it=>`- ${it.name} (${fmtSize(it.size)})${it.big?" [big]":""}`));
+    L.push("","Copy the files into the site where needed, optimise images and videos, and show me the changes before committing. Then delete these files from the inbox (the inbox branch folder and the release files) so nothing is left behind. Don't publish anything unfinished.");
+    return L.join("\n");
+  };
   const counts={}; (items||[]).forEach(it=>{ counts[it.folder]=(counts[it.folder]||0)+1; });
   const ts=it=>{ const t=Date.parse(it.added||""); return isNaN(t)?(Date.parse(it.folder)||0):t; };
   const shown=(items||[]).filter(it=>!folder||it.folder===folder).sort((a,b)=>sort==="old"?ts(a)-ts(b):sort==="name"?a.name.localeCompare(b.name):sort==="size"?b.size-a.size:ts(b)-ts(a));
@@ -34048,6 +34059,15 @@ function WebsiteFiles() {
           {missing.length>0&&<button style={wBtn(false)} disabled={!!prev} onClick={backfill}>{prev?`Creating… ${prev.n+1}/${prev.total}`:`Create previews (${missing.length})`}</button>}
           <button style={wBtn(false)} disabled={refreshing} onClick={refresh}>{refreshing?"Refreshing…":"Refresh"}</button>
         </div>
+        {folder&&shown.length>0&&<div style={{border:"1px dashed var(--accent)",borderRadius:12,padding:"10px 12px",display:"flex",flexDirection:"column",gap:8,background:"var(--accent)08"}}>
+          <p style={{fontSize:12,fontWeight:800}}>Give this whole folder to the website chat in one go</p>
+          <input value={useFor} onChange={e=>setUseFor(e.target.value)} placeholder="Where to use them, e.g. the Zen project page (optional)" style={{...wInput,fontSize:12}}/>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            <button style={wBtn(true)} onClick={()=>copy(folderBrief())}>Copy folder instructions</button>
+            <a href={`https://github.com/${info?.repo}/tree/inbox/inbox/${encodeURIComponent(folder)}`} target="_blank" rel="noreferrer" style={{...wBtn(false),textDecoration:"none"}}>Open folder on GitHub ↗</a>
+          </div>
+          <details><summary style={{fontSize:11,color:"var(--text3)",cursor:"pointer"}}>Preview the message</summary><pre style={{fontSize:11,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:"6px 0 0",color:"var(--text2)"}}>{folderBrief()}</pre></details>
+        </div>}
         {prev&&<p style={{fontSize:12,color:"var(--text2)"}}>Creating previews… {prev.n+1} of {prev.total}{prev.name?` · ${prev.name}`:""}</p>}
         {prevRes&&<div style={{fontSize:12,background:"var(--surface2)",borderRadius:10,padding:"8px 12px"}}><b>{prevRes.ok} preview{prevRes.ok===1?"":"s"} created.</b>{prevRes.fails.length>0&&<> {prevRes.fails.length} could not be made:<ul style={{margin:"4px 0 0",paddingLeft:18,color:"#b45309"}}>{prevRes.fails.slice(0,8).map((f,i)=><li key={i}>{f}</li>)}</ul></>}</div>}
         {moving&&<Modal open onClose={()=>setMoving(null)} title="Move to a folder" width={420}>
