@@ -163,6 +163,16 @@ function seoGather(PDO $pdo, array $cfg) {
     return [$ctx, null];
 }
 
+/** Store this moment's ranking for every search Google reports (28-day average position). Cheap: one Search Console call, no AI. */
+function seoSnapshot(PDO $pdo, $runId = null) {
+    $end = (new DateTime('now'))->modify('-2 days'); $start = (clone $end)->modify('-27 days');
+    $rows = seoGsc(['startDate' => $start->format('Y-m-d'), 'endDate' => $end->format('Y-m-d'), 'dimensions' => ['query'], 'rowLimit' => 1000]);
+    if ($rows === null) return [false, 'Search Console is not connected'];
+    $at = gNow(); $st = $pdo->prepare("INSERT INTO seo_rank_snapshots (taken_at, run_id, query, clicks, impressions, position) VALUES (?,?,?,?,?,?)");
+    $n = 0; foreach ($rows as $r) { $st->execute([$at, $runId, mb_substr($r['keys'][0], 0, 250), (int)$r['clicks'], (int)$r['impressions'], round($r['position'], 1)]); $n++; }
+    return [true, $n];
+}
+
 /* ───────── the analysis run ───────── */
 function seoRun(PDO $pdo, $by, $jobFile = null) {
     $cfg = seoCfg($pdo); $t0 = time();
@@ -170,6 +180,7 @@ function seoRun(PDO $pdo, $by, $jobFile = null) {
     $step = function ($s) use ($jobFile) { if ($jobFile) { $j = json_decode((string)@file_get_contents($jobFile), true) ?: []; $j['step'] = $s; @file_put_contents($jobFile, json_encode($j)); } };
     $fail = function ($msg) use ($pdo, $runId, $t0) { $pdo->prepare("UPDATE seo_runs SET status='error', finished_at=?, error=? WHERE id=?")->execute([gNow(), mb_substr($msg, 0, 480), $runId]); seoLog($pdo, 'run failed', $msg, 'error', $msg, $t0); return [false, $msg]; };
 
+    try { seoSnapshot($pdo, $runId); } catch (Throwable $e) { error_log('[seo] snapshot: ' . $e->getMessage()); }
     $step('Reading Search Console, visitor data and the website…');
     [$ctx, $err] = seoGather($pdo, $cfg); if (!$ctx) return $fail($err);
     // what's already pending/applied, so it doesn't repeat itself
@@ -391,6 +402,22 @@ case 'list': {
     $f = $_GET['status'] ?? 'pending'; $in = ['pending' => ['pending'], 'applied' => ['applied', 'failed'], 'closed' => ['rejected', 'reverted', 'done']][$f] ?? ['pending'];
     $st = $pdo->prepare("SELECT * FROM seo_suggestions WHERE status IN (" . implode(',', array_fill(0, count($in), '?')) . ") ORDER BY " . ($f === 'pending' ? 'priority DESC, id DESC' : 'decided_at DESC, id DESC') . " LIMIT 150");
     $st->execute($in); gOut(200, ['rows' => array_map($row, $st->fetchAll(PDO::FETCH_ASSOC))]);
+}
+case 'snapshot': { [$ok, $n] = seoSnapshot($pdo); gOut($ok ? 200 : 400, $ok ? ['ok' => true, 'count' => $n] : ['error' => $n]); }
+case 'watch': { seoSave($pdo, 'watch', mb_substr(implode("\n", array_slice(array_filter(array_map('trim', preg_split('/[\r\n,]+/', (string)($b['list'] ?? '')))), 0, 40)), 0, 3000)); gOut(200, ['ok' => true]); }
+case 'rankings': {
+    $batches = $pdo->query("SELECT taken_at, COUNT(*) n, SUM(clicks) clicks, SUM(impressions) impressions, SUM(position*impressions)/NULLIF(SUM(impressions),0) avgpos, SUM(position<=10) page1, SUM(position<=3) top3, SUM(position<=20) top20 FROM seo_rank_snapshots GROUP BY taken_at ORDER BY taken_at DESC LIMIT 12")->fetchAll(PDO::FETCH_ASSOC);
+    $kw = []; $watch = array_values(array_filter(array_map('trim', explode("\n", seoSetting($pdo, 'watch', '')))));
+    if ($batches) {
+        $latest = $batches[0]['taken_at']; $prevAt = $batches[1]['taken_at'] ?? null;
+        $q = $pdo->prepare("SELECT query, clicks, impressions, position FROM seo_rank_snapshots WHERE taken_at=? ORDER BY impressions DESC, clicks DESC LIMIT 150"); $q->execute([$latest]); $kw = $q->fetchAll(PDO::FETCH_ASSOC);
+        $prev = [];
+        if ($prevAt) { $p = $pdo->prepare("SELECT query, position FROM seo_rank_snapshots WHERE taken_at=?"); $p->execute([$prevAt]); foreach ($p->fetchAll(PDO::FETCH_ASSOC) as $r) $prev[mb_strtolower($r['query'])] = (float)$r['position']; }
+        foreach ($kw as &$r) { $pp = $prev[mb_strtolower($r['query'])] ?? null; $r['prev'] = $pp; } unset($r);
+        $all = $pdo->prepare("SELECT query, clicks, impressions, position FROM seo_rank_snapshots WHERE taken_at=?"); $all->execute([$latest]); $byQ = []; foreach ($all->fetchAll(PDO::FETCH_ASSOC) as $r) $byQ[mb_strtolower($r['query'])] = $r;
+        $w = []; foreach ($watch as $t) { $r = $byQ[mb_strtolower($t)] ?? null; $w[] = ['query' => $t, 'position' => $r ? (float)$r['position'] : null, 'prev' => $prev[mb_strtolower($t)] ?? null, 'clicks' => $r ? (int)$r['clicks'] : 0, 'impressions' => $r ? (int)$r['impressions'] : 0]; }
+    } else { $w = array_map(fn($t) => ['query' => $t, 'position' => null, 'prev' => null, 'clicks' => 0, 'impressions' => 0], $watch); }
+    gOut(200, ['batches' => $batches, 'keywords' => $kw, 'watch' => $w, 'watch_list' => implode("\n", $watch)]);
 }
 case 'save_changes': {
     // the admin edited the proposed wording before approving

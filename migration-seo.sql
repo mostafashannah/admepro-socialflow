@@ -37,3 +37,16 @@ CREATE TABLE IF NOT EXISTS seo_settings (
   k VARCHAR(40) NOT NULL PRIMARY KEY,
   v TEXT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Ranking history: one batch of rows (taken_at) per analysis / manual snapshot.
+CREATE TABLE IF NOT EXISTS seo_rank_snapshots (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  taken_at DATETIME NOT NULL,
+  run_id BIGINT UNSIGNED NULL,
+  query VARCHAR(255) NOT NULL,
+  clicks INT NOT NULL DEFAULT 0,
+  impressions INT NOT NULL DEFAULT 0,
+  position DECIMAL(6,1) NULL,
+  KEY idx_taken (taken_at),
+  KEY idx_query (query, taken_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

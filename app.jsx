@@ -34389,7 +34389,7 @@ function SeoAgentTab() {
   const loadOv=()=>seoApi.get("overview").then(d=>{setOv(d);setErr("");}).catch(e=>setErr(e.message));
   const loadRows=()=>seoApi.get("list",{status:filter}).then(d=>setRows(d.rows)).catch(e=>setErr(e.message));
   useEffect(()=>{loadOv();},[]);
-  useEffect(()=>{setRows(null);loadRows();},[filter]);
+  useEffect(()=>{ if(filter==="rankings") return; setRows(null);loadRows();},[filter]);
   useEffect(()=>{ try{ job?localStorage.setItem("sf_seo_job",job):localStorage.removeItem("sf_seo_job"); }catch(e){}
     if(!job) return; let stop=false;
     const tick=async()=>{ try{ const d=await seoApi.get("job_status",{job}); if(stop) return; setJobState(d); if(d.status==="done"||d.status==="error"){ setJob(""); loadOv(); loadRows(); return; } }catch(e){ setJob(""); setJobState({status:"error",error:e.message}); return; } setTimeout(tick,5000); };
@@ -34435,11 +34435,72 @@ function SeoAgentTab() {
         </div>}
       </div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-        {[["pending","To review"+(c.pending?` (${c.pending})`:"")],["applied","Applied"+((+c.applied||0)+(+c.failed||0)?` (${(+c.applied||0)+(+c.failed||0)})`:"")],["closed","Closed"]].map(([k,l])=><button key={k} style={gPill(filter===k)} onClick={()=>setFilter(k)}>{l}</button>)}
+        {[["pending","To review"+(c.pending?` (${c.pending})`:"")],["applied","Applied"+((+c.applied||0)+(+c.failed||0)?` (${(+c.applied||0)+(+c.failed||0)})`:"")],["closed","Closed"],["rankings","Rankings"]].map(([k,l])=><button key={k} style={gPill(filter===k)} onClick={()=>setFilter(k)}>{l}</button>)}
       </div>
-      {rows===null?<div style={{padding:30,display:"flex",justifyContent:"center"}}><Spinner size={18}/></div>
+      {filter==="rankings"?<SeoRankings/>:rows===null?<div style={{padding:30,display:"flex",justifyContent:"center"}}><Spinner size={18}/></div>
         :rows.length===0?<div style={{...wCard,textAlign:"center",color:"var(--text2)",fontSize:13,padding:30}}>{filter==="pending"?"Nothing to review. Tap “Analyse now” to run the first analysis.":"Nothing here yet."}</div>
         :rows.map(r=><SeoCard key={r.id} r={r} onChange={()=>{loadRows();loadOv();}}/>)}
+    </div>);
+}
+
+
+function SeoRankings() {
+  const [d,setD]=useState(null); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false); const [watch,setWatch]=useState(null); const [saved,setSaved]=useState(false);
+  const load=()=>seoApi.get("rankings").then(x=>{setD(x);setErr("");setWatch(w=>w===null?x.watch_list:w);}).catch(e=>setErr(e.message));
+  useEffect(()=>{load();},[]);
+  const snap=async()=>{ setBusy(true); setErr(""); try{ await seoApi.post("snapshot",{}); await load(); }catch(e){ setErr(e.message); } finally{ setBusy(false); } };
+  const saveWatch=async()=>{ try{ await seoApi.post("watch",{list:watch}); setSaved(true); setTimeout(()=>setSaved(false),1800); load(); }catch(e){ setErr(e.message); } };
+  if(!d&&!err) return <div style={{padding:30,display:"flex",justifyContent:"center"}}><Spinner size={18}/></div>;
+  const b=d?.batches||[]; const cur=b[0], prv=b[1];
+  const ch=(now,prev,lowerBetter)=>{ if(now==null||prev==null) return null; const diff=lowerBetter?prev-now:now-prev; if(Math.abs(diff)<0.05) return <span style={{color:"var(--text3)",fontSize:11}}>—</span>; const up=diff>0; return <span style={{fontSize:11,fontWeight:800,color:up?"#16a34a":"#dc2626"}}>{up?"▲":"▼"} {Math.abs(diff).toFixed(lowerBetter?1:0)}</span>; };
+  const fmtD=t=>new Date(t.replace(" ","T")).toLocaleDateString("en-GB",{day:"numeric",month:"short"});
+  const pc=x=>x==null?"—":Number(x).toFixed(1);
+  const tile=(label,val,delta,color)=><div style={{flex:"1 1 120px",padding:"10px 12px",borderRadius:12,background:"var(--surface2)",borderTop:`3px solid ${color}`}}><p style={{fontSize:10,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>{label}</p><p style={{fontSize:20,fontWeight:800,fontFamily:"'Montserrat',sans-serif",display:"flex",alignItems:"baseline",gap:6}}>{val}{delta}</p></div>;
+  const series=[...b].reverse(); const maxP=Math.max(1,...series.map(x=>+x.page1+(+x.top20)));
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <GSetupNote err={err}/>
+      <div style={{...wCard,display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{flex:"1 1 260px"}}><p style={{fontWeight:800,fontSize:15}}>Rankings</p><p style={{fontSize:12,color:"var(--text2)",marginTop:2}}>Where Google shows you for each search. A snapshot is saved with every analysis. Position 1 is the top; lower is better. Google averages the last 28 days and runs about 2 days behind.</p></div>
+          <button style={wBtn(false)} disabled={busy} onClick={snap}>{busy?"Saving…":"Take snapshot now"}</button>
+        </div>
+        {!cur?<p style={{fontSize:13,color:"var(--text2)"}}>No snapshot yet. Tap “Take snapshot now”, or run an analysis, to save the first one.</p>:<>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {tile("Searches you appear for",cur.n,ch(+cur.n,prv&&+prv.n,false),"#6366f1")}
+            {tile("Average position",pc(cur.avgpos),ch(+cur.avgpos,prv&&+prv.avgpos,true),"#0ea5e9")}
+            {tile("On page 1 (top 10)",cur.page1,ch(+cur.page1,prv&&+prv.page1,false),"#10b981")}
+            {tile("Top 20",cur.top20,ch(+cur.top20,prv&&+prv.top20,false),"#f59e0b")}
+            {tile("Clicks (28 days)",cur.clicks,ch(+cur.clicks,prv&&+prv.clicks,false),"#d90b2c")}
+            {tile("Shown (28 days)",cur.impressions,ch(+cur.impressions,prv&&+prv.impressions,false),"#8b5cf6")}
+          </div>
+          <p style={{fontSize:11,color:"var(--text3)"}}>Snapshot {fmtD(cur.taken_at)}{prv?` · compared with ${fmtD(prv.taken_at)}`:" · changes appear after the next snapshot"}. Averages are weighted by how often you were shown, and brand searches count too.</p>
+          {series.length>1&&<div><p style={{fontSize:11,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",marginBottom:6}}>Searches in the top 20, per snapshot</p>
+            <div style={{display:"flex",alignItems:"flex-end",gap:6,height:70}}>{series.map(x=><div key={x.taken_at} title={`${fmtD(x.taken_at)}: ${x.top20} in top 20, ${x.page1} on page 1, avg position ${pc(x.avgpos)}`} style={{flex:1,maxWidth:46,display:"flex",flexDirection:"column",justifyContent:"flex-end",alignItems:"center",gap:3,height:"100%"}}>
+              <div style={{width:"100%",height:`${Math.max(4,(+x.top20/maxP)*100)}%`,borderRadius:"4px 4px 0 0",background:"linear-gradient(180deg,#10b981,#059669)"}}/><span style={{fontSize:9,color:"var(--text3)"}}>{fmtD(x.taken_at)}</span></div>)}</div></div>}
+        </>}
+      </div>
+      <div style={{...wCard,display:"flex",flexDirection:"column",gap:8}}>
+        <p style={{fontWeight:800,fontSize:14}}>Keywords you want to rank for</p>
+        <textarea value={watch??""} onChange={e=>setWatch(e.target.value)} rows={4} style={{...wInput,resize:"vertical"}} placeholder={"One per line, e.g.\nmarketing agency in egypt\nadvertising agency cairo\nvideo production cairo\nمكتب تسويق في السعودية"}/>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}><button style={wBtn(true)} onClick={saveWatch}>Save keywords</button>{saved&&<span style={{fontSize:12,color:"#16a34a"}}>Saved</span>}</div>
+        {(d?.watch||[]).length>0&&<table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><tbody>{d.watch.map(w=><tr key={w.query} style={{borderTop:"1px solid var(--border)"}}>
+          <td style={{padding:"7px 4px",fontWeight:600}} dir="auto">{w.query}</td>
+          <td style={{padding:"7px 4px",textAlign:"right",color:w.position==null?"var(--text3)":w.position<=10?"#10b981":"var(--text2)",fontWeight:800}}>{w.position==null?"not ranking yet":pc(w.position)}</td>
+          <td style={{padding:"7px 4px",textAlign:"right",width:70}}>{ch(w.position,w.prev,true)}</td>
+          <td style={{padding:"7px 4px",textAlign:"right",color:"var(--text3)",width:90}}>{w.impressions} shown · {w.clicks} clicks</td></tr>)}</tbody></table>}
+        <p style={{fontSize:11,color:"var(--text3)"}}>“Not ranking yet” means Google hasn't shown your site for that exact search in the last 28 days.</p>
+      </div>
+      {cur&&<div style={{...wCard,padding:0,overflowX:"auto"}}>
+        <p style={{fontWeight:800,fontSize:14,padding:"14px 14px 8px"}}>All searches ({d.keywords.length} shown)</p>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:480}}>
+          <thead><tr style={{color:"var(--text3)",textAlign:"left",fontSize:10,textTransform:"uppercase"}}><th style={{padding:"6px 14px"}}>Search</th><th style={{padding:"6px 8px",textAlign:"right"}}>Position</th><th style={{padding:"6px 8px",textAlign:"right"}}>Change</th><th style={{padding:"6px 8px",textAlign:"right"}}>Shown</th><th style={{padding:"6px 14px",textAlign:"right"}}>Clicks</th></tr></thead>
+          <tbody>{d.keywords.map(k=><tr key={k.query} style={{borderTop:"1px solid var(--border)"}}>
+            <td style={{padding:"7px 14px",fontWeight:600}} dir="auto">{k.query}</td>
+            <td style={{padding:"7px 8px",textAlign:"right",fontWeight:800,color:+k.position<=10?"#10b981":"var(--text2)"}}>{pc(k.position)}</td>
+            <td style={{padding:"7px 8px",textAlign:"right"}}>{k.prev==null?(prv?<span style={{fontSize:10,fontWeight:800,color:"#0ea5e9"}}>new</span>:null):ch(+k.position,k.prev,true)}</td>
+            <td style={{padding:"7px 8px",textAlign:"right",color:"var(--text2)"}}>{k.impressions}</td><td style={{padding:"7px 14px",textAlign:"right",fontWeight:700}}>{k.clicks}</td></tr>)}</tbody>
+        </table></div>}
     </div>);
 }
 
