@@ -89,6 +89,13 @@ function seoListContent() {
 /* ───────── dotted-path helpers on decoded JSON ───────── */
 function seoGetPath($data, $field) { foreach (explode('.', $field) as $k) { if (!is_array($data) || !array_key_exists($k, $data)) return [false, null]; $data = $data[$k]; } return [true, $data]; }
 function seoSetPath(&$data, $field, $val) { $ref = &$data; foreach (explode('.', $field) as $k) { if (!is_array($ref) || !array_key_exists($k, $ref)) return false; $ref = &$ref[$k]; } $ref = $val; return true; }
+/** Pretty JSON that keeps the file's own indentation (the repo uses 2 spaces; PHP prints 4) so diffs show only the real change. */
+function seoEncode($data, $orig = '') {
+    $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $w = preg_match('/^( +|\t+)\S/m', (string)$orig, $m) ? $m[1] : '  ';
+    if ($w !== '    ') $json = preg_replace_callback('/^((?:    )+)/m', fn($x) => str_repeat($w, strlen($x[1]) / 4), $json);
+    return $json . "\n";
+}
 function seoIsMetaField($f) { return (bool)preg_match('/^(seo\.(title|description)(\.(en|ar))?|seoTitle|description)$/', $f); }
 function seoCleanText($s) { $s = trim((string)$s); return (stripos($s, '<script') !== false || stripos($s, 'javascript:') !== false) ? null : $s; }
 
@@ -278,7 +285,7 @@ function seoApprove(PDO $pdo, $id, $by, $onlySafe = false) {
                 if (!seoSetPath($data, $c['field'], $c['after'])) { $err = 'Could not apply ' . $c['field']; break 2; }
             }
             if ($unchanged === count($list)) continue;      // nothing left to write in this file
-            $content = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n"; $msg = 'SEO: ' . mb_substr($s['title'], 0, 120);
+            $content = seoEncode($data, $cur['content']); $msg = 'SEO: ' . mb_substr($s['title'], 0, 120);
         }
         [$ok, $commit, $e] = seoWriteFile($path, $content, $sha, $msg);
         if (!$ok) { $err = $e ?: 'Write failed'; break; }
@@ -303,7 +310,7 @@ function seoRevert(PDO $pdo, $id, $by) {
         $cur = seoReadFile($path); if (!$cur) return [false, "File not found: $path"];
         $data = json_decode($cur['content'], true);
         foreach ($list as $c) { [$has, $now] = seoGetPath($data, $c['field']); if ($has && $now === $c['after']) seoSetPath($data, $c['field'], $c['before']); else return [false, 'The text was edited since — revert it by hand in Pages & SEO.']; }
-        [$ok, , $e] = seoWriteFile($path, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n", $cur['sha'], 'Revert SEO change: ' . mb_substr($s['title'], 0, 100));
+        [$ok, , $e] = seoWriteFile($path, seoEncode($data, $cur['content']), $cur['sha'], 'Revert SEO change: ' . mb_substr($s['title'], 0, 100));
         if (!$ok) return [false, $e];
     }
     $pdo->prepare("UPDATE seo_suggestions SET status='reverted', decided_by=?, decided_at=?, measure_after=NULL WHERE id=?")->execute([$by, gNow(), $id]);
