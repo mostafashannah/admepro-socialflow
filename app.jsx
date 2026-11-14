@@ -33946,6 +33946,8 @@ function WebsiteFiles() {
   const [folders,setFolders]=useState([]); const [folder,setFolder]=useState(()=>{ try{ return localStorage.getItem("sf_files_folder")||""; }catch(e){ return ""; } });
   useEffect(()=>{ try{ localStorage.setItem("sf_files_view",view); }catch(e){} },[view]);
   useEffect(()=>{ try{ localStorage.setItem("sf_files_folder",folder); }catch(e){} },[folder]);
+  const [uploadTo,setUploadTo]=useState(()=>{ try{ return localStorage.getItem("sf_files_folder")||""; }catch(e){ return ""; } });
+  useEffect(()=>{ setUploadTo(folder); },[folder]);
   const load=()=>wApi.get("inbox_list").then(r=>{ if(r.connected===false) setErr(r.error); else { setItems(r.items||[]); setThumbs(r.thumbs||{}); setFolders((r.folders||[]).filter(x=>x!=="_thumbs").sort((a,b)=>b.localeCompare(a))); setInfo({repo:r.repo,branch:r.branch}); setErr(""); } }).catch(e=>setErr(e.message));
   useEffect(()=>{load();},[]);
   const fmtSize=n=>n>1048576?(n/1048576).toFixed(1)+" MB":Math.max(1,Math.round(n/1024))+" KB";
@@ -33958,11 +33960,11 @@ function WebsiteFiles() {
       try{
         if(f.size>200*1024*1024) throw new Error("Too large (max 200 MB)");
         let r;
-        if(f.size<=22*1024*1024){ const b64=await readB64(f); r=await wApi.post("inbox_upload",{name:f.name,base64:b64,folder}); }
+        if(f.size<=22*1024*1024){ const b64=await readB64(f); r=await wApi.post("inbox_upload",{name:f.name,base64:b64,folder:uploadTo}); }
         else { // big file: sent as-is (not base64) and streamed on to GitHub as a release file
           r=await new Promise((res,rej)=>{
             const xhr=new XMLHttpRequest(); const t0=Date.now();
-            xhr.open("POST",window.location.origin+"/website-admin.php?action=inbox_big&name="+encodeURIComponent(f.name)+"&folder="+encodeURIComponent(folder));
+            xhr.open("POST",window.location.origin+"/website-admin.php?action=inbox_big&name="+encodeURIComponent(f.name)+"&folder="+encodeURIComponent(uploadTo));
             xhr.setRequestHeader("Content-Type",f.type||"application/octet-stream");
             try{ const tok=sfSession.get(); if(tok) xhr.setRequestHeader("X-SF-Session",tok); xhr.setRequestHeader("apikey",SB_KEY); }catch(e){}
             xhr.upload.onprogress=ev=>{ if(!ev.lengthComputable) return; const pct=Math.round(ev.loaded/ev.total*100); const secs=(Date.now()-t0)/1000; const speed=ev.loaded/Math.max(secs,0.5); const left=Math.max(0,Math.round((ev.total-ev.loaded)/speed));
@@ -33982,7 +33984,7 @@ function WebsiteFiles() {
   const copy=t=>{ try{ navigator.clipboard.writeText(t); flash("Copied ✓"); }catch(e){ flash("Could not copy — select and copy manually",true); } };
   const del=async p=>{ if(!confirm("Delete this file from the inbox?")) return; setWorking(w=>({...w,[p]:"Deleting…"})); try{ await wApi.post("inbox_delete",{path:p}); flash("Deleted ✓"); await load(); }catch(e){ flash(e.message,true); } finally{ setWorking(w=>{ const n={...w}; delete n[p]; return n; }); } };
   const refresh=async()=>{ setRefreshing(true); await load(); setRefreshing(false); flash("Updated ✓"); };
-  const newFolder=async()=>{ const n=prompt("Folder name (for example the project name):"); if(!n) return; try{ flash("Creating folder…"); const r=await wApi.post("inbox_folder_create",{name:n}); await load(); setFolder(r.folder); flash("Folder created ✓"); }catch(e){ flash(e.message,true); } };
+  const newFolder=async()=>{ const n=prompt("Folder name (for example the project name):"); if(!n) return; try{ flash("Creating folder…"); const r=await wApi.post("inbox_folder_create",{name:n}); await load(); setFolder(r.folder); setUploadTo(r.folder); flash("Folder created ✓"); }catch(e){ flash(e.message,true); } };
   const delFolder=async f=>{ if(!confirm(`Delete the empty folder “${f}”?`)) return; try{ await wApi.post("inbox_folder_delete",{name:f}); if(folder===f) setFolder(""); flash("Folder deleted ✓"); load(); }catch(e){ flash(e.message,true); } };
   const moveTo=async it=>{ const n=prompt("Move “"+it.name+"” to which folder?\n\nExisting: "+(folders.join(", ")||"none")+"\n(Type a new name to create one.)",folder||""); if(!n) return; try{ await wApi.post("inbox_move",{path:it.path,folder:n}); load(); }catch(e){ alert(e.message); } };
   const [useFor,setUseFor]=useState("");
@@ -34027,9 +34029,16 @@ function WebsiteFiles() {
       <div style={{...wCard,display:"flex",flexDirection:"column",gap:10}}>
         <p style={{fontWeight:800,fontSize:15}}>Files for the website</p>
         <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>Upload photos, videos or documents here, then tell the website chat to use them. They're stored in your website's GitHub repository (an <b>inbox</b> branch, or a release file when big), <b>not on the SocialFlow server</b>, and nothing is published until the website chat moves a file into the site.</p>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <span style={{fontSize:12,fontWeight:800}}>Upload to folder:</span>
+          <select value={uploadTo} onChange={e=>{ if(e.target.value==="__new") newFolder(); else setUploadTo(e.target.value); }} disabled={busy} style={{...wInput,width:"auto",minWidth:200,padding:"8px 12px",fontSize:13,fontWeight:700}}>
+            <option value="">No folder (grouped by today's date)</option>
+            {folders.map(f=><option key={f} value={f}>📁 {f}</option>)}
+            <option value="__new">＋ New folder…</option>
+          </select>
+        </div>
         <label onDragOver={e=>{e.preventDefault();setOver(true);}} onDragLeave={()=>setOver(false)} onDrop={e=>{e.preventDefault();setOver(false);upload(e.dataTransfer.files);}}
           style={{border:`2px dashed ${over?"var(--accent)":"var(--border2)"}`,background:over?"var(--accent)10":"var(--surface2)",borderRadius:14,padding:"26px 14px",textAlign:"center",cursor:"pointer",fontSize:13,color:"var(--text2)"}}>
-          {!busy&&<div style={{fontSize:11,fontWeight:700,color:"var(--accent)",marginBottom:6}}>Uploading to: {folder?`📁 ${folder}`:"no folder (grouped by today's date)"}</div>}
           {busy?("Uploading…"+((log.find(x=>x.st==="uploading"&&x.pct!=null)||{}).pct!=null?" "+log.find(x=>x.st==="uploading"&&x.pct!=null).pct+"%":"")):"Drop files here, or tap to choose"}
           <input type="file" multiple hidden disabled={busy} onChange={e=>{ upload(e.target.files); e.target.value=""; }}/>
           <div style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Images, video (mp4, mov, webm), PDF, Office files, zip · up to 200 MB each</div>
