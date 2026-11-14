@@ -229,9 +229,17 @@ if (in_array($action, ['put', 'upload'], true)) {
 /* ─────────────────────────── Inbox: files for the website repo chat ───────────────────────────
  * Files go straight from the browser through this script to GitHub, onto a separate branch ("inbox").
  * Nothing is saved on this server, nothing is published, and the site build never sees them (it only builds main).   */
-if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big', 'inbox_raw', 'inbox_thumb_put'], true)) {
+if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big', 'inbox_raw', 'inbox_thumb_put', 'inbox_folder_create', 'inbox_folder_delete', 'inbox_move'], true)) {
     if (!$REPO || !$TOKEN) wOut(200, ['connected' => false, 'error' => 'GitHub is not set up yet (see the Setup tab).']);
     $IB = 'inbox'; $who = $s['email'] ?? 'admin';
+    $cleanFolder = function ($f) { $f = trim(preg_replace('/\s+/', '-', preg_replace('/[^A-Za-z0-9 _\-]+/u', '', (string)$f)), '-_ '); return mb_substr($f, 0, 50); };
+    $ensureBranch = function () use ($REPO, $TOKEN, $IB, $BRANCH) {
+        [$cr] = gh('GET', "/repos/$REPO/git/ref/heads/$IB", $TOKEN); if ($cr === 200) return null;
+        if ($cr !== 404) return "GitHub HTTP $cr";
+        [$cm, $rm] = gh('GET', "/repos/$REPO/git/ref/heads/$BRANCH", $TOKEN); if ($cm !== 200) return "Could not read the $BRANCH branch (HTTP $cm)";
+        [$cc, $rc] = gh('POST', "/repos/$REPO/git/refs", $TOKEN, ['ref' => "refs/heads/$IB", 'sha' => $rm['object']['sha']]);
+        return $cc === 201 ? null : "Could not create the inbox branch (HTTP $cc) — the token needs Contents: read and write. " . ($rc['message'] ?? '');
+    };
     $ibUrl = fn($p) => "https://github.com/$REPO/blob/$IB/" . implode('/', array_map('rawurlencode', explode('/', $p)));
     // Small preview pictures live in one index file on the inbox branch: {file path or "release:ID": data-URI}.
     $thGet = function () use ($REPO, $TOKEN, $IB, $ghPath) {
@@ -252,12 +260,18 @@ if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big'
         [$c, $r] = gh('GET', "/repos/$REPO/git/trees/$IB?recursive=1", $TOKEN);
         $items = [];
         $relL = null; [$cl, $rl] = gh('GET', "/repos/$REPO/releases/tags/inbox-files", $TOKEN);
-        if ($cl === 200) foreach ($rl['assets'] ?? [] as $a) $items[] = ['path' => 'release:' . $a['id'], 'name' => $a['name'], 'size' => (int)$a['size'], 'url' => $rl['html_url'], 'big' => true, 'date' => substr((string)$a['created_at'], 0, 10), 'cmd' => 'gh release download inbox-files -R ' . $REPO . ' -p "' . $a['name'] . '"'];
-        if ($c === 404) wOut(200, ['items' => $items, 'repo' => $REPO, 'thumbs' => (object)$thumbs]);
+        if ($cl === 200) foreach ($rl['assets'] ?? [] as $a) $items[] = ['path' => 'release:' . $a['id'], 'name' => (strpos($a['name'], '~') !== false ? explode('~', $a['name'], 2)[1] : $a['name']), 'asset' => $a['name'], 'size' => (int)$a['size'], 'url' => $rl['html_url'], 'big' => true, 'folder' => (strpos($a['name'], '~') !== false ? explode('~', $a['name'], 2)[0] : substr((string)$a['created_at'], 0, 10)), 'date' => substr((string)$a['created_at'], 0, 10), 'cmd' => 'gh release download inbox-files -R ' . $REPO . ' -p "' . $a['name'] . '"'];
+        if ($c === 404) wOut(200, ['items' => $items, 'repo' => $REPO, 'thumbs' => (object)$thumbs, 'folders' => array_values(array_unique(array_column($items, 'folder')))]);
         if ($c !== 200) wOut(502, ['error' => "GitHub HTTP $c"]);
-        foreach ($r['tree'] ?? [] as $t) if ($t['type'] === 'blob' && strpos($t['path'], 'inbox/') === 0 && $t['path'] !== 'inbox/_thumbs.json') $items[] = ['path' => $t['path'], 'name' => basename($t['path']), 'size' => (int)($t['size'] ?? 0), 'url' => $ibUrl($t['path']), 'date' => explode('/', $t['path'])[1] ?? ''];
-        usort($items, fn($a, $b) => strcmp($b['date'] . $b['name'], $a['date'] . $a['name']));
-        wOut(200, ['items' => array_slice($items, 0, 300), 'repo' => $REPO, 'branch' => $IB, 'thumbs' => (object)$thumbs]);
+        $folders = [];
+        foreach ($r['tree'] ?? [] as $t) if ($t['type'] === 'blob' && strpos($t['path'], 'inbox/') === 0 && $t['path'] !== 'inbox/_thumbs.json') {
+            $seg = explode('/', $t['path']); $fo = $seg[1] ?? ''; if ($fo !== '') $folders[$fo] = true;
+            if (basename($t['path']) === '.gitkeep') continue;
+            $items[] = ['path' => $t['path'], 'name' => basename($t['path']), 'size' => (int)($t['size'] ?? 0), 'url' => $ibUrl($t['path']), 'folder' => $fo, 'date' => $fo];
+        }
+        foreach ($items as $it) if (!empty($it['folder'])) $folders[$it['folder']] = true;
+        usort($items, fn($a, $b) => strcmp($b['folder'] . $b['name'], $a['folder'] . $a['name']));
+        wOut(200, ['items' => array_slice($items, 0, 300), 'repo' => $REPO, 'branch' => $IB, 'thumbs' => (object)$thumbs, 'folders' => array_values(array_keys($folders))]);
     }
     // ── Big files (22–200 MB): streamed to a GitHub *release asset* (tag "inbox-files"). Git itself can't hold files over 100 MB. ──
     $RT = 'inbox-files';
@@ -274,6 +288,7 @@ if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big'
         $name = preg_replace('/[^A-Za-z0-9._\- ]+/u', '-', basename((string)($_GET['name'] ?? '')));
         $name = trim(preg_replace('/\s+/', '-', $name), '.-');
         if ($name === '' || !preg_match('/\.(jpe?g|png|webp|gif|svg|mp4|mov|webm|pdf|docx?|xlsx?|pptx?|txt|csv|json|zip|md)$/i', $name)) wOut(400, ['error' => 'This file type is not allowed here.']);
+        $fo = $cleanFolder($_GET['folder'] ?? ''); if ($fo !== '') $name = $fo . '~' . $name;
         $len = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
         if ($len <= 0) wOut(400, ['error' => 'The server received no data — its PHP upload limit (post_max_size) is probably lower than this file. Ask for it to be raised to 210M.']);
         if ($len > 200 * 1024 * 1024) wOut(400, ['error' => 'File too large (max 200 MB).']);
@@ -288,7 +303,7 @@ if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big'
         $j = json_decode((string)$res, true);
         if ($code !== 201) wOut(502, ['error' => 'GitHub upload failed' . ($cerr ? ": $cerr" : " (HTTP $code)") . (isset($j['message']) ? ' — ' . $j['message'] : '')]);
         try { $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), 'website_inbox_upload', 'website', ?, 'success', ?)")->execute(['release:' . $name, $who]); } catch (Throwable $e) {}
-        wOut(200, ['ok' => true, 'path' => 'release:' . $j['id'], 'name' => $j['name'], 'size' => (int)$j['size'], 'cmd' => 'gh release download ' . $RT . ' -R ' . $REPO . ' -p "' . $j['name'] . '"']);
+        wOut(200, ['ok' => true, 'path' => 'release:' . $j['id'], 'name' => (strpos($j['name'], '~') !== false ? explode('~', $j['name'], 2)[1] : $j['name']), 'size' => (int)$j['size'], 'cmd' => 'gh release download ' . $RT . ' -R ' . $REPO . ' -p "' . $j['name'] . '"']);
     }
     // Streams one inbox file to the browser (used to build previews). Passes straight through; nothing is stored here.
     if ($action === 'inbox_raw') {
@@ -310,6 +325,41 @@ if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big'
         curl_exec($ch); curl_close($ch); exit;
     }
     $in = json_decode((string)file_get_contents('php://input'), true) ?: [];
+    if ($action === 'inbox_folder_create') {
+        $fo = $cleanFolder($in['name'] ?? ''); if ($fo === '' || $fo === '_thumbs') wOut(400, ['error' => 'Give the folder a name (letters, numbers, spaces, - and _).']);
+        if ($e = $ensureBranch()) wOut(502, ['error' => $e]);
+        [$c, $r] = gh('PUT', "/repos/$REPO/contents/inbox/" . rawurlencode($fo) . "/.gitkeep", $TOKEN, ['message' => "Inbox: new folder $fo", 'content' => base64_encode("folder\n"), 'branch' => $IB]);
+        if ($c !== 200 && $c !== 201) wOut(502, ['error' => "GitHub HTTP $c: " . ($r['message'] ?? '')]);
+        wOut(200, ['ok' => true, 'folder' => $fo]);
+    }
+    if ($action === 'inbox_folder_delete') {          // only an EMPTY folder (just its placeholder)
+        $fo = $cleanFolder($in['name'] ?? ''); if ($fo === '') wOut(400, ['error' => 'Bad folder']);
+        [$ct, $rt] = gh('GET', "/repos/$REPO/git/trees/$IB?recursive=1", $TOKEN); if ($ct !== 200) wOut(502, ['error' => "GitHub HTTP $ct"]);
+        foreach ($rt['tree'] ?? [] as $t) if ($t['type'] === 'blob' && strpos($t['path'], "inbox/$fo/") === 0 && basename($t['path']) !== '.gitkeep') wOut(400, ['error' => 'The folder is not empty — move or delete its files first.']);
+        [$cg, $rg] = gh('GET', "/repos/$REPO/contents/inbox/" . rawurlencode($fo) . "/.gitkeep?ref=$IB", $TOKEN);
+        if ($cg === 200) gh('DELETE', "/repos/$REPO/contents/inbox/" . rawurlencode($fo) . "/.gitkeep", $TOKEN, ['message' => "Inbox: remove folder $fo", 'sha' => $rg['sha'], 'branch' => $IB]);
+        wOut(200, ['ok' => true]);
+    }
+    if ($action === 'inbox_move') {
+        $fo = $cleanFolder($in['folder'] ?? ''); $src = trim((string)($in['path'] ?? ''), '/'); if ($fo === '') wOut(400, ['error' => 'Choose a folder']);
+        if (strpos($src, 'release:') === 0) {              // big file: just rename the release file ("folder~name")
+            $aid = (int)substr($src, 8); [$cm, $rm] = gh('GET', "/repos/$REPO/releases/assets/$aid", $TOKEN); if ($cm !== 200) wOut(404, ['error' => 'File not found']);
+            $base = strpos($rm['name'], '~') !== false ? explode('~', $rm['name'], 2)[1] : $rm['name'];
+            [$cp, $rp] = gh('PATCH', "/repos/$REPO/releases/assets/$aid", $TOKEN, ['name' => "$fo~$base"]); if ($cp !== 200) wOut(502, ['error' => "GitHub HTTP $cp: " . ($rp['message'] ?? '')]);
+            wOut(200, ['ok' => true, 'path' => $src]);
+        }
+        if (strpos($src, 'inbox/') !== 0 || strpos($src, '..') !== false) wOut(400, ['error' => 'Path not allowed']);
+        $dst = "inbox/$fo/" . basename($src); if ($dst === $src) wOut(200, ['ok' => true, 'path' => $src]);
+        [$c0, $r0] = gh('GET', "/repos/$REPO/contents/" . $ghPath($src) . "?ref=$IB", $TOKEN); if ($c0 !== 200) wOut(404, ['error' => 'File not found']);
+        $content = $r0['content'] ?? '';
+        if ($content === '' || !empty($r0['truncated'])) { [$cb, $rb] = gh('GET', "/repos/$REPO/git/blobs/" . $r0['sha'], $TOKEN); if ($cb === 200) $content = $rb['content']; }
+        $content = preg_replace('/\s+/', '', (string)$content); if ($content === '') wOut(502, ['error' => 'Could not read the file']);
+        [$ce] = gh('GET', "/repos/$REPO/contents/" . $ghPath($dst) . "?ref=$IB", $TOKEN); if ($ce === 200) $dst = preg_replace('/(\.[^.]+)$/', '-' . date('His') . '$1', $dst);
+        [$cp, $rp] = gh('PUT', "/repos/$REPO/contents/" . $ghPath($dst), $TOKEN, ['message' => 'Inbox: move ' . basename($src) . " to $fo", 'content' => $content, 'branch' => $IB]); if ($cp !== 200 && $cp !== 201) wOut(502, ['error' => "GitHub HTTP $cp: " . ($rp['message'] ?? '')]);
+        gh('DELETE', "/repos/$REPO/contents/" . $ghPath($src), $TOKEN, ['message' => 'Inbox: moved ' . basename($src), 'sha' => $r0['sha'], 'branch' => $IB]);
+        [$ix, $sh] = $thGet(); if (isset($ix[$src])) { $ix[$dst] = $ix[$src]; unset($ix[$src]); $thPut($ix, $sh, 'Move preview'); }
+        wOut(200, ['ok' => true, 'path' => $dst]);
+    }
     if ($action === 'inbox_thumb_put') {
         $key = (string)($in['path'] ?? ''); $data = (string)($in['data'] ?? '');
         if (!preg_match('#^(inbox/[^\s]+|release:\d+)$#', $key) || strpos($key, '..') !== false) wOut(400, ['error' => 'Bad key']);
@@ -342,14 +392,9 @@ if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big'
     $b64 = preg_replace('#^data:[^;]*;base64,#', '', (string)($in['base64'] ?? ''));
     if ($b64 === '') wOut(400, ['error' => 'Empty file']);
     if (strlen($b64) > 30 * 1024 * 1024) wOut(400, ['error' => 'File too large for this route (use the big-file route above 22 MB).']);
-    [$cr, $rr] = gh('GET', "/repos/$REPO/git/ref/heads/$IB", $TOKEN);
-    if ($cr === 404) {       // first time: create the inbox branch from main
-        [$cm, $rm] = gh('GET', "/repos/$REPO/git/ref/heads/$BRANCH", $TOKEN);
-        if ($cm !== 200) wOut(502, ['error' => "Could not read the $BRANCH branch (HTTP $cm)"]);
-        [$cc, $rc] = gh('POST', "/repos/$REPO/git/refs", $TOKEN, ['ref' => "refs/heads/$IB", 'sha' => $rm['object']['sha']]);
-        if ($cc !== 201) wOut(502, ['error' => "Could not create the inbox branch (HTTP $cc) — the token needs Contents: read and write. " . ($rc['message'] ?? '')]);
-    } elseif ($cr !== 200) wOut(502, ['error' => "GitHub HTTP $cr"]);
-    $path = 'inbox/' . (new DateTime('now', new DateTimeZone('Africa/Cairo')))->format('Y-m-d') . '/' . $name;
+    if ($e = $ensureBranch()) wOut(502, ['error' => $e]);
+    $fo = $cleanFolder($in['folder'] ?? '');
+    $path = 'inbox/' . ($fo !== '' ? $fo : (new DateTime('now', new DateTimeZone('Africa/Cairo')))->format('Y-m-d')) . '/' . $name;
     [$ce] = gh('GET', "/repos/$REPO/contents/" . $ghPath($path) . "?ref=$IB", $TOKEN);
     if ($ce === 200) $path = preg_replace('/(\.[^.]+)$/', '-' . date('His') . '$1', $path);
     [$c, $r] = gh('PUT', "/repos/$REPO/contents/" . $ghPath($path), $TOKEN, ['message' => "Inbox: $name\n\nUploaded from the SocialFlow Website tab by $who", 'content' => $b64, 'branch' => $IB]);

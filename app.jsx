@@ -33938,8 +33938,10 @@ function WebsiteFiles() {
   const [items,setItems]=useState(null); const [thumbs,setThumbs]=useState({}); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false); const [log,setLog]=useState([]); const [over,setOver]=useState(false); const [info,setInfo]=useState(null);
   const [view,setView]=useState(()=>{ try{ return localStorage.getItem("sf_files_view")||"cards"; }catch(e){ return "cards"; } });
   const [prev,setPrev]=useState(null);
+  const [folders,setFolders]=useState([]); const [folder,setFolder]=useState(()=>{ try{ return localStorage.getItem("sf_files_folder")||""; }catch(e){ return ""; } });
   useEffect(()=>{ try{ localStorage.setItem("sf_files_view",view); }catch(e){} },[view]);
-  const load=()=>wApi.get("inbox_list").then(r=>{ if(r.connected===false) setErr(r.error); else { setItems(r.items||[]); setThumbs(r.thumbs||{}); setInfo({repo:r.repo,branch:r.branch}); setErr(""); } }).catch(e=>setErr(e.message));
+  useEffect(()=>{ try{ localStorage.setItem("sf_files_folder",folder); }catch(e){} },[folder]);
+  const load=()=>wApi.get("inbox_list").then(r=>{ if(r.connected===false) setErr(r.error); else { setItems(r.items||[]); setThumbs(r.thumbs||{}); setFolders((r.folders||[]).filter(x=>x!=="_thumbs").sort((a,b)=>b.localeCompare(a))); setInfo({repo:r.repo,branch:r.branch}); setErr(""); } }).catch(e=>setErr(e.message));
   useEffect(()=>{load();},[]);
   const fmtSize=n=>n>1048576?(n/1048576).toFixed(1)+" MB":Math.max(1,Math.round(n/1024))+" KB";
   const readB64=f=>new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(String(fr.result).split(",")[1]||""); fr.onerror=()=>rej(new Error("Could not read the file")); fr.readAsDataURL(f); });
@@ -33951,11 +33953,11 @@ function WebsiteFiles() {
       try{
         if(f.size>200*1024*1024) throw new Error("Too large (max 200 MB)");
         let r;
-        if(f.size<=22*1024*1024){ const b64=await readB64(f); r=await wApi.post("inbox_upload",{name:f.name,base64:b64}); }
+        if(f.size<=22*1024*1024){ const b64=await readB64(f); r=await wApi.post("inbox_upload",{name:f.name,base64:b64,folder}); }
         else { // big file: sent as-is (not base64) and streamed on to GitHub as a release file
           r=await new Promise((res,rej)=>{
             const xhr=new XMLHttpRequest(); const t0=Date.now();
-            xhr.open("POST",window.location.origin+"/website-admin.php?action=inbox_big&name="+encodeURIComponent(f.name));
+            xhr.open("POST",window.location.origin+"/website-admin.php?action=inbox_big&name="+encodeURIComponent(f.name)+"&folder="+encodeURIComponent(folder));
             xhr.setRequestHeader("Content-Type",f.type||"application/octet-stream");
             try{ const tok=sfSession.get(); if(tok) xhr.setRequestHeader("X-SF-Session",tok); xhr.setRequestHeader("apikey",SB_KEY); }catch(e){}
             xhr.upload.onprogress=ev=>{ if(!ev.lengthComputable) return; const pct=Math.round(ev.loaded/ev.total*100); const secs=(Date.now()-t0)/1000; const speed=ev.loaded/Math.max(secs,0.5); const left=Math.max(0,Math.round((ev.total-ev.loaded)/speed));
@@ -33974,6 +33976,11 @@ function WebsiteFiles() {
   };
   const copy=t=>{ try{ navigator.clipboard.writeText(t); }catch(e){} };
   const del=async p=>{ if(!confirm("Delete this file from the inbox?")) return; try{ await wApi.post("inbox_delete",{path:p}); load(); }catch(e){ alert(e.message); } };
+  const newFolder=async()=>{ const n=prompt("Folder name (for example the project name):"); if(!n) return; try{ const r=await wApi.post("inbox_folder_create",{name:n}); await load(); setFolder(r.folder); }catch(e){ alert(e.message); } };
+  const delFolder=async f=>{ if(!confirm(`Delete the empty folder “${f}”?`)) return; try{ await wApi.post("inbox_folder_delete",{name:f}); if(folder===f) setFolder(""); load(); }catch(e){ alert(e.message); } };
+  const moveTo=async it=>{ const n=prompt("Move “"+it.name+"” to which folder?\n\nExisting: "+(folders.join(", ")||"none")+"\n(Type a new name to create one.)",folder||""); if(!n) return; try{ await wApi.post("inbox_move",{path:it.path,folder:n}); load(); }catch(e){ alert(e.message); } };
+  const counts={}; (items||[]).forEach(it=>{ counts[it.folder]=(counts[it.folder]||0)+1; });
+  const shown=(items||[]).filter(it=>!folder||it.folder===folder);
   const missing=(items||[]).filter(it=>!thumbs[it.path]&&(W_IS_IMG(it.name)||W_IS_VID(it.name))&&it.size<=40*1024*1024);
   const backfill=async()=>{
     setPrev({n:0,total:missing.length}); 
@@ -33986,6 +33993,7 @@ function WebsiteFiles() {
   const Actions=({it})=><>
     <button onClick={()=>copy(it.cmd||it.path)} style={wBtn(false)}>{it.cmd?"Copy download command":"Copy path"}</button>
     <a href={it.url} target="_blank" rel="noreferrer" style={{...wBtn(false),textDecoration:"none"}}>Open ↗</a>
+    <button onClick={()=>moveTo(it)} style={wBtn(false)}>Move</button>
     <button onClick={()=>del(it.path)} style={{...wBtn(false),color:"#dc2626"}}>Delete</button></>;
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -33994,6 +34002,7 @@ function WebsiteFiles() {
         <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>Upload photos, videos or documents here, then tell the website chat to use them. They're stored in your website's GitHub repository (an <b>inbox</b> branch, or a release file when big), <b>not on the SocialFlow server</b>, and nothing is published until the website chat moves a file into the site.</p>
         <label onDragOver={e=>{e.preventDefault();setOver(true);}} onDragLeave={()=>setOver(false)} onDrop={e=>{e.preventDefault();setOver(false);upload(e.dataTransfer.files);}}
           style={{border:`2px dashed ${over?"var(--accent)":"var(--border2)"}`,background:over?"var(--accent)10":"var(--surface2)",borderRadius:14,padding:"26px 14px",textAlign:"center",cursor:"pointer",fontSize:13,color:"var(--text2)"}}>
+          {!busy&&<div style={{fontSize:11,fontWeight:700,color:"var(--accent)",marginBottom:6}}>Uploading to: {folder?`📁 ${folder}`:"no folder (grouped by today's date)"}</div>}
           {busy?("Uploading…"+((log.find(x=>x.st==="uploading"&&x.pct!=null)||{}).pct!=null?" "+log.find(x=>x.st==="uploading"&&x.pct!=null).pct+"%":"")):"Drop files here, or tap to choose"}
           <input type="file" multiple hidden disabled={busy} onChange={e=>{ upload(e.target.files); e.target.value=""; }}/>
           <div style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Images, video (mp4, mov, webm), PDF, Office files, zip · up to 200 MB each</div>
@@ -34007,8 +34016,13 @@ function WebsiteFiles() {
           {x.st==="error"&&<span style={{color:"#dc2626"}}>{x.msg}</span>}</div>)}</div>}
       </div>
       <div style={{...wCard,display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+          <button style={gPill(folder==="")} onClick={()=>setFolder("")}>All ({(items||[]).length})</button>
+          {folders.map(f=><span key={f} style={{display:"inline-flex",alignItems:"center",gap:2}}><button style={gPill(folder===f)} onClick={()=>setFolder(f)}>📁 {f} ({counts[f]||0})</button>{!(counts[f]>0)&&<button title="Delete empty folder" onClick={()=>delFolder(f)} style={{fontSize:11,color:"#dc2626",padding:"0 4px"}}>✕</button>}</span>)}
+          <button style={{...gPill(false),borderStyle:"dashed"}} onClick={newFolder}>+ New folder</button>
+        </div>
         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-          <p style={{fontWeight:800,fontSize:14,flex:1}}>In the inbox{items?` (${items.length})`:""}</p>
+          <p style={{fontWeight:800,fontSize:14,flex:1}}>{folder?`📁 ${folder}`:"In the inbox"}{items?` (${shown.length})`:""}</p>
           <div style={{display:"flex",border:"1px solid var(--border2)",borderRadius:9,overflow:"hidden"}}>
             {[["cards","▦ Cards"],["list","☰ List"]].map(([k,l])=><button key={k} onClick={()=>setView(k)} style={{padding:"7px 12px",fontSize:12,fontWeight:700,background:view===k?"var(--accent)":"var(--surface)",color:view===k?"#fff":"var(--text2)"}}>{l}</button>)}
           </div>
@@ -34017,17 +34031,17 @@ function WebsiteFiles() {
         </div>
         {prev&&<p style={{fontSize:12,color:"var(--text2)"}}>Creating previews… {prev.n+1} of {prev.total}{prev.name?` · ${prev.name}`:""}</p>}
         {err&&<p style={{fontSize:12,color:"#dc2626"}}>{err}</p>}
-        {items===null&&!err?<Spinner size={16}/>:items&&items.length===0?<p style={{fontSize:12,color:"var(--text3)"}}>No files yet.</p>:
+        {items===null&&!err?<Spinner size={16}/>:items&&shown.length===0?<p style={{fontSize:12,color:"var(--text3)"}}>{folder?"This folder is empty — drop files above to add them.":"No files yet."}</p>:
         view==="cards"?
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:12}}>
-            {(items||[]).map(it=><div key={it.path} style={{border:"1px solid var(--border)",borderRadius:14,padding:10,display:"flex",flexDirection:"column",gap:8,minWidth:0}}>
+            {shown.map(it=><div key={it.path} style={{border:"1px solid var(--border)",borderRadius:14,padding:10,display:"flex",flexDirection:"column",gap:8,minWidth:0}}>
               <a href={it.url} target="_blank" rel="noreferrer" style={{display:"block"}}><Thumb it={it} h={120} w="100%"/></a>
-              <div style={{minWidth:0}}><span style={{fontWeight:700,fontSize:12.5,display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={it.name}>{it.name}</span><span style={{fontSize:11,color:"var(--text3)"}}>{it.date} · {fmtSize(it.size)}{it.big?" · big":""}</span></div>
+              <div style={{minWidth:0}}><span style={{fontWeight:700,fontSize:12.5,display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={it.name}>{it.name}</span><span style={{fontSize:11,color:"var(--text3)"}}>{!folder&&<>{it.folder} · </>}{fmtSize(it.size)}{it.big?" · big":""}</span></div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Actions it={it}/></div></div>)}
           </div>
-        :(items||[]).map(it=><div key={it.path} style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap",padding:"8px 10px",border:"1px solid var(--border)",borderRadius:10,fontSize:12}}>
+        :shown.map(it=><div key={it.path} style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap",padding:"8px 10px",border:"1px solid var(--border)",borderRadius:10,fontSize:12}}>
           <a href={it.url} target="_blank" rel="noreferrer" style={{flexShrink:0}}><Thumb it={it} h={56} w={56}/></a>
-          <div style={{flex:"1 1 200px",minWidth:0}}><a href={it.url} target="_blank" rel="noreferrer" style={{fontWeight:700,color:"var(--text)",display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.name}</a><span style={{color:"var(--text3)"}}>{it.date} · {fmtSize(it.size)}{it.big?" · big file":""}</span></div>
+          <div style={{flex:"1 1 200px",minWidth:0}}><a href={it.url} target="_blank" rel="noreferrer" style={{fontWeight:700,color:"var(--text)",display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.name}</a><span style={{color:"var(--text3)"}}>{!folder&&<>{it.folder} · </>}{fmtSize(it.size)}{it.big?" · big file":""}</span></div>
           <Actions it={it}/></div>)}
         {info&&<div style={{fontSize:11,color:"var(--text3)",lineHeight:1.7,borderTop:"1px solid var(--border)",paddingTop:8}}>To use a file, tell the website chat: <i>“Use the file inbox/… from the <b>inbox</b> branch of {info.repo} on the page … (fetch that branch, copy the file into the site, then delete it from the inbox).”</i> For files marked <b>big</b> (over 22 MB) say instead: <i>“Download the file with this command … then add it to the page … and delete the inbox file.”</i> (Copy the command with the button.) “Open” needs you to be signed in to GitHub. Previews are made in your browser from the file; “Create previews” also covers older uploads (images and videos up to 40 MB).</div>}
       </div>
