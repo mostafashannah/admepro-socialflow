@@ -347,10 +347,11 @@ if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big'
         $fo = $cleanFolder($in['folder'] ?? ''); $paths = array_values(array_unique(array_filter((array)($in['paths'] ?? []), 'is_string'))); if ($fo === '' || !$paths) wOut(400, ['error' => 'Choose files and a folder']);
         if (count($paths) > 150) wOut(400, ['error' => 'Move at most 150 files at a time']);
         $gitPaths = []; $rel = []; foreach ($paths as $pth) { $pth = trim($pth, '/'); if (strpos($pth, 'release:') === 0) $rel[] = (int)substr($pth, 8); elseif (strpos($pth, 'inbox/') === 0 && strpos($pth, '..') === false && $pth !== 'inbox/_thumbs.json') $gitPaths[] = $pth; }
-        $moved = 0; $errs = [];
+        $moved = 0; $errs = []; $skipped = [];
         foreach ($rel as $aid) {
             [$cm, $rm] = gh('GET', "/repos/$REPO/releases/assets/$aid", $TOKEN); if ($cm !== 200) { $errs[] = "release file $aid not found"; continue; }
             $base = strpos($rm['name'], '~') !== false ? explode('~', $rm['name'], 2)[1] : $rm['name'];
+            if ($rm['name'] === "$fo~$base") { $skipped[] = $base; continue; }
             [$cp, $rp] = gh('PATCH', "/repos/$REPO/releases/assets/$aid", $TOKEN, ['name' => "$fo~$base"]); if ($cp === 200) $moved++; else $errs[] = $base . ': ' . ($rp['message'] ?? "HTTP $cp");
         }
         if ($gitPaths) {
@@ -361,7 +362,7 @@ if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big'
             $entries = []; $taken = $shaOf; $map = [];
             foreach ($gitPaths as $src) {
                 if (!isset($shaOf[$src])) { $errs[] = basename($src) . ': not found'; continue; }
-                $dst = "inbox/$fo/" . basename($src); if ($dst === $src) continue;
+                $dst = "inbox/$fo/" . basename($src); if ($dst === $src) { $skipped[] = basename($src); continue; }
                 if (isset($taken[$dst])) $dst = preg_replace('/(\.[^.]+)$/', '-' . substr(md5($src), 0, 4) . '$1', $dst);
                 $taken[$dst] = true; $entries[] = ['path' => $dst, 'mode' => '100644', 'type' => 'blob', 'sha' => $shaOf[$src]]; $entries[] = ['path' => $src, 'mode' => '100644', 'type' => 'blob', 'sha' => null]; $map[$src] = $dst;
             }
@@ -373,7 +374,7 @@ if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big'
                 [$ix, $sh] = $thGet(); $ch = false; foreach ($map as $a1 => $b1) if (isset($ix[$a1])) { $ix[$b1] = $ix[$a1]; unset($ix[$a1]); $ch = true; } if ($ch) $thPut($ix, $sh, 'Move previews');
             }
         }
-        wOut(200, ['ok' => true, 'moved' => $moved, 'errors' => $errs]);
+        wOut(200, ['ok' => true, 'moved' => $moved, 'skipped' => $skipped, 'errors' => $errs, 'asked' => count($paths)]);
     }
     if ($action === 'inbox_move') {
         $fo = $cleanFolder($in['folder'] ?? ''); $src = trim((string)($in['path'] ?? ''), '/'); if ($fo === '') wOut(400, ['error' => 'Choose a folder']);

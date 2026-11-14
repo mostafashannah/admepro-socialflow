@@ -34018,8 +34018,8 @@ function WebsiteFiles() {
   };
   const [sel,setSel]=useState([]); const toggleSel=p=>setSel(a=>a.includes(p)?a.filter(x=>x!==p):[...a,p]);
   const [moving,setMoving]=useState(null); const [newName,setNewName]=useState(""); const [moveBusy,setMoveBusy]=useState(false);
-  const [moveErr,setMoveErr]=useState("");
-  const doMove=async f=>{ if(!f||!moving) return; setMoveBusy(true); setMoveErr(""); try{ const list=moving.many||[moving]; const r=await wApi.post("inbox_move_many",{paths:list.map(x=>x.path),folder:f}); setMoving(null); setNewName(""); setSel([]); await load(); if(r.errors&&r.errors.length) flash(`${r.moved} moved, ${r.errors.length} failed: ${r.errors[0]}`,true); else flash(`${r.moved} file${r.moved===1?"":"s"} moved to ${f} ✓`); }catch(e){ setMoveErr(e.message||"The move failed"); flash(e.message||"The move failed",true); } finally{ setMoveBusy(false); } };
+  const [moveErr,setMoveErr]=useState(""); const [moveRes,setMoveRes]=useState(null);
+  const doMove=async f=>{ if(!f||!moving) return; setMoveBusy(true); setMoveErr(""); try{ const list=moving.many||[moving]; const r=await wApi.post("inbox_move_many",{paths:list.map(x=>x.path),folder:f}); setMoving(null); setNewName(""); setSel([]); await load(); setMoveRes({folder:f,asked:r.asked,moved:r.moved,skipped:r.skipped||[],errors:r.errors||[]}); if(r.errors&&r.errors.length) flash(`${r.moved} moved, ${r.errors.length} failed`,true); else flash(`${r.moved} file${r.moved===1?"":"s"} moved to ${f} ✓`); }catch(e){ setMoveErr(e.message||"The move failed"); flash(e.message||"The move failed",true); } finally{ setMoveBusy(false); } };
   const Thumb=({it,h,w})=>{ const d=thumbs[it.path]; return d?<img src={d} alt="" style={{width:w,height:h,objectFit:"cover",borderRadius:10,display:"block",background:"var(--surface2)"}}/>:<div style={{width:w,height:h,borderRadius:10,background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:h>80?34:22,flexShrink:0}}>{W_ICON(it.name)}</div>; };
   const Actions=({it})=><>
     <button onClick={()=>copy(it.cmd||it.path)} style={wBtn(false)}>{it.cmd?"Copy download command":"Copy path"}</button>
@@ -34089,6 +34089,11 @@ function WebsiteFiles() {
           <details><summary style={{fontSize:11,color:"var(--text3)",cursor:"pointer"}}>Preview the message</summary><pre style={{fontSize:11,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:"6px 0 0",color:"var(--text2)"}}>{folderBrief()}</pre></details>
         </div>}
         {prev&&<p style={{fontSize:12,color:"var(--text2)"}}>Creating previews… {prev.n+1} of {prev.total}{prev.name?` · ${prev.name}`:""}</p>}
+        {moveRes&&<div style={{fontSize:12,background:"var(--surface2)",borderRadius:10,padding:"8px 12px",display:"flex",flexDirection:"column",gap:4}}>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}><b style={{flex:1}}>Move to 📁 {moveRes.folder}: {moveRes.asked} selected · {moveRes.moved} moved{moveRes.skipped.length?` · ${moveRes.skipped.length} already there`:""}{moveRes.errors.length?` · ${moveRes.errors.length} failed`:""}</b><button onClick={()=>setMoveRes(null)} style={{fontSize:11,color:"var(--text3)"}}>Dismiss</button></div>
+          {moveRes.skipped.length>0&&<span style={{color:"var(--text3)"}}>Already in this folder: {moveRes.skipped.slice(0,8).join(", ")}</span>}
+          {moveRes.errors.length>0&&<ul style={{margin:0,paddingLeft:18,color:"#b45309"}}>{moveRes.errors.slice(0,8).map((e,i)=><li key={i}>{e}</li>)}</ul>}
+        </div>}
         {prevRes&&<div style={{fontSize:12,background:"var(--surface2)",borderRadius:10,padding:"8px 12px"}}><b>{prevRes.ok} preview{prevRes.ok===1?"":"s"} created.</b>{prevRes.fails.length>0&&<> {prevRes.fails.length} could not be made:<ul style={{margin:"4px 0 0",paddingLeft:18,color:"#b45309"}}>{prevRes.fails.slice(0,8).map((f,i)=><li key={i}>{f}</li>)}</ul></>}</div>}
         {moving&&<Modal open onClose={()=>setMoving(null)} title="Move to a folder" width={420}>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
