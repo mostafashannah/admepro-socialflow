@@ -29738,7 +29738,16 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const myLeadsOnly = ["account_manager","account_director","account_executive"].includes(currentUser?.role);
   // This is admepro's own lead center (social DMs to admepro, website forms, WhatsApp, etc.).
   // Contacts captured on CLIENT pages (Bino, Dr. Ahmed Soliman…) belong to those clients and never show here.
-  const isOwnLead = l => !l.client_name || /^admepro$/i.test(String(l.client_name).trim());
+  // A lead belongs to a CLIENT (not to admepro) when it carries a client name/id other than admepro's own client, or its
+  // auto-capture note says it came "on <Client>'s account". Older rows may have only one of these set.
+  const ownClientIds = new Set((clients||[]).filter(c=>/^admepro$/i.test(String(c.name||"").trim())).map(c=>c.id));
+  const isOwnLead = l => {
+    if(l.client_name) return /^admepro$/i.test(String(l.client_name).trim());
+    if(l.client_id) return ownClientIds.has(l.client_id);
+    const m = String(l.notes||"").match(/ on (.{1,60}?)['’]s account/i);
+    if(m) return /^admepro$/i.test(m[1].trim());
+    return true;
+  };
   const ownLeads = leads.filter(isOwnLead);
   const leadsScope = myLeadsOnly ? ownLeads.filter(l=>l.assigned_to===currentUser.email) : ownLeads;
   // Leads with nobody assigned yet sit in the "Bank" — imported in bulk
@@ -46641,8 +46650,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       {key:"projects", label:"Projects", ico:Icons.projects},
       {key:"tasks", label:"All Posts & Tasks", ico:Icons.tasks},
     ]}] : []),
-    ...(canViewCrm ? [{ group: "CRM", icon: Icons.leads, items: [
-      {key:"leads", label:"Leads", ico:Icons.leads},
+    ...((!canViewTeamNav&&["account_manager","account_director","account_executive"].includes(currentUser?.role)) ? [{ group: "CRM", icon: Icons.leads, items: [
       // Account managers get a scoped entry into User Management just for
       // access requests from their own clients — not the full Team nav
       // (Team Members/Invitations/Roles), which stays behind canViewTeamNav.
@@ -46670,9 +46678,12 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       ...(currentUser?.role==="account_director"?[{key:"mai_reports", label:"Mai Reports", ico:Icons.award}]:[]),
       ...(canManageRecruitment?[{key:"recruitment", label:"Recruitment", ico:Icons.briefcase}]:[]),
     ]}] : [])),
-    ...(["admin","account_director","account_manager","account_executive"].includes(currentUser?.role) ? [{ group: "GROWTH", icon: Icons.target, items: [
-      {key:"marketing", label:"Marketing", ico:Icons.mail},
-      {key:"sales", label:"Sales agent", ico:Icons.target},
+    ...((canViewCrm || ["admin","account_director","account_manager","account_executive"].includes(currentUser?.role)) ? [{ group: "GROWTH", icon: Icons.target, items: [
+      ...(canViewCrm ? [{key:"leads", label:"Leads", ico:Icons.leads}] : []),
+      ...(["admin","account_director","account_manager","account_executive"].includes(currentUser?.role) ? [
+        {key:"marketing", label:"Marketing", ico:Icons.mail},
+        {key:"sales", label:"Sales agent", ico:Icons.target},
+      ] : []),
     ]}] : []),
     ...((canAgency||isAdmin) ? [{ group: "TOOLS", icon: Icons.wand, items: [
       ...(canAgency?[
