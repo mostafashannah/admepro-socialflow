@@ -33938,6 +33938,8 @@ function WebsiteFiles() {
   const [items,setItems]=useState(null); const [thumbs,setThumbs]=useState({}); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false); const [log,setLog]=useState([]); const [over,setOver]=useState(false); const [info,setInfo]=useState(null);
   const [view,setView]=useState(()=>{ try{ return localStorage.getItem("sf_files_view")||"cards"; }catch(e){ return "cards"; } });
   const [prev,setPrev]=useState(null);
+  const [sort,setSort]=useState(()=>{ try{ return localStorage.getItem("sf_files_sort")||"new"; }catch(e){ return "new"; } });
+  useEffect(()=>{ try{ localStorage.setItem("sf_files_sort",sort); }catch(e){} },[sort]);
   const [folders,setFolders]=useState([]); const [folder,setFolder]=useState(()=>{ try{ return localStorage.getItem("sf_files_folder")||""; }catch(e){ return ""; } });
   useEffect(()=>{ try{ localStorage.setItem("sf_files_view",view); }catch(e){} },[view]);
   useEffect(()=>{ try{ localStorage.setItem("sf_files_folder",folder); }catch(e){} },[folder]);
@@ -33980,7 +33982,9 @@ function WebsiteFiles() {
   const delFolder=async f=>{ if(!confirm(`Delete the empty folder “${f}”?`)) return; try{ await wApi.post("inbox_folder_delete",{name:f}); if(folder===f) setFolder(""); load(); }catch(e){ alert(e.message); } };
   const moveTo=async it=>{ const n=prompt("Move “"+it.name+"” to which folder?\n\nExisting: "+(folders.join(", ")||"none")+"\n(Type a new name to create one.)",folder||""); if(!n) return; try{ await wApi.post("inbox_move",{path:it.path,folder:n}); load(); }catch(e){ alert(e.message); } };
   const counts={}; (items||[]).forEach(it=>{ counts[it.folder]=(counts[it.folder]||0)+1; });
-  const shown=(items||[]).filter(it=>!folder||it.folder===folder);
+  const ts=it=>{ const t=Date.parse(it.added||""); return isNaN(t)?(Date.parse(it.folder)||0):t; };
+  const shown=(items||[]).filter(it=>!folder||it.folder===folder).sort((a,b)=>sort==="old"?ts(a)-ts(b):sort==="name"?a.name.localeCompare(b.name):sort==="size"?b.size-a.size:ts(b)-ts(a));
+  const fmtAdded=it=>{ const t=Date.parse(it.added||""); return isNaN(t)?"":new Date(t).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}); };
   const missing=(items||[]).filter(it=>!thumbs[it.path]&&(W_IS_IMG(it.name)||W_IS_VID(it.name))&&it.size<=40*1024*1024);
   const backfill=async()=>{
     setPrev({n:0,total:missing.length}); 
@@ -34023,6 +34027,9 @@ function WebsiteFiles() {
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
           <p style={{fontWeight:800,fontSize:14,flex:1}}>{folder?`📁 ${folder}`:"In the inbox"}{items?` (${shown.length})`:""}</p>
+          <select value={sort} onChange={e=>setSort(e.target.value)} title="Sort by" style={{...wInput,width:"auto",padding:"7px 10px",fontSize:12}}>
+            <option value="new">Last added first</option><option value="old">Oldest first</option><option value="name">Name A–Z</option><option value="size">Largest first</option>
+          </select>
           <div style={{display:"flex",border:"1px solid var(--border2)",borderRadius:9,overflow:"hidden"}}>
             {[["cards","▦ Cards"],["list","☰ List"]].map(([k,l])=><button key={k} onClick={()=>setView(k)} style={{padding:"7px 12px",fontSize:12,fontWeight:700,background:view===k?"var(--accent)":"var(--surface)",color:view===k?"#fff":"var(--text2)"}}>{l}</button>)}
           </div>
@@ -34036,12 +34043,12 @@ function WebsiteFiles() {
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:12}}>
             {shown.map(it=><div key={it.path} style={{border:"1px solid var(--border)",borderRadius:14,padding:10,display:"flex",flexDirection:"column",gap:8,minWidth:0}}>
               <a href={it.url} target="_blank" rel="noreferrer" style={{display:"block"}}><Thumb it={it} h={120} w="100%"/></a>
-              <div style={{minWidth:0}}><span style={{fontWeight:700,fontSize:12.5,display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={it.name}>{it.name}</span><span style={{fontSize:11,color:"var(--text3)"}}>{!folder&&<>{it.folder} · </>}{fmtSize(it.size)}{it.big?" · big":""}</span></div>
+              <div style={{minWidth:0}}><span style={{fontWeight:700,fontSize:12.5,display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={it.name}>{it.name}</span><span style={{fontSize:11,color:"var(--text3)"}}>{!folder&&<>{it.folder} · </>}{fmtSize(it.size)}{it.big?" · big":""}{fmtAdded(it)?` · ${fmtAdded(it)}`:""}</span></div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Actions it={it}/></div></div>)}
           </div>
         :shown.map(it=><div key={it.path} style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap",padding:"8px 10px",border:"1px solid var(--border)",borderRadius:10,fontSize:12}}>
           <a href={it.url} target="_blank" rel="noreferrer" style={{flexShrink:0}}><Thumb it={it} h={56} w={56}/></a>
-          <div style={{flex:"1 1 200px",minWidth:0}}><a href={it.url} target="_blank" rel="noreferrer" style={{fontWeight:700,color:"var(--text)",display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.name}</a><span style={{color:"var(--text3)"}}>{!folder&&<>{it.folder} · </>}{fmtSize(it.size)}{it.big?" · big file":""}</span></div>
+          <div style={{flex:"1 1 200px",minWidth:0}}><a href={it.url} target="_blank" rel="noreferrer" style={{fontWeight:700,color:"var(--text)",display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.name}</a><span style={{color:"var(--text3)"}}>{!folder&&<>{it.folder} · </>}{fmtSize(it.size)}{it.big?" · big file":""}{fmtAdded(it)?` · added ${fmtAdded(it)}`:""}</span></div>
           <Actions it={it}/></div>)}
         {info&&<div style={{fontSize:11,color:"var(--text3)",lineHeight:1.7,borderTop:"1px solid var(--border)",paddingTop:8}}>To use a file, tell the website chat: <i>“Use the file inbox/… from the <b>inbox</b> branch of {info.repo} on the page … (fetch that branch, copy the file into the site, then delete it from the inbox).”</i> For files marked <b>big</b> (over 22 MB) say instead: <i>“Download the file with this command … then add it to the page … and delete the inbox file.”</i> (Copy the command with the button.) “Open” needs you to be signed in to GitHub. Previews are made in your browser from the file; “Create previews” also covers older uploads (images and videos up to 40 MB).</div>}
       </div>

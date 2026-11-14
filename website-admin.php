@@ -260,14 +260,17 @@ if (in_array($action, ['inbox_upload', 'inbox_list', 'inbox_delete', 'inbox_big'
         [$c, $r] = gh('GET', "/repos/$REPO/git/trees/$IB?recursive=1", $TOKEN);
         $items = [];
         $relL = null; [$cl, $rl] = gh('GET', "/repos/$REPO/releases/tags/inbox-files", $TOKEN);
-        if ($cl === 200) foreach ($rl['assets'] ?? [] as $a) $items[] = ['path' => 'release:' . $a['id'], 'name' => (strpos($a['name'], '~') !== false ? explode('~', $a['name'], 2)[1] : $a['name']), 'asset' => $a['name'], 'size' => (int)$a['size'], 'url' => $rl['html_url'], 'big' => true, 'folder' => (strpos($a['name'], '~') !== false ? explode('~', $a['name'], 2)[0] : substr((string)$a['created_at'], 0, 10)), 'date' => substr((string)$a['created_at'], 0, 10), 'cmd' => 'gh release download inbox-files -R ' . $REPO . ' -p "' . $a['name'] . '"'];
+        if ($cl === 200) foreach ($rl['assets'] ?? [] as $a) $items[] = ['path' => 'release:' . $a['id'], 'name' => (strpos($a['name'], '~') !== false ? explode('~', $a['name'], 2)[1] : $a['name']), 'asset' => $a['name'], 'size' => (int)$a['size'], 'url' => $rl['html_url'], 'big' => true, 'folder' => (strpos($a['name'], '~') !== false ? explode('~', $a['name'], 2)[0] : substr((string)$a['created_at'], 0, 10)), 'date' => substr((string)$a['created_at'], 0, 10), 'added' => (string)$a['created_at'], 'cmd' => 'gh release download inbox-files -R ' . $REPO . ' -p "' . $a['name'] . '"'];
         if ($c === 404) wOut(200, ['items' => $items, 'repo' => $REPO, 'thumbs' => (object)$thumbs, 'folders' => array_values(array_unique(array_column($items, 'folder')))]);
         if ($c !== 200) wOut(502, ['error' => "GitHub HTTP $c"]);
+        $when = [];
+        [$cc, $rcm] = gh('GET', "/repos/$REPO/commits?sha=$IB&per_page=100", $TOKEN);
+        if ($cc === 200) foreach ($rcm as $cm) { $first = strtok((string)($cm['commit']['message'] ?? ''), "\n"); if (preg_match('/^Inbox: (.+)$/', $first, $mm) && !preg_match('/^(move |new folder|remove )/i', $mm[1])) $when[$mm[1]] = $cm['commit']['author']['date'] ?? ''; }
         $folders = [];
         foreach ($r['tree'] ?? [] as $t) if ($t['type'] === 'blob' && strpos($t['path'], 'inbox/') === 0 && $t['path'] !== 'inbox/_thumbs.json') {
             $seg = explode('/', $t['path']); $fo = $seg[1] ?? ''; if ($fo !== '') $folders[$fo] = true;
             if (basename($t['path']) === '.gitkeep') continue;
-            $items[] = ['path' => $t['path'], 'name' => basename($t['path']), 'size' => (int)($t['size'] ?? 0), 'url' => $ibUrl($t['path']), 'folder' => $fo, 'date' => $fo];
+            $items[] = ['path' => $t['path'], 'name' => basename($t['path']), 'size' => (int)($t['size'] ?? 0), 'url' => $ibUrl($t['path']), 'folder' => $fo, 'date' => $fo, 'added' => $when[basename($t['path'])] ?? ''];
         }
         foreach ($items as $it) if (!empty($it['folder'])) $folders[$it['folder']] = true;
         usort($items, fn($a, $b) => strcmp($b['folder'] . $b['name'], $a['folder'] . $a['name']));
