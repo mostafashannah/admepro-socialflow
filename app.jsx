@@ -30613,6 +30613,16 @@ function ZernioPicker({platform="linkedin", onPick, picked}) {
       else setState({loading:false,error:"",accounts:j.accounts||[],setup:false});
     } catch(e) { setState({loading:false,error:"Could not reach Zernio.",accounts:null,setup:false}); }
   };
+  // When the Zernio popup finishes it posts the new account back: refresh the list and select that account.
+  React.useEffect(()=>{
+    const onMsg = (e) => {
+      if(e.origin!==window.location.origin || !e.data || e.data.type!=="zernio_connected") return;
+      if(e.data.error){ setState(s=>({...s,error:"Zernio: "+e.data.error})); return; }
+      load().then(()=>{ if(e.data.accountId) onPick({id:e.data.accountId, name:e.data.username||"", username:e.data.username||""}); });
+    };
+    window.addEventListener("message", onMsg);
+    return ()=>window.removeEventListener("message", onMsg);
+  },[]);
   const addNew = async () => {
     try {
       const r = await fetch(window.location.origin+"/zernio-admin.php?action=connect_link&platform="+platform, {credentials:"include"});

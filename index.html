@@ -16,6 +16,22 @@
 <link rel="icon" sizes="192x192" href="/icon-192.png"/>
 <link rel="icon" sizes="512x512" href="/icon-512.png"/>
 <script>
+// Zernio sends the "connect an account" popup back here (?zernio_connected=1). Hand the result to the window that
+// opened it and close, instead of loading the whole app inside the little popup.
+(function(){
+  try {
+    var q = new URLSearchParams(location.search);
+    if (q.get('zernio_connected') && window.opener && !window.opener.closed) {
+      window.opener.postMessage({type:'zernio_connected', connected:q.get('connected')||'', accountId:q.get('accountId')||'', username:q.get('username')||'', error:q.get('error')||''}, location.origin);
+      document.title = 'Connected';
+      document.write('<p style="font:16px system-ui;padding:32px">Account connected — this window will close.</p>');
+      setTimeout(function(){ window.close(); }, 400);
+      window.stop && window.stop();
+    }
+  } catch(e) {}
+})();
+</script>
+<script>
 // Careers pages (socialflow.admepro.com/careers…) use the admepro.com tab icon, like the website.
 (function(){try{if(!/^\/careers(\/|$)/.test(location.pathname))return;
 document.querySelectorAll('link[rel~="icon"],link[rel="apple-touch-icon"]').forEach(function(l){l.parentNode.removeChild(l);});
@@ -126,6 +142,6 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline-offset:0
   // Loaded only when a feature needs one (PDF, Excel, Word, zip, HEIC) — no background downloads competing with the app.
 })();
 </script>
-<script src="/app.js?v=1702"></script>
+<script src="/app.js?v=1703"></script>
 </body>
 </html>
