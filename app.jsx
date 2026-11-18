@@ -34761,7 +34761,68 @@ document.getElementById('nl').addEventListener('submit', async e => {
 }
 
 /* ───────────── Sales agent ───────────── */
-function SalesAgentPage({setPage}) {
+// ONE page for the whole sales cycle: Overview → Prospecting → Campaigns → Audience → Leads → Setup.
+function GrowthPage({setPage, renderLeads, isTeam, canLeads}) {
+  const tabsAll = [["overview","Overview",isTeam],["prospecting","Prospecting",isTeam],["campaigns","Campaigns",isTeam],["audience","Audience",isTeam],["leads","Leads",canLeads],["setup","Setup",isTeam]].filter(t=>t[2]);
+  const [tab,setTab] = useState(()=>{ let t="overview"; try{ t=localStorage.getItem("sf_growth_tab")||"overview"; }catch(e){} return tabsAll.some(x=>x[0]===t)?t:tabsAll[0][0]; });
+  const go = (t) => { setTab(t); try{ localStorage.setItem("sf_growth_tab",t); }catch(e){} try{ window.scrollTo({top:0}); }catch(e){} };
+  useEffect(()=>{ try{ const t=localStorage.getItem("sf_growth_tab"); if(t&&t!==tab&&tabsAll.some(x=>x[0]===t)) setTab(t); }catch(e){} },[]);
+  const [ov,setOv]=useState(null); const [err,setErr]=useState("");
+  const loadOv=()=>{ if(!isTeam) return; mApi.get("overview").then(d=>{setOv(d);setErr("");}).catch(e=>setErr(e.message)); };
+  useEffect(()=>{ loadOv(); },[]);
+  const nav = (pg) => { const m={sales:"prospecting",marketing:"campaigns",leads:"leads"}; if(m[pg]) go(m[pg]); else setPage(pg); };
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
+      <div>
+        <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:"clamp(20px,5vw,28px)",fontWeight:800}}>Growth</h1>
+        <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Find companies → reach them → turn replies into leads → close. One place for the whole sales cycle.</p>
+      </div>
+      <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",overflowX:"auto"}}>
+        {tabsAll.map(([k,lb])=><button key={k} onClick={()=>go(k)} style={{padding:"9px 16px",fontSize:13,fontWeight:700,whiteSpace:"nowrap",borderBottom:`2px solid ${tab===k?"var(--accent)":"transparent"}`,color:tab===k?"var(--accent)":"var(--text2)"}}>{lb}</button>)}
+      </div>
+      {tab==="overview"&&<GrowthOverview go={go} ov={ov} err={err}/>}
+      {tab==="prospecting"&&<SalesAgentPage setPage={nav} embedded/>}
+      {tab==="campaigns"&&<MktCampaigns ov={ov} onChange={loadOv}/>}
+      {tab==="audience"&&<MktContacts ov={ov} onChange={loadOv}/>}
+      {tab==="leads"&&canLeads&&renderLeads&&renderLeads()}
+      {tab==="setup"&&<MktSetup ov={ov}/>}
+    </div>);
+}
+
+function GrowthOverview({go, ov, err}) {
+  const [f,setF]=useState(null); const [m,setM]=useState(null);
+  useEffect(()=>{ sApi.get("funnel").then(setF).catch(()=>{}); sApi.get("machine_get").then(d=>setM(d.settings)).catch(()=>{}); },[]);
+  const c=ov?.contacts||{}; const l=ov?.last30||{};
+  const tiles=[["Prospects to review",f?.prospects_new,"prospecting"],["Contacted",f?.contacted,"prospecting"],["Replied",f?.replied,"prospecting"],["Won",f?.won,"prospecting"],
+    ["Leads · 30 days",f?.leads_30d,"leads"],["WhatsApp replies",f?.wa_responders,"audience"],["Emails · 30 days",l.sent,"campaigns"],["Open rate",gPct(l.opened,l.sent),"campaigns"],["Click rate",gPct(l.clicked,l.sent),"campaigns"],["Contacts",c.total,"audience"]];
+  const todo=[];
+  if(f?.prospects_new>0) todo.push([`Review ${f.prospects_new} new prospect${f.prospects_new===1?"":"s"} and approve the good ones`,"prospecting"]);
+  if(f?.wa_responders>0) todo.push([`${f.wa_responders} people replied to WhatsApp campaigns — they are in Leads`,"leads"]);
+  if(m&&!m.enabled) todo.push(["The daily machine is off — switch it on in Prospecting to find prospects every day","prospecting"]);
+  if(m&&m.enabled&&!m.auto_send) todo.push(["Auto-send is off: approved prospects wait for you to send their emails","prospecting"]);
+  if(!c.total) todo.push(["No contacts yet — sync your leads and clients in Audience","audience"]);
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <GSetupNote err={err}/>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>
+        {tiles.map(([k,v,t])=>(<div key={k} onClick={()=>go(t)} style={{...gCard,padding:"12px 14px",cursor:"pointer"}}><div style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>{k}</div><div style={{fontSize:22,fontWeight:800,marginTop:2}}>{v??"—"}</div></div>))}
+      </div>
+      <div style={{...gCard,display:"flex",flexDirection:"column",gap:8}}>
+        <b style={{fontSize:14}}>Today's actions</b>
+        {todo.length===0&&<div style={{fontSize:13,color:"var(--text2)"}}>All clear. The machine will bring the next batch on the next working day.</div>}
+        {todo.map(([txt,t],i)=><div key={i} onClick={()=>go(t)} style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:13,padding:"8px 10px",borderRadius:8,background:"var(--surface2)",cursor:"pointer"}}><span>{txt}</span><span style={{color:"var(--accent)",fontWeight:700}}>Open →</span></div>)}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10}}>
+        {[["🔎 Find","Prospecting","Real companies with a published email or mobile number, drafted outreach, daily machine.","prospecting"],
+          ["✉️ Reach","Campaigns","Email newsletters built from your website projects and articles, and WhatsApp campaigns.","campaigns"],
+          ["📇 Know","Audience","Every contact in one database, tagged by industry, with consent and opt-outs.","audience"],
+          ["🤝 Close","Leads","Only real prospects. Job seekers and vendors are kept out.","leads"]].map(([ic,t,d,tab])=>(
+          <div key={t} onClick={()=>go(tab)} style={{...gCard,cursor:"pointer",display:"flex",flexDirection:"column",gap:4}}><div style={{fontSize:13,fontWeight:800}}>{ic} {t}</div><div style={{fontSize:12,color:"var(--text2)",lineHeight:1.5}}>{d}</div></div>))}
+      </div>
+    </div>);
+}
+
+function SalesAgentPage({setPage, embedded}) {
   const [brief,setBrief]=useState(""); const [country,setCountry]=useState("Egypt"); const [count,setCount]=useState(8);
   const [job,setJob]=useState(()=>{ try{ return localStorage.getItem("sf_sales_job")||""; }catch(e){ return ""; } });
   const [jobState,setJobState]=useState(null);
@@ -34781,12 +34842,12 @@ function SalesAgentPage({setPage}) {
   const EXAMPLES=["Real estate developers in New Cairo launching new compounds in 2026","Specialty coffee shops and restaurant groups in Cairo with weak Instagram","Private schools and nurseries in Sheikh Zayed","Skincare and cosmetics brands selling online in Saudi Arabia"];
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
-      <div>
+      {!embedded&&<div>
         <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:"clamp(20px,5vw,28px)",fontWeight:800}}>Sales agent</h1>
         <p style={{fontSize:13,color:"var(--text2)"}}>Finds real companies that fit admepro, the public decision makers, and drafts outreach for you to review</p>
-      </div>
+      </div>}
       <GSetupNote err={err}/>
-      {funnel&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>
+      {funnel&&!embedded&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>
         {[["New prospects",funnel.prospects_new,"sales"],["Contacted",funnel.contacted,"sales"],["Replied",funnel.replied,"sales"],["Won",funnel.won,"sales"],["Emails · 7 days",funnel.sent_7d,"marketing"],["Leads · 30 days",funnel.leads_30d,"leads"],["WhatsApp replies",funnel.wa_responders,"marketing"],["Newsletter clicks · 30d",funnel.email_clicked_30d,"marketing"]].map(([k,v,pg])=>(
           <div key={k} onClick={()=>setPage&&setPage(pg)} style={{...gCard,padding:"12px 14px",cursor:setPage?"pointer":"default"}}><div style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>{k}</div><div style={{fontSize:22,fontWeight:800,marginTop:2}}>{v??"—"}</div></div>
         ))}
@@ -46981,11 +47042,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       ...(canManageRecruitment?[{key:"recruitment", label:"Recruitment", ico:Icons.briefcase}]:[]),
     ]}] : [])),
     ...((canViewCrm || ["admin","account_director","account_manager","account_executive"].includes(currentUser?.role)) ? [{ group: "GROWTH", icon: Icons.target, items: [
-      ...(canViewCrm ? [{key:"leads", label:"Leads", ico:Icons.leads}] : []),
-      ...(["admin","account_director","account_manager","account_executive"].includes(currentUser?.role) ? [
-        {key:"marketing", label:"Marketing", ico:Icons.mail},
-        {key:"sales", label:"Sales agent", ico:Icons.target},
-      ] : []),
+      {key:"growth", label:"Growth", ico:Icons.target},
     ]}] : []),
     ...((canAgency||isAdmin) ? [{ group: "TOOLS", icon: Icons.wand, items: [
       ...(canAgency?[
@@ -52381,7 +52438,7 @@ function App() {
     setImpersonatorUser(null);
     setPage(returnPage);
   };
-  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","mai_reports","rewards","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment","website","marketing","sales"];
+  const VALID_PAGES = ["home","growth","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","mai_reports","rewards","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment","website","marketing","sales"];
   const [page,setPage_] = useState(()=>{
     try{
       // A contact-report email sent internally links straight to
@@ -52391,7 +52448,7 @@ function App() {
       // to avoid getting stuck on a detail page that hasn't loaded data yet
       const hash = window.location.hash.replace("#","");
       // Only use hash/localStorage if it's a top-level list page (not a detail context)
-      const SAFE_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","mai_reports","rewards","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment","website","marketing","sales"];
+      const SAFE_PAGES = ["home","growth","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","mai_reports","rewards","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment","website","marketing","sales"];
       if(hash && SAFE_PAGES.includes(hash)) return hash;
       const stored = localStorage.getItem("sf_page");
       return (stored && SAFE_PAGES.includes(stored)) ? stored : "home";
@@ -52528,11 +52585,17 @@ function App() {
     return ()=>{ cancelled = true; clearInterval(t); };
   },[currentUser?.email]);
 
-  const setPage = (p) => {
+  const setPage = (p0) => {
+    // Old Leads / Marketing / Sales agent links now open the matching section inside the single Growth page.
+    const growthTab = {leads:"leads", marketing:"campaigns", sales:"prospecting"}[p0];
+    if(growthTab){ try{ localStorage.setItem("sf_growth_tab",growthTab); }catch(e){} }
+    const p = growthTab ? "growth" : p0;
     setPage_(p);
     try{ localStorage.setItem("sf_page",p); }catch(e){}
     try{ window.history.pushState({sfPage:p},"","#"+p); }catch(e){}
   };
+  // A restored/linked old page key (leads, marketing, sales) lands inside Growth.
+  React.useEffect(()=>{ if(["leads","marketing","sales"].includes(page)) setPage(page); },[page]);
   // Accountants only get the financial pages — bounce them off anything else
   // (e.g. a stale "home"/tasks page restored from localStorage on login).
   React.useEffect(()=>{
@@ -57239,6 +57302,16 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
           />
         )}
         {page==="website"&&currentUser?.role==="admin"&&<WebsitePage setPage={setPage}/>}
+        {page==="growth"&&(
+          <GrowthPage setPage={setPage} isTeam={["admin","account_director","account_manager","account_executive"].includes(currentUser?.role)} canLeads={currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"crm.leads")}
+            renderLeads={()=>(
+              <LeadsPage
+                leads={(data.leads||[]).filter(l=>(!l.client_name || l.client_name.toLowerCase()==="admepro") && (!l.category || l.category==="lead"))}
+                leadActivities={data.leadActivities} team={data.team} clients={data.clients} currentUser={currentUser}
+                onAddLead={addLead} onUpdateLead={updateLead} onAddActivity={addLeadActivity} onConvertLead={convertLeadToClient} onDeleteLead={deleteLead}
+                appSettings={appSettings} onSaveSettings={saveAppSettings}
+              />)}/>
+        )}
         {page==="marketing"&&["admin","account_director","account_manager","account_executive"].includes(currentUser?.role)&&<MarketingPage setPage={setPage}/>}
         {page==="sales"&&["admin","account_director","account_manager","account_executive"].includes(currentUser?.role)&&<SalesAgentPage setPage={setPage}/>}
         {page==="recruitment"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.manage_recruitment"))&&(
