@@ -30621,7 +30621,11 @@ function ZernioPicker({platform="linkedin", onPick, picked}) {
       load().then(()=>{ if(e.data.accountId) onPick({id:e.data.accountId, name:e.data.username||"", username:e.data.username||""}); });
     };
     window.addEventListener("message", onMsg);
-    return ()=>window.removeEventListener("message", onMsg);
+    // Same message by BroadcastChannel / storage, for when the popup lost its link to this window.
+    let bc=null; try { bc = new BroadcastChannel("sf_zernio"); bc.onmessage = (ev)=>onMsg({origin:window.location.origin, data:ev.data}); } catch(e) {}
+    const onStore = (ev)=>{ if(ev.key==="sf_zernio_connected" && ev.newValue){ try { onMsg({origin:window.location.origin, data:JSON.parse(ev.newValue)}); } catch(e) {} } };
+    window.addEventListener("storage", onStore);
+    return ()=>{ window.removeEventListener("message", onMsg); window.removeEventListener("storage", onStore); try { bc && bc.close(); } catch(e) {} };
   },[]);
   const addNew = async () => {
     try {
