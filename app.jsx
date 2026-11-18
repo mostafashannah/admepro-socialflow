@@ -30646,7 +30646,7 @@ const INTEGRATION_APPS = [
   {key:"whatsapp", label:"WhatsApp", category:"social", color:"#25D366", icon:Icons.waBrand, brand:true, description:"Connect a client's WhatsApp number to their inbox"},
   {key:"linkedin", label:"LinkedIn", category:"social", color:"#0A66C2", icon:Icons.linkedinBrand, brand:true, description:"Publish posts to LinkedIn (posting only — no DM/comment replies)"},
   {key:"tiktok", label:"TikTok", category:"social", color:"#000000", icon:Icons.tiktokBrand, brand:true, description:"Publish videos to TikTok and track per-video views/likes/comments"},
-  {key:"twitter", label:"X (Twitter)", category:"social", color:"#000000", icon:Icons.plug, description:"Publish posts to X through Zernio (280 characters)"},
+  ...(typeof window!=="undefined" && window.SF_ENABLE_X_VIA_ZERNIO ? [{key:"twitter", label:"X (Twitter)", category:"social", color:"#000000", icon:Icons.plug, description:"Publish posts to X through Zernio (280 characters)"}] : []), // on hold — set window.SF_ENABLE_X_VIA_ZERNIO=true to show
   // Spreadsheet / Data
   {key:"google_sheets",label:"Google Sheets", category:"spreadsheet", color:"#0F9D58", icon:Icons.sheetsBrand, description:"Add rows to Google Sheets"},
   // Ecommerce
