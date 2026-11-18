@@ -49,6 +49,9 @@ $scopes = implode(',', [
     'pages_messaging',
     'read_insights',
     'business_management',
+    // ads_read is only requested once the app has it (Marketing API added): set META_ENABLE_ADS_SCOPE=true in config.php.
+    // Asking for it earlier makes Facebook reject the whole connect dialog ("Invalid Scopes").
+    ...((defined('META_ENABLE_ADS_SCOPE') && META_ENABLE_ADS_SCOPE) ? ['ads_read'] : []),
     // Required by the Page "feed" webhook subscription used for comment-reply —
     // without it Facebook rejects the whole OAuth dialog for the app, not just
     // this scope. Re-added after 5eb3476 wrongly dropped it as "deprecated".
