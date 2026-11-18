@@ -30049,12 +30049,15 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{leadsScope.length} leads · ${pipelineValue.toLocaleString()} pipeline{hiddenOwn.length>0&&<> · <button onClick={()=>setShowHiddenLeads(v=>!v)} title="Job applicants, service providers, noise, and contacts without a phone number" style={{color:"var(--accent)",fontWeight:700,fontSize:12,textDecoration:"underline"}}>{showHiddenLeads?"hide":"show"} {hiddenOwn.length} not-leads</button></>}</p>
         </div>
         <div style={{display:"flex",gap:8}}>
-          <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)"}}>
-            {[["today",Icons.clock],["kanban",Icons.grid],["list",Icons.list],...(isAdmin?[["bank",Icons.leads]]:[])].map(([v,ico])=>(
-              <button key={v} onClick={()=>setView(v)} style={{padding:"5px 12px",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:view===v?"var(--accent)":"none",color:view===v?"#fff":"var(--text2)",display:"flex",alignItems:"center",gap:5}}>
-                <Ico d={ico} size={13}/>{v==="bank"?`Bank${bankLeads.length?` (${bankLeads.length})`:""}`:v.charAt(0).toUpperCase()+v.slice(1)}
+          <div style={{display:"flex",gap:8}}>
+            {[["today",Icons.clock,"Today"],["kanban",Icons.grid,"Board"],["list",Icons.list,"List"],...(isAdmin?[["bank",Icons.leads,"Bank"]]:[])].map(([v,ico,lbl])=>(
+              <button key={v} onClick={()=>setView(v)} title={v==="bank"?`Bank${bankLeads.length?` (${bankLeads.length})`:""}`:lbl} aria-label={lbl}
+                style={{position:"relative",width:38,height:38,borderRadius:"50%",border:`1px solid ${view===v?"var(--accent)":"var(--border2)"}`,background:view===v?"var(--accent)":"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
+                <Ico d={ico} size={15} stroke={view===v?"#fff":"var(--text2)"}/>
+                {v==="bank"&&bankLeads.length>0&&<span style={{position:"absolute",top:-5,right:-5,minWidth:18,height:18,padding:"0 5px",borderRadius:99,background:"var(--accent)",color:"#fff",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid var(--bg,#0f1117)"}}>{bankLeads.length}</span>}
               </button>
             ))}
+            <span style={{width:1,height:24,background:"var(--border2)",alignSelf:"center",margin:"0 2px"}}/>
           </div>
           {isAdmin&&(
             <button onClick={()=>setShowImport(true)} title="Import Leads (e.g. from a spreadsheet)" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}><Ico d={Icons.upload} size={15} stroke="var(--text2)"/></button>
