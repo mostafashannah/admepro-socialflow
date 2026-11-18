@@ -34546,7 +34546,7 @@ function MktEditor({init,ov,onClose}) {
   const [saving,setSaving]=useState(false); const [msg,setMsg]=useState("");
   const [html,setHtml]=useState(""); const [brief,setBrief]=useState(""); const [lang,setLang]=useState("en"); const [writing,setWriting]=useState(false);
   const [testTo,setTestTo]=useState(""); const [when,setWhen]=useState(""); const [tpls,setTpls]=useState(null);
-  const [site,setSite]=useState(null); const [picked,setPicked]=useState([]); const [siteBusy,setSiteBusy]=useState(false);
+  const [site,setSite]=useState(null); const [picked,setPicked]=useState([]); const [siteBusy,setSiteBusy]=useState(false); const [autoPick,setAutoPick]=useState(true);
   const siteItems=[...(site?.projects||[]),...(site?.posts||[])];
   const loadSite=async(refresh)=>{ setSiteBusy(true); try{ setSite(await mApi.get("site_content",refresh?{refresh:1}:{})); }catch(e){ setSite({error:e.message,projects:[],posts:[]}); } finally{ setSiteBusy(false); } };
   const s=(k,v)=>setF(p=>({...p,[k]:v}));
@@ -34556,7 +34556,7 @@ function MktEditor({init,ov,onClose}) {
   const save=async()=>{ setSaving(true); setMsg(""); try{ const d=await mApi.post("campaign_save",f); s("id",d.id); setMsg("Saved"); return d.id; }catch(e){ setMsg(e.message); return null; } finally{ setSaving(false); } };
   const setBlock=(i,patch)=>s("blocks",f.blocks.map((b,j)=>j===i?{...b,...patch}:b));
   const move=(i,d)=>{ const a=[...f.blocks]; const j=i+d; if(j<0||j>=a.length) return; [a[i],a[j]]=[a[j],a[i]]; s("blocks",a); };
-  const write=async()=>{ setWriting(true); setMsg(""); try{ const d=await mApi.post("write",{brief,lang,items:siteItems.filter(x=>picked.includes(x.url))}); setF(p=>({...p,subject:d.subject||p.subject,preheader:d.preheader||p.preheader,blocks:d.blocks||p.blocks,name:p.name||d.subject||""})); if(lang==="ar") setF(p=>({...p,audience:{...p.audience,lang:"ar"}})); }catch(e){ setMsg(e.message); } finally{ setWriting(false); } };
+  const write=async()=>{ setWriting(true); setMsg(""); try{ const d=await mApi.post("write",{brief,lang,items:siteItems.filter(x=>picked.includes(x.url)),auto_pick:autoPick&&picked.length===0}); setF(p=>({...p,subject:d.subject||p.subject,preheader:d.preheader||p.preheader,blocks:d.blocks||p.blocks,name:p.name||d.subject||""})); if(lang==="ar") setF(p=>({...p,audience:{...p.audience,lang:"ar"}})); }catch(e){ setMsg(e.message); } finally{ setWriting(false); } };
   const test=async()=>{ setMsg(""); try{ const d=await mApi.post("test",{...f,to:testTo}); setMsg("Test sent"+(d.to?" to "+d.to:"")); }catch(e){ setMsg(e.message); } };
   const schedule=async()=>{ const id=await save(); if(!id) return; const n=when?new Date(when).toLocaleString():"now";
     try{ const d=await mApi.post("audience_count",{channel:f.channel,audience:f.audience}); if(!confirm(`Send to ${d.count} people ${when?"on "+n:"now"}?`)) return;
@@ -34581,7 +34581,7 @@ function MktEditor({init,ov,onClose}) {
                 <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                   <b style={{fontSize:12}}>🌐 Build it from our website</b>
                   <button style={wBtn(false)} disabled={siteBusy} onClick={()=>loadSite(!!site)}>{siteBusy?"Loading…":site?"Refresh":"Choose projects & articles"}</button>
-                  {picked.length>0&&<span style={{fontSize:12,color:"var(--text2)"}}>{picked.length} picked — Sara will link readers to them</span>}
+                  {picked.length>0?<span style={{fontSize:12,color:"var(--text2)"}}>{picked.length} picked — Sara will link readers to them</span>:<label style={{display:"flex",gap:6,alignItems:"center",fontSize:12,cursor:"pointer"}}><input type="checkbox" checked={autoPick} onChange={e=>setAutoPick(e.target.checked)}/> Nothing picked: let Sara choose the best pages for my brief</label>}
                 </div>
                 {site?.error&&<div style={{fontSize:12,color:"#dc2626"}}>{site.error}</div>}
                 {site&&!site.error&&siteItems.length===0&&<div style={{fontSize:12,color:"var(--text3)"}}>No live projects or articles found on the site yet.</div>}

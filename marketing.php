@@ -153,6 +153,18 @@ case 'write': {
     $brief = mb_substr(trim($b['brief'] ?? ''), 0, 2000);
     $items = []; foreach (array_slice((array)($b['items'] ?? []), 0, 6) as $it) if (is_array($it) && !empty($it['url']) && !empty($it['title'])) $items[$it['url']] = ['title' => mb_substr((string)$it['title'], 0, 160), 'summary' => mb_substr((string)($it['summary'] ?? ''), 0, 300), 'image' => (string)($it['image'] ?? ''), 'url' => (string)$it['url'], 'kind' => (string)($it['kind'] ?? 'project')];
     if ($brief === '' && !$items) gOut(400, ['error' => 'Write a short brief or pick something from the website']);
+    // "Let Sara choose": no pages ticked, so she picks the 1–3 live pages that best fit the brief.
+    if (!$items && !empty($b['auto_pick']) && $brief !== '') {
+        $site = gSiteContent(); $pool = [];
+        foreach (array_merge($site['projects'] ?? [], $site['posts'] ?? []) as $it) $pool[$it['url']] = $it;
+        if ($pool) {
+            $menu = ''; foreach ($pool as $it) $menu .= "- {$it['url']} | {$it['kind']} | {$it['title']} — " . mb_substr($it['summary'], 0, 120) . "\n";
+            [$okp, $tp, , ] = gClaude(['max_tokens' => 600, 'output_config' => ['effort' => 'low'], 'system' => 'You choose which website pages best support an email. Reply with ONE JSON array of urls only.',
+                'messages' => [['role' => 'user', 'content' => "Email brief:\n$brief\n\nLive pages (url | kind | title — summary):\n$menu\nPick the 1 to 3 pages that best fit this brief, only from this list. Return e.g. [\"https://…\"]."]]], 60);
+            $urls = $okp ? gJson($tp) : null;
+            foreach ((array)$urls as $u) if (is_string($u) && isset($pool[$u]) && count($items) < 3) $items[$u] = ['title' => $pool[$u]['title'], 'summary' => $pool[$u]['summary'], 'image' => $pool[$u]['image'], 'url' => $u, 'kind' => $pool[$u]['kind']];
+        }
+    }
     $lang = ($b['lang'] ?? 'en') === 'ar' ? 'Arabic (Egyptian-friendly, professional)' : 'English';
     $itemText = ''; foreach ($items as $it) $itemText .= "- [{$it['kind']}] {$it['title']} — {$it['summary']} ({$it['url']})\n";
     $prompt = "Write a newsletter in $lang" . ($brief !== '' ? " from this brief:\n\n$brief" : '') . "\n\n"
