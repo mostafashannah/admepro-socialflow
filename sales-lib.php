@@ -40,14 +40,14 @@ function saApprove(PDO $pdo, array $p) {
         $notes = "Found by the Sales agent.\n\nWhy: {$p['why_fit']}\nSignals: " . implode('; ', (array)$p['signals']) . "\nWebsite: {$p['website']}\n\nContacts:\n"
             . implode("\n", array_map(fn($c) => '- ' . trim(($c['name'] ?? '') . ' · ' . ($c['role'] ?? '') . ' · ' . ($c['email'] ?? '') . ' ' . ($c['phone'] ?? '') . ' ' . ($c['profile_url'] ?? '')), $contacts));
         $am = null; try { require_once __DIR__ . '/reply-bot-lib.php'; $am = function_exists('assignLeadRotation') ? assignLeadRotation($pdo) : null; } catch (Throwable $e) {}
+        $leadId = gUuid();
         try {
-            $pdo->prepare("INSERT INTO leads (name, company, phone, email, source, status, platforms, notes, category, assigned_to, assigned_at) VALUES (?,?,?,?,'sales_agent','new',?,?,'lead',?,?)")
-                ->execute([$main['name'] ?: $p['company'], $p['company'], $main['phone'] ?: null, $main['email'] ?: null, json_encode(['website']), $notes, $am['email'] ?? null, $am ? gNow() : null]);
+            $pdo->prepare("INSERT INTO leads (id, name, company, phone, email, source, status, platforms, notes, category, assigned_to, assigned_at) VALUES (?,?,?,?,?,'sales_agent','new',?,?,'lead',?,?)")
+                ->execute([$leadId, $main['name'] ?: $p['company'], $p['company'], $main['phone'] ?: null, $main['email'] ?: null, json_encode(['website']), $notes, $am['email'] ?? null, $am ? gNow() : null]);
         } catch (Throwable $e) {
-            $pdo->prepare("INSERT INTO leads (name, phone, source, status, platforms, notes, category) VALUES (?,?,'sales_agent','new',?,?,'lead')")
-                ->execute([$p['company'], $main['phone'] ?: null, json_encode(['website']), $notes . "\nEmail: " . ($main['email'] ?? '')]);
+            $pdo->prepare("INSERT INTO leads (id, name, phone, source, status, platforms, notes, category) VALUES (?,?,?,'sales_agent','new',?,?,'lead')")
+                ->execute([$leadId, $p['company'], $main['phone'] ?: null, json_encode(['website']), $notes . "\nEmail: " . ($main['email'] ?? '')]);
         }
-        $leadId = (string)$pdo->lastInsertId();
     }
     foreach ($contacts as $c) gUpsertContact($pdo, ['email' => $c['email'], 'phone' => $c['phone'], 'name' => $c['name'] ?? null, 'company' => $p['company'], 'source' => 'sales_agent', 'tags' => trim('prospect,' . gIndustryTag(($p['industry'] ?? '') . ' ' . ($p['company'] ?? '')), ','), 'consent' => 'lead', 'consent_note' => 'B2B prospect (public business contact)', 'lead_id' => $leadId]);
     $pdo->prepare("UPDATE sales_prospects SET status=IF(status='new','approved',status), lead_id=?, updated_at=? WHERE id=?")->execute([$leadId, gNow(), $p['id']]);

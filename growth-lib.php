@@ -19,6 +19,7 @@ require_once __DIR__ . '/auth-lib.php';
 const GROWTH_ROLES = ['admin', 'account_director', 'account_manager', 'account_executive'];
 
 function gOut($code, $p) { http_response_code($code); header('Content-Type: application/json'); header('Cache-Control: no-store'); echo json_encode($p, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); exit; }
+function gUuid() { $d = random_bytes(16); $d[6] = chr(ord($d[6]) & 0x0f | 0x40); $d[8] = chr(ord($d[8]) & 0x3f | 0x80); return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($d), 4)); }
 function gNow() { return (new DateTime('now', new DateTimeZone('Africa/Cairo')))->format('Y-m-d H:i:s'); }
 function gBase() { return defined('PUBLIC_BASE_URL') && PUBLIC_BASE_URL ? rtrim(PUBLIC_BASE_URL, '/') : 'https://socialflow.admepro.com'; }
 function gSecret() { return hash('sha256', (defined('API_KEY') ? API_KEY : '') . '|' . (defined('DB_PASS') ? DB_PASS : '') . '|growth'); }
@@ -385,14 +386,14 @@ function gCaptureWaResponder(PDO $pdo, $fromDigits, $text) {
         }
         $am = null; try { require_once __DIR__ . '/reply-bot-lib.php'; $am = function_exists('assignLeadRotation') ? assignLeadRotation($pdo) : null; } catch (Throwable $e) {}
         $notes = "Replied to the WhatsApp campaign \"{$k['campaign_name']}\".\n\nTheir message: " . mb_substr((string)$text, 0, 500);
+        $leadId = gUuid();
         try {
-            $pdo->prepare("INSERT INTO leads (name, company, phone, source, status, platforms, notes, category, assigned_to, assigned_at) VALUES (?,?,?,'whatsapp_marketing','new',?,?,'lead',?,?)")
-                ->execute([$k['name'] ?: $k['phone'], $k['company'], $k['phone'], json_encode(['whatsapp']), $notes, $am['email'] ?? null, $am ? gNow() : null]);
+            $pdo->prepare("INSERT INTO leads (id, name, company, phone, source, status, platforms, notes, category, assigned_to, assigned_at) VALUES (?,?,?,?,'whatsapp_marketing','new',?,?,'lead',?,?)")
+                ->execute([$leadId, $k['name'] ?: $k['phone'], $k['company'], $k['phone'], json_encode(['whatsapp']), $notes, $am['email'] ?? null, $am ? gNow() : null]);
         } catch (Throwable $e) {
-            $pdo->prepare("INSERT INTO leads (name, phone, source, status, platforms, notes, category) VALUES (?,?,'whatsapp_marketing','new',?,?,'lead')")
-                ->execute([$k['name'] ?: $k['phone'], $k['phone'], json_encode(['whatsapp']), $notes]);
+            $pdo->prepare("INSERT INTO leads (id, name, phone, source, status, platforms, notes, category) VALUES (?,?,?,'whatsapp_marketing','new',?,?,'lead')")
+                ->execute([$leadId, $k['name'] ?: $k['phone'], $k['phone'], json_encode(['whatsapp']), $notes]);
         }
-        $leadId = (string)$pdo->lastInsertId();
     }
     $tags = implode(',', array_unique(array_filter(array_merge(explode(',', (string)$k['tags']), ['wa-responder']))));
     $pdo->prepare("UPDATE mkt_contacts SET tags = ?, lead_id = COALESCE(lead_id, ?), wa_opt_in = 1, updated_at = ? WHERE id = ?")->execute([$tags, $leadId, gNow(), $k['id']]);

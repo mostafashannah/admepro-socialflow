@@ -64,6 +64,38 @@ case 'sync': {
     $tagged = 0; $n = gSyncLeadsAndClients($pdo, $tagged);
     gOut(200, ['ok' => true, 'synced' => $n, 'tagged' => $tagged]);
 }
+case 'growth': {
+    // Real counters: every number comes from rows with a timestamp, grouped per day (Cairo dates).
+    $days = max(7, min(60, (int)($_GET['days'] ?? 14)));
+    $dbNow = strtotime((string)$pdo->query("SELECT NOW()")->fetchColumn()); $off = (int)round((strtotime(gNow()) - $dbNow) / 3600);  // DB clock → Cairo
+    $own = "(category IS NULL OR category IN ('', 'lead')) AND (client_name IS NULL OR client_name = '' OR LOWER(TRIM(client_name)) = 'admepro')";
+    $defs = [
+        'prospects'  => ['DATETIME', 'sales_prospects', 'created_at', '1=1', 0],
+        'outreach'   => ['DATETIME', 'sales_sends', 'sent_at', '1=1', 0],
+        'newsletter' => ['DATETIME', 'mkt_sends', 'sent_at', "status = 'sent'", $off],
+        'opens'      => ['DATETIME', 'mkt_sends', 'opened_at', '1=1', $off],
+        'clicks'     => ['DATETIME', 'mkt_sends', 'clicked_at', '1=1', $off],
+        'contacts'   => ['DATETIME', 'mkt_contacts', 'created_at', '1=1', 0],
+        'leads'      => ['TIMESTAMP', 'leads', 'created_at', $own, $off],
+        'wa_leads'   => ['TIMESTAMP', 'leads', 'created_at', $own . " AND source = 'whatsapp_marketing'", $off],
+    ];
+    $dates = []; for ($i = $days - 1; $i >= 0; $i--) $dates[] = date('Y-m-d', strtotime(gNow() . " -$i days"));
+    $out = [];
+    foreach ($defs as $key => [, $table, $col, $where, $o]) {
+        $by = [];
+        try {
+            $st = $pdo->prepare("SELECT DATE($col + INTERVAL $o HOUR) d, COUNT(*) n FROM $table WHERE $where AND $col IS NOT NULL AND $col >= ? GROUP BY d");
+            $st->execute([date('Y-m-d H:i:s', strtotime($dates[0] . ' 00:00:00') - 86400)]);
+            $by = $st->fetchAll(PDO::FETCH_KEY_PAIR);
+        } catch (Throwable $e) { error_log("[growth] $key: " . $e->getMessage()); }
+        $vals = array_map(fn($d) => (int)($by[$d] ?? 0), $dates);
+        $half = intdiv($days, 2);
+        $total = 0; try { $total = (int)$pdo->query("SELECT COUNT(*) FROM $table WHERE $where AND $col IS NOT NULL")->fetchColumn(); } catch (Throwable $e) {}
+        $out[$key] = ['series' => $vals, 'today' => end($vals), 'yesterday' => $vals[count($vals) - 2] ?? 0,
+            'recent' => array_sum(array_slice($vals, -$half)), 'previous' => array_sum(array_slice($vals, 0, count($vals) - $half)), 'total' => $total];
+    }
+    gOut(200, ['dates' => $dates, 'days' => $days, 'half' => intdiv($days, 2), 'metrics' => $out, 'as_of' => gNow()]);
+}
 case 'site_content': { gOut(200, gSiteContent(!empty($_GET['refresh']))); }
 case 'responders': {
     $st = $pdo->query("SELECT id, name, company, phone, email, lead_id, updated_at FROM mkt_contacts WHERE FIND_IN_SET('wa-responder', REPLACE(tags, ', ', ',')) ORDER BY updated_at DESC LIMIT 100");

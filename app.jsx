@@ -34789,35 +34789,60 @@ function GrowthPage({setPage, renderLeads, isTeam, canLeads}) {
     </div>);
 }
 
+function GrowthSpark({vals,color}) {
+  const w=120,h=34,n=vals.length; if(n<2) return null; const max=Math.max(1,...vals);
+  const pts=vals.map((v,i)=>[(i/(n-1))*w, h-3-(v/max)*(h-8)]);
+  const line=pts.map(([x,y])=>`${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  return <svg width="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{display:"block",height:34}}>
+    <polygon points={`0,${h} ${line} ${w},${h}`} fill={color+"22"}/>
+    <polyline points={line} fill="none" stroke={color} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke"/>
+    <circle cx={pts[n-1][0]} cy={pts[n-1][1]} r="2.4" fill={color}/>
+  </svg>;
+}
 function GrowthOverview({go, ov, err}) {
-  const [f,setF]=useState(null); const [m,setM]=useState(null);
+  const [f,setF]=useState(null); const [m,setM]=useState(null); const [g,setG]=useState(null); const [days,setDays]=useState(14); const [gerr,setGerr]=useState("");
   useEffect(()=>{ sApi.get("funnel").then(setF).catch(()=>{}); sApi.get("machine_get").then(d=>setM(d.settings)).catch(()=>{}); },[]);
-  const c=ov?.contacts||{}; const l=ov?.last30||{};
-  const tiles=[["Prospects to review",f?.prospects_new,"prospecting"],["Contacted",f?.contacted,"prospecting"],["Replied",f?.replied,"prospecting"],["Won",f?.won,"prospecting"],
-    ["Leads · 30 days",f?.leads_30d,"leads"],["WhatsApp replies",f?.wa_responders,"audience"],["Emails · 30 days",l.sent,"campaigns"],["Open rate",gPct(l.opened,l.sent),"campaigns"],["Click rate",gPct(l.clicked,l.sent),"campaigns"],["Contacts",c.total,"audience"]];
+  useEffect(()=>{ setG(null); mApi.get("growth",{days}).then(d=>{setG(d);setGerr("");}).catch(e=>setGerr(e.message)); },[days]);
+  const c=ov?.contacts||{};
+  const METRICS=[["prospects","New prospects found","#f97316","prospecting"],["outreach","Outreach emails sent","#6366f1","prospecting"],["newsletter","Newsletter emails sent","#0ea5e9","campaigns"],
+    ["opens","Email opens","#14b8a6","campaigns"],["clicks","Link clicks","#16a34a","campaigns"],["contacts","New contacts","#a855f7","audience"],["leads","New leads","#d90b2c","leads"],["wa_leads","Leads from WhatsApp replies","#25d366","leads"]];
   const todo=[];
   if(f?.prospects_new>0) todo.push([`Review ${f.prospects_new} new prospect${f.prospects_new===1?"":"s"} and approve the good ones`,"prospecting"]);
   if(f?.wa_responders>0) todo.push([`${f.wa_responders} people replied to WhatsApp campaigns — they are in Leads`,"leads"]);
   if(m&&!m.enabled) todo.push(["The daily machine is off — switch it on in Prospecting to find prospects every day","prospecting"]);
   if(m&&m.enabled&&!m.auto_send) todo.push(["Auto-send is off: approved prospects wait for you to send their emails","prospecting"]);
   if(!c.total) todo.push(["No contacts yet — sync your leads and clients in Audience","audience"]);
+  const half=g?.half||Math.floor(days/2);
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      <GSetupNote err={err}/>
+      <GSetupNote err={err||gerr}/>
+      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+        <b style={{fontSize:14}}>Daily growth</b><span style={{fontSize:12,color:"var(--text3)"}}>real numbers from your data{g?.as_of?` · updated ${String(g.as_of).slice(11,16)}`:""}</span>
+        <div style={{flex:1}}/>{[14,30].map(d=><button key={d} style={gPill(days===d)} onClick={()=>setDays(d)}>{d} days</button>)}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}>
+        {METRICS.map(([k,label,col,tab])=>{
+          const x=g?.metrics?.[k]; const d=x?x.recent-x.previous:0; const pct=x&&x.previous>0?Math.round(d/x.previous*100):null;
+          const up=d>0, down=d<0;
+          return (<div key={k} onClick={()=>go(tab)} style={{...gCard,padding:"12px 14px",cursor:"pointer",display:"flex",flexDirection:"column",gap:4}}>
+            <div style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>{label}</div>
+            <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+              <span style={{fontSize:26,fontWeight:800}}>{x?x.recent:"—"}</span><span style={{fontSize:11,color:"var(--text3)"}}>last {half} days</span>
+              {x&&<span style={{fontSize:11,fontWeight:800,color:up?"#16a34a":down?"#dc2626":"var(--text3)"}}>{up?"▲":down?"▼":"•"} {pct!==null?Math.abs(pct)+"%":(x.recent>0&&x.previous===0?"new":"0")}</span>}
+            </div>
+            {x?<GrowthSpark vals={x.series} color={col}/>:<div style={{height:34}}/>}
+            <div style={{fontSize:11,color:"var(--text2)",display:"flex",justifyContent:"space-between"}}><span>Today <b>{x?x.today:"—"}</b> · yesterday {x?x.yesterday:"—"}</span><span style={{color:"var(--text3)"}}>{x?x.total.toLocaleString()+" total":""}</span></div>
+          </div>);
+        })}
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:8}}><b style={{fontSize:14}}>Pipeline right now</b></div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>
-        {tiles.map(([k,v,t])=>(<div key={k} onClick={()=>go(t)} style={{...gCard,padding:"12px 14px",cursor:"pointer"}}><div style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>{k}</div><div style={{fontSize:22,fontWeight:800,marginTop:2}}>{v??"—"}</div></div>))}
+        {[["Prospects to review",f?.prospects_new,"prospecting"],["Contacted",f?.contacted,"prospecting"],["Replied",f?.replied,"prospecting"],["Won",f?.won,"prospecting"],["Contacts in total",c.total,"audience"]].map(([k,v,t])=>(<div key={k} onClick={()=>go(t)} style={{...gCard,padding:"12px 14px",cursor:"pointer"}}><div style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>{k}</div><div style={{fontSize:22,fontWeight:800,marginTop:2}}>{v??"—"}</div></div>))}
       </div>
       <div style={{...gCard,display:"flex",flexDirection:"column",gap:8}}>
         <b style={{fontSize:14}}>Today's actions</b>
         {todo.length===0&&<div style={{fontSize:13,color:"var(--text2)"}}>All clear. The machine will bring the next batch on the next working day.</div>}
         {todo.map(([txt,t],i)=><div key={i} onClick={()=>go(t)} style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:13,padding:"8px 10px",borderRadius:8,background:"var(--surface2)",cursor:"pointer"}}><span>{txt}</span><span style={{color:"var(--accent)",fontWeight:700}}>Open →</span></div>)}
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10}}>
-        {[["🔎 Find","Prospecting","Real companies with a published email or mobile number, drafted outreach, daily machine.","prospecting"],
-          ["✉️ Reach","Campaigns","Email newsletters built from your website projects and articles, and WhatsApp campaigns.","campaigns"],
-          ["📇 Know","Audience","Every contact in one database, tagged by industry, with consent and opt-outs.","audience"],
-          ["🤝 Close","Leads","Only real prospects. Job seekers and vendors are kept out.","leads"]].map(([ic,t,d,tab])=>(
-          <div key={t} onClick={()=>go(tab)} style={{...gCard,cursor:"pointer",display:"flex",flexDirection:"column",gap:4}}><div style={{fontSize:13,fontWeight:800}}>{ic} {t}</div><div style={{fontSize:12,color:"var(--text2)",lineHeight:1.5}}>{d}</div></div>))}
       </div>
     </div>);
 }
