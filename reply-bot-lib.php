@@ -430,7 +430,7 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
         // sales lead — capturing it here just pollutes the CRM pipeline and
         // fires a misleading "New Lead" WhatsApp alert to an AM for
         // something that belongs in Recruitment, not Leads.
-        if ($classification && in_array($classification['category'], ['other', 'hiring'], true)) {
+        if ($classification && in_array($classification['category'], ['other', 'hiring', 'service_provider'], true)) {
             try {
                 $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), :action, 'leads', :details, 'success', 'system')")
                     ->execute([

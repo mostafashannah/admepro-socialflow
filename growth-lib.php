@@ -283,6 +283,13 @@ function gCaptureWaResponder(PDO $pdo, $fromDigits, $text) {
     if (!$k) return null;
     $leadId = $k['lead_id'];
     if (!$leadId) {
+        // Only a real prospect becomes a lead — not a job seeker, a supplier pitching us, or noise.
+        try { require_once __DIR__ . '/reply-bot-lib.php'; $cls = function_exists('classifyClientContact') ? classifyClientContact('admepro', (string)$text) : null; } catch (Throwable $e) { $cls = null; }
+        if ($cls && in_array($cls['category'], ['other', 'hiring', 'service_provider'], true)) {
+            $tags = implode(',', array_unique(array_filter(array_merge(explode(',', (string)$k['tags']), ['wa-responder']))));
+            $pdo->prepare("UPDATE mkt_contacts SET tags = ?, updated_at = ? WHERE id = ?")->execute([$tags, gNow(), $k['id']]);
+            return null;
+        }
         $am = null; try { require_once __DIR__ . '/reply-bot-lib.php'; $am = function_exists('assignLeadRotation') ? assignLeadRotation($pdo) : null; } catch (Throwable $e) {}
         $notes = "Replied to the WhatsApp campaign \"{$k['campaign_name']}\".\n\nTheir message: " . mb_substr((string)$text, 0, 500);
         try {

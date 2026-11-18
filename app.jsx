@@ -29868,7 +29868,18 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
     if(m) return /^admepro$/i.test(m[1].trim());
     return true;
   };
-  const ownLeads = leads.filter(isOwnLead);
+  // Only real prospects belong here: category "lead" (not job applicants / service providers / noise), and anything that came
+  // from a social platform must carry a phone number. Hidden contacts stay in the database and can be reviewed.
+  const SOCIAL_SRC = ["instagram","facebook","messenger","whatsapp","fb_comment","ig_comment","li_comment","tiktok","twitter","x","linkedin","social"];
+  const isRealLead = l => {
+    const cat = String(l.category||"lead").toLowerCase();
+    if(cat && cat!=="lead") return false;
+    if(SOCIAL_SRC.includes(String(l.source||"").toLowerCase()) && String(l.phone||"").replace(/\D/g,"").length<7) return false;
+    return true;
+  };
+  const [showHiddenLeads,setShowHiddenLeads] = useState(false);
+  const hiddenOwn = leads.filter(l=>isOwnLead(l)&&!isRealLead(l));
+  const ownLeads = leads.filter(l=>isOwnLead(l)&&(showHiddenLeads||isRealLead(l)));
   const leadsScope = myLeadsOnly ? ownLeads.filter(l=>l.assigned_to===currentUser.email) : ownLeads;
   // Leads with nobody assigned yet sit in the "Bank" — imported in bulk
   // (e.g. from a Drive sheet) and held there until an admin hands each one
@@ -30010,7 +30021,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
         <div>
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Leads & CRM</h2>
-          <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{leadsScope.length} leads · ${pipelineValue.toLocaleString()} pipeline</p>
+          <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{leadsScope.length} leads · ${pipelineValue.toLocaleString()} pipeline{hiddenOwn.length>0&&<> · <button onClick={()=>setShowHiddenLeads(v=>!v)} title="Job applicants, service providers, noise, and social contacts without a phone number" style={{color:"var(--accent)",fontWeight:700,fontSize:12,textDecoration:"underline"}}>{showHiddenLeads?"hide":"show"} {hiddenOwn.length} not-leads</button></>}</p>
         </div>
         <div style={{display:"flex",gap:8}}>
           <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)"}}>
