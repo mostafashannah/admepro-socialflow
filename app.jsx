@@ -21567,6 +21567,7 @@ const TEAM_EVENT_TYPES = [
   {key:"warning", label:"Warning", color:"#ef4444"},
   {key:"demotion", label:"Demotion", color:"#ef4444", prevLabel:"Previous Title", newLabel:"New Title"},
   {key:"terminate", label:"Termination", color:"#ef4444"},
+  {key:"rehire", label:"Rehired / New Contract", color:"#10b981", prevLabel:"Old balances", newLabel:"Balances"},
   {key:"other", label:"Other", color:"#6b7280"},
 ];
 const TEAM_EVENT_MAP = Object.fromEntries(TEAM_EVENT_TYPES.map(t=>[t.key,t]));
@@ -23961,7 +23962,41 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
   // new one via "Other" actually sticks around for next time.
   const titleOptions = Array.from(new Set([...TEAM_TITLES, ...(team||[]).map(t=>t.title).filter(Boolean)])).sort();
 
+  // Coming back after an end-of-contract: the admin picks whether the old vacation/WFH numbers carry on or reset,
+  // and the new contract's start date + pay. Saving then also logs a "Rehired / New Contract" event in their history.
+  const wasInactive = (member.status||"active")==="inactive";
+  const [rehire, setRehire] = useState(null); // null = not asking; else {mode, start_date, salary, probation_salary, probation_months}
+  const confirmRehire = async () => {
+    const r = rehire;
+    if(!r.start_date) { alert("Pick the new contract's start date."); return; }
+    const updates = {...f, status:"active", start_date:r.start_date, termination_date:null, termination_reason:null, pending_start:0};
+    if(canEditSalary) {
+      updates.salary = r.salary===""?null:Number(r.salary);
+      updates.probation_salary = r.probation_salary===""?null:Number(r.probation_salary);
+      updates.probation_months = r.probation_months===""?null:Number(r.probation_months);
+    } else { delete updates.salary; delete updates.probation_salary; delete updates.probation_months; }
+    if(r.mode==="fresh") { updates.vacation_days_used=0; updates.wfh_days_used=0; updates.personal_leave_hours_used=0; updates.extra_hours_banked=0; }
+    updates.work_days = JSON.stringify(updates.employment_type==="part_time" ? updates.work_days : WORK_DAYS_DEFAULT);
+    if(!updates.password) delete updates.password;
+    try {
+      await ce("TeamMemberEvent",[{
+        team_member_id: member.id, team_member_name: member.name, event_type:"rehire",
+        title: `Rehired — new contract from ${r.start_date}`,
+        previous_value: `Vacation ${member.vacation_days_used??0}/${member.vacation_days_total??21} used`,
+        new_value: r.mode==="fresh" ? "Started over (balances reset to 0 used)" : "Continued with old balances",
+        amount: r.salary===""?null:Number(r.salary), effective_date: r.start_date,
+        notes: `New contract. Salary ${r.salary||"—"}${r.probation_months?`, probation ${r.probation_months} month(s)`:""}. ${r.mode==="fresh"?"Vacation / WFH / leave counters reset.":"Old vacation / WFH / leave numbers kept."}`,
+        recorded_by: "Admin",
+      }]);
+    } catch(e) { alert("Saved the profile, but could not log the rehire event in their history."); }
+    onSave(updates);
+  };
+
   const handleSave = () => {
+    if(wasInactive && f.status==="active" && !rehire) {
+      setRehire({mode:"continue", start_date:new Date().toISOString().slice(0,10), salary:member.salary??"", probation_salary:"", probation_months:0});
+      return;
+    }
     const updates = {...f};
     if(!canEditSalary) { delete updates.salary; delete updates.probation_salary; delete updates.probation_months; } // don't send a stale/blanked salary if the field wasn't editable
     if(updates.salary==="") updates.salary = null;
@@ -24103,6 +24138,33 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
           <Btn onClick={handleSave} disabled={!f.name||!f.email} style={{flex:2}}>Save Changes</Btn>
         </div>
       </div>
+      {rehire&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{background:"var(--surface)",borderRadius:16,padding:24,width:440,maxWidth:"94vw",border:"1px solid var(--border)",maxHeight:"90vh",overflowY:"auto"}}>
+            <h3 style={{fontWeight:700,fontSize:17,color:"var(--text)",marginBottom:6}}>{member.name} is coming back</h3>
+            <p style={{fontSize:12,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>This starts a new contract. Choose what happens to their old numbers (vacation used {member.vacation_days_used??0}/{member.vacation_days_total??21}, WFH used {member.wfh_days_used??0}, leave hours used {member.personal_leave_hours_used??0}).</p>
+            {[["continue","Continue with the old numbers","Vacation, WFH and leave balances stay exactly as they are."],["fresh","Start over","Used vacation / WFH / leave / extra hours go back to 0, like a new joiner."]].map(([k,t,d])=>(
+              <label key={k} style={{display:"flex",gap:10,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${rehire.mode===k?"var(--accent)":"var(--border2)"}`,marginBottom:8,cursor:"pointer"}}>
+                <input type="radio" checked={rehire.mode===k} onChange={()=>setRehire(r=>({...r,mode:k}))} style={{marginTop:3}}/>
+                <span><b style={{fontSize:13,color:"var(--text)"}}>{t}</b><br/><span style={{fontSize:12,color:"var(--text3)"}}>{d}</span></span>
+              </label>
+            ))}
+            <div style={{display:"flex",flexDirection:"column",gap:10,marginTop:12}}>
+              <Field label="New contract start date" required><input type="date" value={rehire.start_date} onChange={e=>setRehire(r=>({...r,start_date:e.target.value}))} style={inputSt}/></Field>
+              {canEditSalary&&<Field label="Salary"><input type="number" value={rehire.salary} onChange={e=>setRehire(r=>({...r,salary:e.target.value}))} style={inputSt}/></Field>}
+              {canEditSalary&&<div style={{display:"flex",gap:10}}>
+                <Field label="Probation salary"><input type="number" value={rehire.probation_salary} onChange={e=>setRehire(r=>({...r,probation_salary:e.target.value}))} placeholder="optional" style={inputSt}/></Field>
+                <Field label="Probation (months)"><input type="number" min="0" value={rehire.probation_months} onChange={e=>setRehire(r=>({...r,probation_months:e.target.value}))} style={inputSt}/></Field>
+              </div>}
+            </div>
+            <p style={{fontSize:11,color:"var(--text3)",marginTop:10}}>A "Rehired / New Contract" event is added to their history, the old end date is cleared, and they can log in again.</p>
+            <div style={{display:"flex",gap:10,paddingTop:14}}>
+              <Btn variant="secondary" onClick={()=>setRehire(null)} style={{flex:1}}>Back</Btn>
+              <Btn onClick={confirmRehire} style={{flex:2}}>Reactivate</Btn>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -42522,7 +42584,8 @@ function MyTimelinePage({posts:postsRaw, team, currentUser, timeEntries, onPostC
     .filter(m=>isAdminViewer || ["account_manager","account_director","account_executive"].includes(currentUser?.role) || !["account_manager","account_director","account_executive"].includes(m.role))
     // Account managers / executives never see the account director's timeline.
     .filter(m=>!(["account_manager","account_executive"].includes(currentUser?.role) && m.role==="account_director"))
-    .filter(m=>!isLead || (_myCraft.includes(m.role) && m.email!==currentUser?.email))
+    // A team leader sees her own timeline too (it used to be filtered out), plus her craft and anyone she leads directly.
+    .filter(m=>!isLead || (_myCraft.includes(m.role) || m.email===currentUser?.email || (_me && m.team_leader_id===_me.id)))
     .filter(m=>isAdminViewer || currentUser?.role==="account_director" || !TIMELINE_EXCLUDED_NAMES.some(n=>(m.name||"").trim().toLowerCase().split(/\s+/)[0]===n))
     .sort((a,b)=>{
       const ai = ROLE_SORT_ORDER.indexOf(a.role), bi = ROLE_SORT_ORDER.indexOf(b.role);
@@ -43167,6 +43230,11 @@ const POINTS_RULES_DEFAULT = [
   ["mai_full",       "Mai check-in completed, all points",      5],
   ["mai_missed",     "Mai check-in missed",                   -10],
   ["lead_won",       "Lead closed won",                        25],
+  // Team leaders also earn/lose from how their team performs (each task delivered by someone they lead).
+  ["team_on_time",   "Team leader: a team member's task on time",   2],
+  ["team_clean",     "Team leader: a team member's task, no revisions", 1],
+  ["team_late",      "Team leader: a team member's task late",    -2],
+  ["team_extension", "Team leader: a team member moved a due date", -1],
 ];
 function pointsConfig(appSettings) {
   let c = appSettings?.points_system;
@@ -43187,6 +43255,25 @@ function calcMemberPoints(member, month, {perfLogs, posts, maiSessions, leads, c
     if (l.on_time === true || l.on_time === 1 || l.on_time === "1") add(d, "task_on_time", `On time: ${t}`); else add(d, "task_late", `Late: ${t}`);
     if (!(Number(l.revision_count) > 0) && !(l.rejected === true || l.rejected === 1 || l.rejected === "1")) add(d, "task_clean", `No revisions: ${t}`);
   });
+  // Team leader: the points of the people they lead (team_leader_id) flow into the leader's score as well.
+  const crew = (pointsBridge.team||[]).filter(t => t.team_leader_id && t.team_leader_id === member.id && t.email && t.email !== email);
+  if (crew.length) {
+    const crewEmails = new Set(crew.map(t=>t.email));
+    const nameOf = e => (crew.find(t=>t.email===e)?.name||"").split(" ")[0];
+    (perfLogs||[]).forEach(l => {
+      if (!crewEmails.has(l.user_email) || (l.stage_from||"").startsWith("returned_")) return;
+      const d = l.completed_at || l.created_at; if (!inM(d)) return;
+      const t = `${nameOf(l.user_email)} — ${l.post_title || "task"}`;
+      if (l.on_time === true || l.on_time === 1 || l.on_time === "1") add(d, "team_on_time", `Team on time: ${t}`); else add(d, "team_late", `Team late: ${t}`);
+      if (!(Number(l.revision_count) > 0) && !(l.rejected === true || l.rejected === 1 || l.rejected === "1")) add(d, "team_clean", `Team no revisions: ${t}`);
+    });
+    (posts||[]).forEach(p => {
+      if (p.is_routine || !p.due_history) return;
+      const who = [p.assigned_to, p.design_assigned_to, p.content_assigned_to].find(e => crewEmails.has(e)); if (!who) return;
+      let hist = []; try { hist = Array.isArray(p.due_history) ? p.due_history : JSON.parse(p.due_history); } catch(e) {}
+      (hist||[]).forEach(h => { if (h && inM(h.date || h.at) && h.to && String(h.to).slice(0,10) > String(h.date || h.at).slice(0,10)) add(h.date || h.at, "team_extension", `Team due date moved (${nameOf(who)}): ${p.title}`); });
+    });
+  }
   (posts||[]).forEach(p => {
     if (p.is_routine) {
       if (p.assigned_to !== email || !inM(p.due_date)) return;
