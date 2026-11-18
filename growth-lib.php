@@ -123,7 +123,7 @@ function gRenderEmail(array $camp, array $contact = [], $sendId = null) {
 <div style="display:none;max-height:0;overflow:hidden;opacity:0">' . $pre . '</div>
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:28px 12px"><tr><td align="center">
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb">
-<tr><td style="padding:28px 32px 4px"><img src="https://admepro.com/wp-content/uploads/2024/10/adme-p2.png" alt="admepro" style="height:28px;width:auto"/></td></tr>
+<tr><td style="padding:24px 32px 4px"><table cellpadding="0" cellspacing="0"><tr><td><img src="' . gH(gBase() . '/icon-192.png') . '" alt="" width="34" height="34" style="display:block;border-radius:8px"/></td><td style="padding-left:10px;font-size:20px;font-weight:800;color:#111827;letter-spacing:-0.3px">admepro</td></tr></table></td></tr>
 <tr><td style="padding:10px 32px 20px;text-align:' . ($rtl ? 'right' : 'left') . '">' . $body . '</td></tr>
 <tr><td style="padding:18px 32px 26px;border-top:1px solid #f3f4f6;font-size:12px;line-height:1.6;color:#9ca3af;text-align:center">
 admepro · 145 El Banafsig 3, New Cairo, Cairo, Egypt<br/>You receive this because you are in touch with admepro. <a href="' . gH($unsub) . '" style="color:#6b7280">Unsubscribe</a>
@@ -197,13 +197,26 @@ function gClaude(array $req, $timeout = 240) {
 /** First JSON array/object found in a model reply. */
 function gJson($text) {
     if (preg_match('/```(?:json)?\s*([\[{][\s\S]*?[\]}])\s*```/', $text, $m)) { $j = json_decode($m[1], true); if ($j !== null) return $j; }
+    // Balanced scan: take the first complete {...} or [...] that parses, so a sentence after the JSON (that may contain
+    // braces such as {{first_name}}) can no longer break the extraction.
+    $len = strlen($text);
+    for ($i = 0; $i < $len; $i++) {
+        $o = $text[$i]; if ($o !== '{' && $o !== '[') continue;
+        $depth = 0; $inStr = false; $esc = false;
+        for ($k = $i; $k < $len; $k++) {
+            $ch = $text[$k];
+            if ($inStr) { if ($esc) $esc = false; elseif ($ch === '\\') $esc = true; elseif ($ch === '"') $inStr = false; continue; }
+            if ($ch === '"') { $inStr = true; continue; }
+            if ($ch === '{' || $ch === '[') $depth++;
+            elseif ($ch === '}' || $ch === ']') { $depth--; if ($depth === 0) { $j = json_decode(substr($text, $i, $k - $i + 1), true); if ($j !== null) return $j; break; } }
+        }
+    }
     foreach (['[' => ']', '{' => '}'] as $o => $c) {
         $a = strpos($text, $o); $b = strrpos($text, $c);
         if ($a !== false && $b > $a) { $j = json_decode(substr($text, $a, $b - $a + 1), true); if ($j !== null) return $j; }
     }
     return null;
 }
-
 function gPdo() {
     static $pdo = null;
     if (!$pdo) $pdo = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4', DB_USER, DB_PASS,

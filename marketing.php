@@ -162,7 +162,13 @@ case 'write': {
         'system' => 'You are Sara, admepro\'s senior content creator, writing email newsletters for admepro, a creative & digital marketing agency in Cairo (branding, social media, websites, production). Warm, confident, concise; no hype, no emojis in headings. Use {{first_name}} once in the greeting. Always point readers to our real projects and articles.',
         'messages' => [['role' => 'user', 'content' => $prompt]]], 90);
     if (!$ok) gOut(502, ['error' => $err]);
-    $j = gJson($text); if (!is_array($j) || empty($j['blocks'])) gOut(502, ['error' => 'Could not draft — try again']);
+    $j = gJson($text);
+    if (!is_array($j) || empty($j['blocks'])) { // one retry with a stricter reminder
+        error_log('[marketing] write: unparsable reply: ' . mb_substr((string)$text, 0, 400));
+        [$ok2, $text2, , $err2] = gClaude(['max_tokens' => 4000, 'output_config' => ['effort' => 'low'], 'system' => 'Reply with ONE valid JSON object only, no other text.', 'messages' => [['role' => 'user', 'content' => $prompt . "\n\nIMPORTANT: output only the JSON object, nothing before or after it."]]], 90);
+        $j = $ok2 ? gJson($text2) : null;
+        if (!is_array($j) || empty($j['blocks'])) gOut(502, ['error' => 'Sara could not draft this one — try again, or pick fewer pages.']);
+    }
     // Cards may only point at the pages that were chosen; fill image/title from the real item.
     $j['blocks'] = array_values(array_filter(array_map(function ($bl) use ($items) {
         if (($bl['type'] ?? '') !== 'card') return $bl;
