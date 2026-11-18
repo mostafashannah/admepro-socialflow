@@ -169,7 +169,20 @@ foreach ($due as $post) {
             $errorsByPlatform[$platform] = 'TikTok requires a video file attached to this post';
             continue;
         }
-        [$code, $resp] = tiktok_publish_video($access_token, $image_url, $message);
+        // Scheduled posts can't ask anyone on the spot, so TikTok's required choices (visibility, comments, duet, stitch)
+        // come from what an admin picked once in this integration's settings (config.tiktok_*).
+        $tcfg = json_decode($integration['config'] ?? '{}', true) ?: [];
+        if (empty($tcfg['tiktok_privacy_level'])) {
+            $anyAttempted = true;
+            $errorsByPlatform[$platform] = 'Choose a default TikTok visibility for scheduled posts: Integrations → TikTok → edit → "Default visibility".';
+            continue;
+        }
+        [$code, $resp] = tiktok_publish_video($access_token, $image_url, $message, [
+            'privacy_level' => $tcfg['tiktok_privacy_level'],
+            'allow_comment' => !empty($tcfg['tiktok_allow_comment']),
+            'allow_duet'    => !empty($tcfg['tiktok_allow_duet']),
+            'allow_stitch'  => !empty($tcfg['tiktok_allow_stitch']),
+        ]);
     } else {
         [$code, $resp] = meta_publish($platform, $page_id, $access_token, $message, $image_url, null, $story_image_url ?: null, $post['post_type'] ?? null, $cover_url ?: null, $image_urls ?: null);
     }

@@ -31113,6 +31113,20 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                 <div style={{padding:10,background:"#f59e0b22",border:"1px solid #f59e0b55",borderRadius:"var(--rs)",fontSize:12,color:"#b45309"}}>
                   TikTok only publishes video (no image posts), and while your TikTok Developer app is in sandbox/pre-audit mode, posts land as private and only "Target user" test accounts can connect — apply for the video.publish scope's audit before connecting real client accounts.
                 </div>
+                <Field label="Default visibility for scheduled posts" required hint="TikTok requires a visibility choice on every post. Scheduled posts use this one. While your TikTok app is unaudited, TikTok only accepts 'Only me'.">
+                  <select value={f.config?.tiktok_privacy_level||""} onChange={e=>sc("tiktok_privacy_level",e.target.value)} style={inputSt}>
+                    <option value="">— Choose —</option>
+                    <option value="SELF_ONLY">Only me (private)</option>
+                    <option value="FOLLOWER_OF_CREATOR">Followers</option>
+                    <option value="MUTUAL_FOLLOW_FRIENDS">Friends</option>
+                    <option value="PUBLIC_TO_EVERYONE">Everyone</option>
+                  </select>
+                  <div style={{display:"flex",gap:14,flexWrap:"wrap",marginTop:8,fontSize:12}}>
+                    {[["tiktok_allow_comment","Allow comments"],["tiktok_allow_duet","Allow duet"],["tiktok_allow_stitch","Allow stitch"]].map(([k,l])=>(
+                      <label key={k} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}><input type="checkbox" checked={!!f.config?.[k]} onChange={e=>sc(k,e.target.checked)}/> {l}</label>
+                    ))}
+                  </div>
+                </Field>
                 <button onClick={connectWithTikTok} disabled={connecting} style={{
                   display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"12px",
                   background:"#000",color:"#fff",border:"none",borderRadius:"var(--rs)",
