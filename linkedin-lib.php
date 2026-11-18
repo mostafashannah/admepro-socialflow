@@ -14,6 +14,11 @@ define('LINKEDIN_API_VERSION', '202401');
 
 // Performs a LinkedIn post as the given member. Returns [http_code, decoded_response].
 function linkedin_publish($author_urn, $access_token, $message, $image_url = '') {
+    // Account connected through Zernio (credentials: page_id = Zernio account id, access_token = "zernio").
+    if ($access_token === 'zernio') {
+        require_once __DIR__ . '/zernio-lib.php';
+        return zernio_publish('linkedin', $author_urn, $message, $image_url ? [$image_url] : []);
+    }
     $endpoint = 'https://api.linkedin.com/v2/ugcPosts';
 
     $shareContent = [

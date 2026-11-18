@@ -30598,6 +30598,47 @@ function AddLeadModal({open,onClose,team,onAdd}) {
 // INTEGRATIONS MODULE
 // ════════════════════════════════════════════════════════════════
 
+// Zernio: lists the LinkedIn accounts connected in Zernio and links one to this integration.
+// The Zernio API key lives only on the server (zernio-admin.php); a Zernio-backed integration stores
+// {page_id: <Zernio account id>, access_token: "zernio"} so the normal publish code routes it through Zernio.
+function ZernioPicker({platform="linkedin", onPick, picked}) {
+  const [state,setState] = React.useState({loading:false,error:"",accounts:null,setup:false});
+  const load = async () => {
+    setState(s=>({...s,loading:true,error:""}));
+    try {
+      const r = await fetch(window.location.origin+"/zernio-admin.php?action=accounts&platform="+platform, {credentials:"include"});
+      const j = await r.json();
+      if(j.setup) setState({loading:false,error:"",accounts:null,setup:true});
+      else if(j.error) setState({loading:false,error:j.error,accounts:null,setup:false});
+      else setState({loading:false,error:"",accounts:j.accounts||[],setup:false});
+    } catch(e) { setState({loading:false,error:"Could not reach Zernio.",accounts:null,setup:false}); }
+  };
+  const addNew = async () => {
+    try {
+      const r = await fetch(window.location.origin+"/zernio-admin.php?action=connect_link&platform="+platform, {credentials:"include"});
+      const j = await r.json();
+      if(j.url) window.open(j.url,"zernio_connect","width=600,height=750"); else setState(s=>({...s,error:j.error||"No link from Zernio."}));
+    } catch(e) { setState(s=>({...s,error:"Could not reach Zernio."})); }
+  };
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:8,padding:12,border:"1px dashed var(--border2)",borderRadius:"var(--rs)"}}>
+      <p style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>Or connect through Zernio</p>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <button type="button" onClick={load} disabled={state.loading} style={{padding:"8px 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:12,fontWeight:600,cursor:"pointer"}}>{state.loading?"Loading…":"Choose a Zernio account"}</button>
+        <button type="button" onClick={addNew} style={{padding:"8px 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Add a new account in Zernio</button>
+      </div>
+      {state.setup&&<p style={{fontSize:12,color:"#b45309"}}>Zernio isn't set up yet — add ZERNIO_API_KEY to config.php on the server.</p>}
+      {state.error&&<p style={{fontSize:12,color:"#ef4444"}}>{state.error}</p>}
+      {state.accounts&&state.accounts.length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No LinkedIn accounts in Zernio yet — use "Add a new account in Zernio", then choose it here.</p>}
+      {(state.accounts||[]).map(a=>(
+        <button key={a.id} type="button" onClick={()=>onPick(a)} style={{textAlign:"left",padding:"8px 10px",background:picked===a.id?"var(--accent)18":"var(--surface)",border:`1px solid ${picked===a.id?"var(--accent)":"var(--border)"}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>
+          {a.name||a.username||a.id}{a.needs_reconnect?" — needs reconnecting in Zernio":""}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 const INTEGRATION_APPS = [
   // Social
   {key:"facebook", label:"Facebook", category:"social", color:"#1877F2", icon:Icons.fbBrand, brand:true, description:"Publish posts directly to Facebook Pages"},
@@ -30997,6 +31038,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                 }}>
                   {connecting?<><Spinner size={14}/> Waiting for LinkedIn login…</>:<>Connect with LinkedIn</>}
                 </button>
+                <ZernioPicker platform="linkedin" picked={f.credentials?.access_token==="zernio"?f.credentials?.page_id:""} onPick={a=>setF(p=>({...p,credentials:{...p.credentials,page_id:a.id,access_token:"zernio",provider:"zernio",account_name:a.name||a.username||""}}))}/>
                 {connectError&&(
                   <div style={{padding:10,background:"#ef444422",border:"1px solid #ef444455",borderRadius:"var(--rs)",fontSize:12,color:"#ef4444"}}>{connectError}</div>
                 )}

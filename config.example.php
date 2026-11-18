@@ -137,3 +137,6 @@ define('RECRUITMENT_IMAP_PASSWORD', 'CHANGE_ME');
 // priority over these fallback constants.
 define('RECRUITMENT_SMTP_HOST', 'smtp.hostinger.com');
 define('RECRUITMENT_SMTP_PORT', 465);
+
+// Zernio (zernio.com) — posts to LinkedIn and other platforms through one API key. Server-side only, never in the app.
+define('ZERNIO_API_KEY', '');
