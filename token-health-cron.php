@@ -15,14 +15,9 @@ require_once __DIR__ . '/pro-lib.php'; // sendWhatsAppReply()
 
 $dry = (($argv[1] ?? '') === 'dry');
 $pdo = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4', DB_USER, DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-$pdo->exec("CREATE TABLE IF NOT EXISTS token_health (
-  integration_id CHAR(36) NOT NULL PRIMARY KEY,
-  checked_at DATETIME NOT NULL,
-  state VARCHAR(20) NOT NULL,
-  expires_at DATETIME NULL,
-  note VARCHAR(255) NULL,
-  last_alert_at DATETIME NULL
-)");
+// The app's DB user can't CREATE tables: run migration-token-health.sql once as the MySQL admin.
+$haveTable = true;
+try { $pdo->query("SELECT 1 FROM token_health LIMIT 0"); } catch (Throwable $e) { $haveTable = false; echo "NOTE: table token_health is missing — run: mysql -u root -p socialflow < /var/www/socialflow/migration-token-health.sql\n(the check still runs; alerts won't be de-duplicated until then)\n\n"; }
 
 function th_get($url) {
     $ch = curl_init($url);
@@ -33,8 +28,8 @@ function th_get($url) {
 
 $rows = $pdo->query("SELECT id, app_key, client_name, credentials FROM integrations WHERE status = 'active' AND app_key IN ('facebook','instagram')")->fetchAll(PDO::FETCH_ASSOC);
 $report = []; $problems = [];
-$save = $pdo->prepare("INSERT INTO token_health (integration_id, checked_at, state, expires_at, note) VALUES (?, NOW(), ?, ?, ?)
-  ON DUPLICATE KEY UPDATE checked_at = NOW(), state = VALUES(state), expires_at = VALUES(expires_at), note = VALUES(note)");
+$save = $haveTable ? $pdo->prepare("INSERT INTO token_health (integration_id, checked_at, state, expires_at, note) VALUES (?, NOW(), ?, ?, ?)
+  ON DUPLICATE KEY UPDATE checked_at = NOW(), state = VALUES(state), expires_at = VALUES(expires_at), note = VALUES(note)") : null;
 
 foreach ($rows as $r) {
     $creds = json_decode($r['credentials'] ?? '{}', true) ?: [];
@@ -71,7 +66,7 @@ foreach ($rows as $r) {
             $note = $e > 0 ? 'Expires ' . date('j M', $e) : 'Does not expire';
         }
     }
-    if (!$dry) $save->execute([$r['id'], $state, $exp, $note]);
+    if (!$dry && $save) $save->execute([$r['id'], $state, $exp, $note]);
     $report[] = sprintf('%-34s %-9s %s', $label, $state, $note);
     if (in_array($state, ['dead', 'no_token', 'expiring'], true)) $problems[] = ['id' => $r['id'], 'label' => $label, 'state' => $state, 'note' => $note, 'exp' => $exp];
 }
@@ -81,9 +76,9 @@ if (!$problems || $dry) { echo $problems ? "(dry run — no messages sent)\n" : 
 
 // One alert per connection every 3 days.
 $due = [];
-$last = $pdo->prepare("SELECT last_alert_at FROM token_health WHERE integration_id = ?");
+$last = $haveTable ? $pdo->prepare("SELECT last_alert_at FROM token_health WHERE integration_id = ?") : null;
 foreach ($problems as $p) {
-    $last->execute([$p['id']]); $la = $last->fetchColumn();
+    $la = null; if ($last) { $last->execute([$p['id']]); $la = $last->fetchColumn(); }
     if (!$la || strtotime($la) < time() - 3 * 86400) $due[] = $p;
 }
 if (!$due) { echo "Problems already alerted recently.\n"; exit; }
@@ -91,7 +86,7 @@ $lines = array_map(fn($p) => '• ' . $p['label'] . ($p['state'] === 'expiring' 
 $msg = "🔌 Social connections need attention:\n" . implode("\n", $lines) . "\nReconnect in SocialFlow → Integrations.";
 $admins = $pdo->query("SELECT whatsapp_number FROM team_members WHERE role = 'admin' AND status = 'active' AND whatsapp_number IS NOT NULL AND whatsapp_number <> ''")->fetchAll(PDO::FETCH_COLUMN);
 foreach ($admins as $num) { try { sendWhatsAppReply($num, $msg); } catch (Throwable $e) { error_log('[token-health] whatsapp: ' . $e->getMessage()); } }
-$mark = $pdo->prepare("UPDATE token_health SET last_alert_at = NOW() WHERE integration_id = ?");
+$mark = $haveTable ? $pdo->prepare("UPDATE token_health SET last_alert_at = NOW() WHERE integration_id = ?") : null;
 $log = $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), 'Connection needs attention', 'integrations', ?, 'warning', 'cron')");
-foreach ($due as $p) { $mark->execute([$p['id']]); $log->execute([$p['label'] . ': ' . $p['note']]); }
+foreach ($due as $p) { if ($mark) $mark->execute([$p['id']]); $log->execute([$p['label'] . ': ' . $p['note']]); }
 echo "Alerted " . count($admins) . " admin(s) about " . count($due) . " connection(s).\n";
