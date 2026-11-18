@@ -33,6 +33,7 @@ function meta_publish($platform, $page_id, $access_token, $message, $image_url, 
         } elseif ($image_url) {
             $endpoint  = "https://graph.facebook.com/{$v}/{$page_id}/photos";
             $post_data = ['url' => $image_url, 'caption' => $message, 'access_token' => $access_token];
+            if (($fixed = fb_fixed_photo($image_url))) { unset($post_data['url']); $post_data['source'] = $fixed; }
         } else {
             $endpoint  = "https://graph.facebook.com/{$v}/{$page_id}/feed";
             $post_data = ['message' => $message, 'access_token' => $access_token];
@@ -152,7 +153,9 @@ function fb_publish_carousel($v, $page_id, $access_token, $message, $image_urls,
     $attached = [];
     foreach ($image_urls as $url) {
         $photo_ep = "https://graph.facebook.com/{$v}/{$page_id}/photos";
-        [$code, $resp] = meta_curl($photo_ep, ['url' => $url, 'published' => 'false', 'access_token' => $access_token]);
+        $photo_fields = ['url' => $url, 'published' => 'false', 'access_token' => $access_token];
+        if (($fixed = fb_fixed_photo($url))) { unset($photo_fields['url']); $photo_fields['source'] = $fixed; }
+        [$code, $resp] = meta_curl($photo_ep, $photo_fields);
         if ($code !== 200 || empty($resp['id'])) {
             return [$code ?: 502, ['error' => 'Failed to upload carousel photo', 'detail' => $resp]];
         }
@@ -238,14 +241,45 @@ function meta_curl_get($endpoint) {
     return [$http_code, json_decode($response, true) ?: ['raw' => $response]];
 }
 
+/**
+ * Facebook rejects photos over 10 MB or in formats it can't read (subcode 1366046, "Can't Read Files").
+ * Checks the image first; if it's too big / the wrong type, downloads it, shrinks it to a JPEG with GD and
+ * returns a CURLFile to upload directly instead of the URL. Returns null when the URL is fine as it is.
+ */
+function fb_fixed_photo($url) {
+    if (!function_exists('imagecreatefromstring')) return null;
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [CURLOPT_NOBODY => true, CURLOPT_FOLLOWLOCATION => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10]);
+    curl_exec($ch);
+    $len = (int)curl_getinfo($ch, CURLINFO_CONTENT_LENGTH_DOWNLOAD); $type = strtolower((string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE));
+    curl_close($ch);
+    $okType = $type === '' || preg_match('~image/(jpeg|jpg|png|gif|webp|tiff|heif|heic)~', $type);
+    if ($okType && $len > 0 && $len < 9 * 1024 * 1024) return null; // fine as it is
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [CURLOPT_FOLLOWLOCATION => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60]);
+    $bin = curl_exec($ch); curl_close($ch);
+    if (!$bin) return null;
+    if (strlen($bin) < 9 * 1024 * 1024 && $okType) return null;
+    $img = @imagecreatefromstring($bin); unset($bin);
+    if (!$img) return null;
+    $w = imagesx($img); $h = imagesy($img); $max = 2048;
+    if ($w > $max || $h > $max) { $r = min($max / $w, $max / $h); $n = imagescale($img, (int)($w * $r), (int)($h * $r)); if ($n) { imagedestroy($img); $img = $n; } }
+    $tmp = tempnam(sys_get_temp_dir(), 'fbimg') . '.jpg';
+    imagejpeg($img, $tmp, 85); imagedestroy($img);
+    register_shutdown_function(function () use ($tmp) { @unlink($tmp); });
+    return new CURLFile($tmp, 'image/jpeg', 'photo.jpg');
+}
+
 function meta_curl($endpoint, $post_data) {
+    $multipart = false;
+    foreach ($post_data as $v) { if ($v instanceof CURLFile) { $multipart = true; break; } }
     $ch = curl_init($endpoint);
     curl_setopt_array($ch, [
         CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => http_build_query($post_data),
+        CURLOPT_POSTFIELDS     => $multipart ? $post_data : http_build_query($post_data),
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_SSL_VERIFYPEER => true,
-        CURLOPT_TIMEOUT        => 20,
+        CURLOPT_TIMEOUT        => $multipart ? 90 : 20,
     ]);
     $response  = curl_exec($ch);
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
