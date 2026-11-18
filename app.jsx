@@ -30058,6 +30058,20 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
         ))}
       </div>
 
+      {/* Leads Center: every channel in one strip, click to filter */}
+      {(()=>{
+        const CH_LABEL = {whatsapp:"WhatsApp",messenger:"Messenger",instagram:"Instagram",facebook:"Facebook",fb_comment:"Facebook comments",ig_comment:"Instagram comments",li_comment:"LinkedIn comments",linkedin:"LinkedIn",tiktok:"TikTok",twitter:"X",x:"X",website:"Website",email:"Email replies",email_campaign:"Email campaigns",wa_campaign:"WhatsApp campaigns",referral:"Referral",cold_call:"Cold call",exhibition:"Exhibition",old_data:"Old data",other:"Other"};
+        const counts = {};
+        leadsScope.forEach(l=>{ const k=String(l.source||"other").toLowerCase()||"other"; counts[k]=(counts[k]||0)+1; });
+        const rows = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+        if(!rows.length) return null;
+        return <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+          <span style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase"}}>Channels</span>
+          <button type="button" onClick={()=>setSourceF("all")} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,border:`1px solid ${sourceF==="all"?"var(--accent)":"var(--border2)"}`,background:sourceF==="all"?"var(--accent)":"var(--surface2)",color:sourceF==="all"?"#fff":"var(--text2)",cursor:"pointer"}}>All · {leadsScope.length}</button>
+          {rows.map(([k,n])=><button key={k} type="button" onClick={()=>setSourceF(f=>f===k?"all":k)} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,border:`1px solid ${sourceF===k?"var(--accent)":"var(--border2)"}`,background:sourceF===k?"var(--accent)":"var(--surface2)",color:sourceF===k?"#fff":"var(--text2)",cursor:"pointer",whiteSpace:"nowrap"}}>{CH_LABEL[k]||k.replace(/_/g," ")} · {n}</button>)}
+        </div>;
+      })()}
+
       {/* Filters */}
       <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",overflowX:"auto"}}>
         <div style={{position:"relative",flex:1,maxWidth:260}}>
@@ -34763,7 +34777,7 @@ document.getElementById('nl').addEventListener('submit', async e => {
 /* ───────────── Sales agent ───────────── */
 // ONE page for the whole sales cycle: Overview → Prospecting → Campaigns → Audience → Leads → Setup.
 function GrowthPage({setPage, renderLeads, isTeam, canLeads}) {
-  const tabsAll = [["overview","Overview",isTeam],["prospecting","Prospecting",isTeam],["campaigns","Campaigns",isTeam],["audience","Audience",isTeam],["leads","Leads",canLeads],["setup","Setup",isTeam]].filter(t=>t[2]);
+  const tabsAll = [["overview","Overview",isTeam],["prospecting","Prospecting",isTeam],["campaigns","Campaigns",isTeam],["audience","Audience",isTeam],["leads","Leads Center",canLeads],["setup","Setup",isTeam]].filter(t=>t[2]);
   const [tab,setTab] = useState(()=>{ let t="overview"; try{ t=localStorage.getItem("sf_growth_tab")||"overview"; }catch(e){} return tabsAll.some(x=>x[0]===t)?t:tabsAll[0][0]; });
   const go = (t) => { setTab(t); try{ localStorage.setItem("sf_growth_tab",t); }catch(e){} try{ window.scrollTo({top:0}); }catch(e){} };
   useEffect(()=>{ try{ const t=localStorage.getItem("sf_growth_tab"); if(t&&t!==tab&&tabsAll.some(x=>x[0]===t)) setTab(t); }catch(e){} },[]);
