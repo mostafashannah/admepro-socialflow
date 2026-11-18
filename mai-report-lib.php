@@ -62,6 +62,24 @@ const MAI_DIRECTOR_CHECKLIST = [
     'admin_attention' => 'Anything that needs the admin\'s attention or a decision',
 ];
 
+/** First complete JSON object in a model reply (ignores braces inside strings and any text around it). */
+function maiParseJson($text) {
+    $text = (string)$text; $len = strlen($text);
+    if (preg_match('/```(?:json)?\s*(\{[\s\S]*\})\s*```/', $text, $m)) { $j = json_decode($m[1], true); if (is_array($j)) return $j; }
+    for ($i = 0; $i < $len; $i++) {
+        if ($text[$i] !== '{') continue;
+        $depth = 0; $inStr = false; $esc = false;
+        for ($k = $i; $k < $len; $k++) {
+            $ch = $text[$k];
+            if ($inStr) { if ($esc) $esc = false; elseif ($ch === '\\') $esc = true; elseif ($ch === '"') $inStr = false; continue; }
+            if ($ch === '"') { $inStr = true; continue; }
+            if ($ch === '{') $depth++;
+            elseif ($ch === '}') { $depth--; if ($depth === 0) { $j = json_decode(substr($text, $i, $k - $i + 1), true); if (is_array($j)) return $j; break; } }
+        }
+    }
+    return null;
+}
+
 // Per-account-manager control (team_members.mai_checkin_config JSON, set
 // from the AM's "Mai Reports" tab): which checklist points Mai asks about
 // and what time each check-in starts. Missing/empty = all points, default time.
@@ -392,28 +410,54 @@ function maiContinueReportSession(PDO $pdo, array $session, $incomingText) {
             . "Return ONLY this JSON (no markdown):\n"
             . '{"reply":"the next WhatsApp message","checklist_done":["item_key",...],"client_memory":[{"client_name":"...","key":"...","value":"..."}],"lead_updates":[{"lead_name":"...","note":"...","status":"new|contacted|follow_up|negotiation|closed_won|closed_lost or omit"}],"admin_notes":[{"title":"...","detail":"...","priority":"high|normal"}],"complete":true|false}';
     }
-    [$status, $data] = callClaude(['model' => 'claude-sonnet-5-5', 'max_tokens' => 500, 'system' => $sys, 'messages' => [['role' => 'user', 'content' => 'Continue the conversation now, following the instructions exactly.']]]);
-    $raw = '';
-    if ($status >= 200 && $status < 300) {
-        foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $raw .= $block['text']; }
-    } else {
-        maiLogReportError($pdo, "Claude call failed for {$session['account_manager_name']} — HTTP {$status}: " . mb_substr(json_encode($data), 0, 500));
+    // Rules that keep the check-in smooth for a busy account manager (added to both prompts).
+    $sys .= "\n\nSMOOTHNESS RULES (important):\n"
+        . "- One short message, ONE question at a time. Never repeat a question or a sentence you already sent; read the conversation above first.\n"
+        . "- If she answers several items at once (\"yes yes no\", \"all done\", \"كله تمام\"), mark ALL of those items in checklist_done and move on.\n"
+        . "- A plain yes / no / done / nothing / تمام / لا / مفيش is a COMPLETE answer. If you asked \"anything else?\" and she says no/nothing, you are finished: set complete=true and wrap up.\n"
+        . "- Never ask \"anything else?\" while checklist items are still open; ask the next open item instead.\n"
+        . "- Reply with the JSON only. Keep \"reply\" under 300 characters.";
+    $callMai = function ($system, $maxTokens) {
+        [$st, $d] = callClaude(['model' => 'claude-sonnet-5-5', 'max_tokens' => $maxTokens, 'system' => $system, 'messages' => [['role' => 'user', 'content' => 'Continue the conversation now, following the instructions exactly.']]]);
+        $r = '';
+        if ($st >= 200 && $st < 300) foreach (($d['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $r .= $block['text']; }
+        return [$st, $d, $r];
+    };
+    [$status, $data, $raw] = $callMai($sys, 1600);   // was 500: the JSON (reply + checklist + memory + lead updates) was being cut off, so it never parsed
+    if ($status < 200 || $status >= 300) maiLogReportError($pdo, "Claude call failed for {$session['account_manager_name']} — HTTP {$status}: " . mb_substr(json_encode($data), 0, 500));
+    $parsed = maiParseJson($raw);
+    if (!is_array($parsed) || trim((string)($parsed['reply'] ?? '')) === '') {
+        // one retry with a stricter, shorter instruction before giving up
+        maiLogReportError($pdo, "Unusable reply for {$session['account_manager_name']} (retrying) — raw: " . mb_substr($raw, 0, 300));
+        [$status, $data, $raw] = $callMai($sys . "\n\nYour last answer could not be read. Return ONE valid JSON object only, with a short \"reply\", no other text.", 1600);
+        $parsed = maiParseJson($raw);
     }
-    $parsed = null;
-    if (preg_match('/\{[\s\S]*\}/', $raw, $m)) $parsed = json_decode($m[0], true);
-    if ($parsed === null && $status >= 200 && $status < 300) {
-        maiLogReportError($pdo, "Couldn't parse Claude's reply as JSON for {$session['account_manager_name']} — raw: " . mb_substr($raw, 0, 500));
-    } elseif ($parsed !== null && trim($parsed['reply'] ?? '') === '') {
-        maiLogReportError($pdo, "Claude's JSON parsed fine but had no/empty \"reply\" field for {$session['account_manager_name']} — raw: " . mb_substr($raw, 0, 500));
+    $usable = is_array($parsed) && trim((string)($parsed['reply'] ?? '')) !== '';
+    if (!$usable) {
+        // Never send a vague "Got it" that stalls the check-in: move on to the next open item in plain words.
+        $parsed = ['reply' => $openItems
+            ? "Thanks! Next one — " . lcfirst((string)array_values($openItems)[0]['label']) . "? (yes / no)"
+            : "Thanks — that covers everything. ✅", 'checklist_done' => [], 'complete' => !$openItems];
+    }
+    // Same text twice in a row = the stall in the screenshot. Ask the next open item instead.
+    $lastMai = ''; foreach (array_reverse($transcript) as $mm) { if (($mm['role'] ?? '') === 'assistant') { $lastMai = trim(preg_replace('/\n\n(\[\d+\/\d+ covered\]|✅ Report complete.*)$/su', '', (string)$mm['content'])); break; } }
+    if ($lastMai !== '' && trim((string)$parsed['reply']) === $lastMai) {
+        $parsed['reply'] = $openItems ? "Next one — " . lcfirst((string)array_values($openItems)[0]['label']) . "? (yes / no)" : "Thanks, that's everything. ✅";
+        if (!$openItems) $parsed['complete'] = true;
     }
 
-    $reply = trim($parsed['reply'] ?? '') ?: "Got it, thanks! Let me know if there's anything else.";
+    $reply = trim($parsed['reply']);
     $complete = !empty($parsed['complete']);
 
     foreach (($parsed['checklist_done'] ?? []) as $key) {
         if (isset($checklist[$key])) $checklist[$key]['done'] = true;
     }
 
+    // Finished when every item is covered, or she keeps answering after a long back-and-forth (partial score, no endless loop).
+    $userTurns = count(array_filter($transcript, fn($m) => ($m['role'] ?? '') === 'user'));
+    if (!array_filter($checklist, fn($v) => empty($v['done']))) $complete = true;
+    if ($userTurns >= 14) $complete = true;
+    if ($complete && !preg_match('/thank|شكرا|شكراً|appreciate/iu', $reply)) $reply .= "\n\nThanks for the update! 🙌";
     // Same progress marker as the opener — lets the AM tell at a glance
     // whether there's more coming or the report is actually finished,
     // instead of the conversation just trailing off with no signal either
