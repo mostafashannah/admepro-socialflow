@@ -180,6 +180,16 @@ try {
         try { $pdo->prepare("UPDATE mkt_contacts SET unsub_wa = 0, wa_opt_in = 1, updated_at = NOW() WHERE REPLACE(phone,'+','') = ? AND unsub_wa = 1")->execute([$from]); } catch (Throwable $e) {}
     }
 
+    // Marketing cycle: a non-team number replying to a WhatsApp campaign becomes a lead (assigned by rotation).
+    try {
+        require_once __DIR__ . '/wa-lib.php';
+        if (!waIsTeamNumber($pdo, $from)) {
+            require_once __DIR__ . '/growth-lib.php';
+            $resp = gCaptureWaResponder($pdo, $from, $text);
+            if ($resp) error_log('[wa-webhook] campaign responder -> lead ' . $resp['lead_id'] . ' (' . $resp['campaign'] . ')');
+        }
+    } catch (Throwable $e) { error_log('[wa-webhook] responder capture: ' . $e->getMessage()); }
+
     // Meta can redeliver the exact same webhook message more than once
     // (slow ack, network retry) — without this check, Pro would reprocess
     // it and re-run tool calls like add_transaction, creating duplicate

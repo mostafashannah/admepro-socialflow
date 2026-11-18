@@ -109,6 +109,11 @@ function gRenderEmail(array $camp, array $contact = [], $sendId = null) {
         elseif ($t === 'image' && !empty($b['url'])) $body .= (!empty($b['link']) ? '<a href="' . $link($b['link']) . '">' : '') . '<img src="' . gH($b['url']) . '" alt="' . gH($b['alt'] ?? '') . '" style="display:block;width:100%;max-width:100%;height:auto;border-radius:12px;margin:8px 0 16px"/>' . (!empty($b['link']) ? '</a>' : '');
         elseif ($t === 'button' && !empty($b['url'])) $body .= '<table cellpadding="0" cellspacing="0" style="margin:10px 0 20px"><tr><td style="background:#d90b2c;border-radius:10px"><a href="' . $link($b['url']) . '" style="display:inline-block;padding:13px 26px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none">' . gH($txt ?: 'Learn more') . '</a></td></tr></table>';
         elseif ($t === 'divider') $body .= '<hr style="border:none;border-top:1px solid #e5e7eb;margin:22px 0"/>';
+        elseif ($t === 'card' && !empty($b['url'])) $body .= '<table width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 18px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden"><tr><td>'
+            . (!empty($b['image']) ? '<a href="' . $link($b['url']) . '"><img src="' . gH($b['image']) . '" alt="' . gH($b['title'] ?? '') . '" style="display:block;width:100%;height:auto;border:0"/></a>' : '')
+            . '<div style="padding:14px 16px"><div style="font-size:17px;font-weight:800;color:#111827;line-height:1.35">' . gH(gMergeTags($b['title'] ?? '', $contact)) . '</div>'
+            . (!empty($b['text']) ? '<div style="margin-top:6px;font-size:14px;line-height:1.6;color:#4b5563">' . nl2br(gH(gMergeTags($b['text'], $contact))) . '</div>' : '')
+            . '<div style="margin-top:12px"><a href="' . $link($b['url']) . '" style="color:#d90b2c;font-weight:700;font-size:14px;text-decoration:none">' . gH($b['button'] ?? 'Read more') . ' →</a></div></div></td></tr></table>';
     }
     $pre = gH(gMergeTags($camp['preheader'] ?? '', $contact));
     $unsub = $sendId ? gBase() . '/marketing-unsub.php?' . http_build_query(['id' => $sendId, 's' => gSign('u' . $sendId)]) : '#';
@@ -206,3 +211,90 @@ function gPdo() {
     return $pdo;
 }
 function gBody() { $j = json_decode(file_get_contents('php://input') ?: '[]', true); return is_array($j) ? $j : []; }
+
+
+/* ─────────── sync leads + clients into marketing contacts (used by the Contacts page and the daily machine) ─────────── */
+function gSyncLeadsAndClients(PDO $pdo) {
+    $n = 0;
+    try { foreach ($pdo->query("SELECT id, name, company, email, phone FROM leads WHERE ((email IS NOT NULL AND email<>'') OR (phone IS NOT NULL AND phone<>'')) LIMIT 20000") as $r)
+        if (gUpsertContact($pdo, ['email' => $r['email'], 'phone' => $r['phone'], 'name' => $r['name'], 'company' => $r['company'], 'source' => 'lead', 'tags' => 'lead', 'lead_id' => (string)$r['id'], 'consent' => 'lead', 'consent_note' => 'From leads'])) $n++; }
+    catch (Throwable $e) { error_log('[growth] lead sync: ' . $e->getMessage()); }
+    try { foreach ($pdo->query("SELECT id, name, email, phone FROM clients WHERE email IS NOT NULL AND email<>'' LIMIT 5000") as $r)
+        if (gUpsertContact($pdo, ['email' => $r['email'], 'phone' => $r['phone'], 'name' => $r['name'], 'company' => $r['name'], 'source' => 'client', 'tags' => 'client', 'client_id' => (string)$r['id'], 'consent' => 'lead', 'consent_note' => 'Client'])) $n++; }
+    catch (Throwable $e) { error_log('[growth] client sync: ' . $e->getMessage()); }
+    return $n;
+}
+
+/* ─────────── website projects + articles for email campaigns ───────────
+ * Reads the website repo (same GitHub settings as the Website tab) for project / post JSON, and keeps only items whose page
+ * is really live: a URL in https://<site>/sitemap.xml that ends with the item's slug. Cached for 15 minutes. */
+function gSiteContent($force = false) {
+    $cache = sys_get_temp_dir() . '/sf-site-content.json';
+    if (!$force && is_file($cache) && time() - filemtime($cache) < 900) { $j = json_decode((string)file_get_contents($cache), true); if (is_array($j)) return $j; }
+    $repo = defined('WEBSITE_GITHUB_REPO') ? WEBSITE_GITHUB_REPO : ''; $tok = defined('WEBSITE_GITHUB_TOKEN') ? WEBSITE_GITHUB_TOKEN : '';
+    $branch = defined('WEBSITE_GITHUB_BRANCH') && WEBSITE_GITHUB_BRANCH ? WEBSITE_GITHUB_BRANCH : 'main';
+    $root = trim(defined('WEBSITE_CONTENT_ROOT') && WEBSITE_CONTENT_ROOT !== null ? WEBSITE_CONTENT_ROOT : 'src/content', '/');
+    $site = defined('WEBSITE_URL') && WEBSITE_URL ? rtrim(WEBSITE_URL, '/') : 'https://admepro.com';
+    if (!$repo || !$tok) return ['error' => 'Connect the website first (Website → Setup).', 'projects' => [], 'posts' => []];
+    $gh = function ($path) use ($tok) {
+        $ch = curl_init('https://api.github.com' . $path);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 25, CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $tok, 'Accept: application/vnd.github+json', 'User-Agent: socialflow']]);
+        $r = curl_exec($ch); $c = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch); return [$c, json_decode((string)$r, true)];
+    };
+    // live URLs from the sitemap
+    $ch = curl_init($site . '/sitemap.xml'); curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_FOLLOWLOCATION => true]);
+    $xml = (string)curl_exec($ch); curl_close($ch);
+    preg_match_all('#<loc>\s*([^<\s]+)\s*</loc>#i', $xml, $m); $urls = $m[1] ?? [];
+    $urlFor = function ($slug) use ($urls) { $best = null; foreach ($urls as $u) { $p = rtrim((string)parse_url($u, PHP_URL_PATH), '/'); if (substr($p, -strlen('/' . $slug)) === '/' . $slug && (!$best || strpos($u, '/ar/') === false)) $best = $u; } return $best; };
+    [$c, $tree] = $gh("/repos/$repo/git/trees/" . rawurlencode($branch) . '?recursive=1');
+    if ($c !== 200) return ['error' => "GitHub said HTTP $c", 'projects' => [], 'posts' => []];
+    $files = ['projects' => [], 'posts' => []];
+    foreach ($tree['tree'] ?? [] as $t) {
+        if ($t['type'] !== 'blob') continue; $p = $t['path'];
+        if (preg_match('#^' . preg_quote($root, '#') . '/projects/([^/_][^/]*)/project\.json$#', $p, $mm)) $files['projects'][$mm[1]] = $p;
+        elseif (preg_match('#^' . preg_quote($root, '#') . '/posts/([^/_][^/]*)\.json$#', $p, $mm)) $files['posts'][$mm[1]] = $p;
+    }
+    $out = ['projects' => [], 'posts' => [], 'site' => $site, 'at' => date('c')];
+    foreach ($files as $kind => $list) {
+        foreach (array_slice($list, 0, 60, true) as $slug => $path) {
+            [$fc, $fr] = $gh("/repos/$repo/contents/" . implode('/', array_map('rawurlencode', explode('/', $path))) . '?ref=' . rawurlencode($branch));
+            if ($fc !== 200) continue;
+            $j = json_decode((string)base64_decode((string)($fr['content'] ?? '')), true); if (!is_array($j)) continue;
+            if (array_key_exists('published', $j) && !$j['published']) continue;
+            $url = $urlFor($slug); if (!$url) continue; // not live on the site
+            $img = $j['cover'] ?? $j['image'] ?? $j['thumbnail'] ?? (is_array($j['images'] ?? null) ? ($j['images'][0] ?? '') : '');
+            if (is_array($img)) $img = $img['src'] ?? $img['url'] ?? '';
+            if ($img && !preg_match('#^https?://#', (string)$img)) $img = $site . '/' . ltrim((string)$img, '/');
+            $out[$kind][] = ['slug' => $slug, 'title' => (string)($j['title'] ?? $j['name'] ?? $slug), 'summary' => mb_substr(strip_tags((string)($j['description'] ?? $j['summary'] ?? $j['excerpt'] ?? $j['seoDescription'] ?? '')), 0, 280),
+                'image' => (string)$img, 'url' => $url, 'date' => (string)($j['date'] ?? ''), 'kind' => $kind === 'posts' ? 'article' : 'project'];
+        }
+    }
+    @file_put_contents($cache, json_encode($out, JSON_UNESCAPED_UNICODE));
+    return $out;
+}
+
+/* ─────────── WhatsApp marketing: someone replied to a campaign → they become a lead (closes the cycle) ─────────── */
+function gCaptureWaResponder(PDO $pdo, $fromDigits, $text) {
+    $st = $pdo->prepare("SELECT k.id, k.name, k.company, k.phone, k.lead_id, k.tags, c.id campaign_id, c.name campaign_name
+        FROM mkt_sends s JOIN mkt_campaigns c ON c.id = s.campaign_id AND c.channel = 'whatsapp' JOIN mkt_contacts k ON k.id = s.contact_id
+        WHERE s.status = 'sent' AND REPLACE(k.phone, '+', '') = ? AND s.sent_at > NOW() - INTERVAL 14 DAY ORDER BY s.sent_at DESC LIMIT 1");
+    $st->execute([preg_replace('/\D/', '', (string)$fromDigits)]);
+    $k = $st->fetch(PDO::FETCH_ASSOC);
+    if (!$k) return null;
+    $leadId = $k['lead_id'];
+    if (!$leadId) {
+        $am = null; try { require_once __DIR__ . '/reply-bot-lib.php'; $am = function_exists('assignLeadRotation') ? assignLeadRotation($pdo) : null; } catch (Throwable $e) {}
+        $notes = "Replied to the WhatsApp campaign \"{$k['campaign_name']}\".\n\nTheir message: " . mb_substr((string)$text, 0, 500);
+        try {
+            $pdo->prepare("INSERT INTO leads (name, company, phone, source, status, platforms, notes, category, assigned_to, assigned_at) VALUES (?,?,?,'whatsapp_marketing','new',?,?,'lead',?,?)")
+                ->execute([$k['name'] ?: $k['phone'], $k['company'], $k['phone'], json_encode(['whatsapp']), $notes, $am['email'] ?? null, $am ? gNow() : null]);
+        } catch (Throwable $e) {
+            $pdo->prepare("INSERT INTO leads (name, phone, source, status, platforms, notes, category) VALUES (?,?,'whatsapp_marketing','new',?,?,'lead')")
+                ->execute([$k['name'] ?: $k['phone'], $k['phone'], json_encode(['whatsapp']), $notes]);
+        }
+        $leadId = (string)$pdo->lastInsertId();
+    }
+    $tags = implode(',', array_unique(array_filter(array_merge(explode(',', (string)$k['tags']), ['wa-responder']))));
+    $pdo->prepare("UPDATE mkt_contacts SET tags = ?, lead_id = COALESCE(lead_id, ?), wa_opt_in = 1, updated_at = ? WHERE id = ?")->execute([$tags, $leadId, gNow(), $k['id']]);
+    return ['lead_id' => $leadId, 'campaign' => $k['campaign_name'], 'name' => $k['name']];
+}

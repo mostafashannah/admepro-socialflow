@@ -3,7 +3,7 @@
  * sales-agent.php — AI prospect research + outreach (admin + account team).
  * Research runs in the background (CLI) because web searches take minutes; the UI polls job_status.
  */
-require_once __DIR__ . '/growth-lib.php';
+require_once __DIR__ . '/sales-lib.php';
 
 function saJobFile($id) { return sys_get_temp_dir() . '/sf-sales-job-' . preg_replace('/[^a-f0-9]/', '', $id) . '.json'; }
 
@@ -20,7 +20,8 @@ if (PHP_SAPI === 'cli') {
         . "Rules:\n- Only companies you verified exist via web search, with their real official website.\n"
         . "- For each, find signals that they need marketing help (weak/inactive social, new launch, hiring marketers, outdated site, expansion, new branch…).\n"
         . "- Decision makers: only people publicly listed (company site team page, press, public LinkedIn result titles). Give name + role + public profile URL. Never guess or invent emails or phone numbers; include an email/phone only if it is published on an official page, and give that page as source.\n"
-        . "- Skip these domains we already have: " . (implode(', ', array_slice($known, 0, 150)) ?: 'none') . "\n\n"
+        . "- HARD RULE: every company you return MUST have at least one way to reach it that you found on an official page: a published email address or a phone / WhatsApp number (a general inbox or main phone counts). A company with neither is useless to us — do not return it, find another.
+- Skip these domains we already have: " . (implode(', ', array_slice($known, 0, 150)) ?: 'none') . "\n\n"
         . "Return ONLY a JSON array: [{\"company\":\"\",\"website\":\"https://…\",\"industry\":\"\",\"city\":\"\",\"country\":\"\",\"score\":1-100,\"why_fit\":\"2 sentences\",\"signals\":[\"…\"],"
         . "\"contacts\":[{\"name\":\"\",\"role\":\"\",\"profile_url\":\"\",\"email\":\"\",\"phone\":\"\",\"source\":\"url\"}],\"company_email\":\"\",\"company_phone\":\"\",\"sources\":[\"url\"]}]";
     [$ok, $text, $sources, $err] = gClaude([
@@ -52,6 +53,8 @@ if (PHP_SAPI === 'cli') {
                     'verified' => (($e['verification']['status'] ?? '') === 'valid'), 'origin' => 'hunter', 'source' => 'hunter.io'];
             }
         }
+        $contacts = saReachable($contacts);   // hard rule: only contacts with an email or a mobile number survive
+        if (!$contacts) { $skippedNoContact = ($skippedNoContact ?? 0) + 1; continue; }
         $srcs = array_values(array_unique(array_filter(array_merge((array)($p['sources'] ?? []), array_column($contacts, 'source')), fn($u) => is_string($u) && preg_match('#^https?://#', $u))));
         try {
             $pdo->prepare("INSERT INTO sales_prospects (company, domain, website, industry, country, city, score, why_fit, signals, sources, contacts, status, brief, created_by, created_at)
@@ -62,7 +65,7 @@ if (PHP_SAPI === 'cli') {
             $added++;
         } catch (PDOException $e) { if (!str_contains($e->getMessage(), 'Duplicate')) error_log('[sales-agent] ' . $e->getMessage()); }
     }
-    $save(['status' => 'done', 'added' => $added, 'found' => count($list), 'step' => "Done — $added new prospects"]);
+    $save(['status' => 'done', 'added' => $added, 'found' => count($list), 'step' => "Done — $added new prospects" . (!empty($skippedNoContact) ? " ($skippedNoContact skipped: no email or mobile number found)" : '')]);
     exit;
 }
 
@@ -75,6 +78,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') { $o = $_SERVER['HTTP_ORIGIN'] ?? '';
 
 function saRow(array $r) { foreach (['signals', 'sources', 'contacts', 'outreach'] as $k) $r[$k] = json_decode((string)$r[$k], true) ?: []; return $r; }
 function saGet(PDO $pdo, $id) { $st = $pdo->prepare("SELECT * FROM sales_prospects WHERE id=?"); $st->execute([(int)$id]); $r = $st->fetch(PDO::FETCH_ASSOC); if (!$r) gOut(404, ['error' => 'Not found']); return saRow($r); }
+function saMachineSettings(PDO $pdo) {
+    $d = ['enabled' => false, 'brief' => '', 'country' => 'Egypt', 'count' => 8, 'lang' => 'en', 'auto_approve_score' => 0, 'auto_send' => false, 'daily_cap' => 20];
+    try { $v = $pdo->query("SELECT v FROM seo_settings WHERE k='sales_machine'")->fetchColumn(); $j = $v ? json_decode($v, true) : null; } catch (Throwable $e) { $j = null; }
+    return is_array($j) ? array_merge($d, $j) : $d;
+}
 $capN = defined('SALES_DAILY_CAP') ? (int)SALES_DAILY_CAP : 40;
 
 try {
@@ -106,46 +114,23 @@ case 'list': {
 case 'update': {
     $p = saGet($pdo, $b['id'] ?? 0);
     $status = in_array($b['status'] ?? '', ['new', 'approved', 'contacted', 'replied', 'won', 'rejected'], true) ? $b['status'] : $p['status'];
-    $contacts = isset($b['contacts']) ? json_encode(array_values((array)$b['contacts']), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : json_encode($p['contacts'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $newContacts = isset($b['contacts']) ? saReachable((array)$b['contacts']) : $p['contacts'];
+    if (isset($b['contacts']) && !$newContacts && in_array($status, ['approved', 'contacted', 'replied', 'won'], true)) gOut(400, ['error' => 'A prospect must keep at least one contact with an email or a mobile number.']);
+    $contacts = json_encode(array_values($newContacts), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     $pdo->prepare("UPDATE sales_prospects SET status=?, contacts=?, updated_at=? WHERE id=?")->execute([$status, $contacts, gNow(), $p['id']]);
     gOut(200, ['ok' => true]);
 }
 case 'delete': { $pdo->prepare("DELETE FROM sales_prospects WHERE id=?")->execute([(int)($b['id'] ?? 0)]); gOut(200, ['ok' => true]); }
 case 'approve': {
-    // Approve → create a lead (assigned by rotation) + a marketing contact for each email.
     $p = saGet($pdo, $b['id'] ?? 0);
-    $main = null; foreach ($p['contacts'] as $c) if (!empty($c['email'])) { $main = $c; break; }
-    $leadId = $p['lead_id'];
-    if (!$leadId) {
-        $notes = "Found by the Sales agent.\n\nWhy: {$p['why_fit']}\nSignals: " . implode('; ', $p['signals']) . "\nWebsite: {$p['website']}\n\nContacts:\n"
-            . implode("\n", array_map(fn($c) => '- ' . trim(($c['name'] ?? '') . ' · ' . ($c['role'] ?? '') . ' · ' . ($c['email'] ?? '') . ' ' . ($c['profile_url'] ?? '')), $p['contacts']));
-        $am = null; try { require_once __DIR__ . '/reply-bot-lib.php'; $am = function_exists('assignLeadRotation') ? assignLeadRotation($pdo) : null; } catch (Throwable $e) {}
-        try {
-            $pdo->prepare("INSERT INTO leads (name, company, phone, email, source, status, platforms, notes, category, assigned_to, assigned_at) VALUES (?,?,?,?,'sales_agent','new',?,?,'lead',?,?)")
-                ->execute([$main['name'] ?? $p['company'], $p['company'], $main['phone'] ?? null, $main['email'] ?? null, json_encode(['website']), $notes, $am['email'] ?? null, $am ? gNow() : null]);
-        } catch (Throwable $e) {
-            $pdo->prepare("INSERT INTO leads (name, phone, source, status, platforms, notes, category) VALUES (?,?,'sales_agent','new',?,?,'lead')")
-                ->execute([$p['company'], $main['phone'] ?? null, json_encode(['website']), $notes . "\nEmail: " . ($main['email'] ?? '')]);
-        }
-        $leadId = (string)$pdo->lastInsertId();
-    }
-    foreach ($p['contacts'] as $c) if (!empty($c['email'])) gUpsertContact($pdo, ['email' => $c['email'], 'name' => $c['name'] ?? null, 'company' => $p['company'], 'source' => 'sales_agent', 'tags' => 'prospect', 'consent' => 'lead', 'consent_note' => 'B2B prospect (public business contact)', 'lead_id' => $leadId]);
-    $pdo->prepare("UPDATE sales_prospects SET status=IF(status='new','approved',status), lead_id=?, updated_at=? WHERE id=?")->execute([$leadId, gNow(), $p['id']]);
-    gOut(200, ['ok' => true, 'lead_id' => $leadId]);
+    [$ok, $r] = saApprove($pdo, $p);
+    if (!$ok) gOut(400, ['error' => $r]);
+    gOut(200, ['ok' => true, 'lead_id' => $r]);
 }
 case 'draft': {
     $p = saGet($pdo, $b['id'] ?? 0);
-    $c = $p['contacts'][(int)($b['contact'] ?? 0)] ?? ($p['contacts'][0] ?? []);
-    $lang = ($b['lang'] ?? 'en') === 'ar' ? 'Arabic' : 'English';
-    $prompt = "Write a 3-email cold outreach sequence in $lang from Mostafa Shannah, founder of admepro (creative & digital marketing agency, Cairo — branding, social media, content/video production, websites, ads; https://admepro.com).\n\n"
-        . "Prospect: {$p['company']} ({$p['industry']}, {$p['city']} {$p['country']}) — {$p['website']}\nContact: " . ($c['name'] ?? 'unknown') . ', ' . ($c['role'] ?? '') . "\nWhy they fit: {$p['why_fit']}\nSignals: " . implode('; ', $p['signals']) . "\n"
-        . (!empty($b['angle']) ? "Angle to use: " . mb_substr($b['angle'], 0, 400) . "\n" : '')
-        . "\nRules: short (70–120 words each), specific to their signals, one clear low-friction ask (15-min call or a free quick audit), no fake claims or invented results, human tone, no emojis, plain text. Email 2 sent 3 days later, email 3 a week later as a polite close.\n"
-        . "Return ONLY JSON: [{\"step\":1,\"subject\":\"\",\"body\":\"\"},{\"step\":2,…},{\"step\":3,…}]";
-    [$ok, $text, , $err] = gClaude(['max_tokens' => 4000, 'output_config' => ['effort' => 'low'], 'messages' => [['role' => 'user', 'content' => $prompt]]], 120);
-    if (!$ok) gOut(502, ['error' => $err]);
-    $seq = gJson($text); if (!is_array($seq) || !$seq) gOut(502, ['error' => 'Could not draft — try again']);
-    $out = ['contact' => (int)($b['contact'] ?? 0), 'lang' => $b['lang'] ?? 'en', 'steps' => array_values($seq), 'drafted_at' => gNow()];
+    [$ok, $out] = saDraftSequence($p, (int)($b['contact'] ?? 0), ($b['lang'] ?? 'en') === 'ar' ? 'ar' : 'en', (string)($b['angle'] ?? ''));
+    if (!$ok) gOut(502, ['error' => $out]);
     $pdo->prepare("UPDATE sales_prospects SET outreach=?, updated_at=? WHERE id=?")->execute([json_encode($out, JSON_UNESCAPED_UNICODE), gNow(), $p['id']]);
     gOut(200, ['ok' => true, 'outreach' => $out]);
 }
@@ -173,6 +158,28 @@ case 'send': {
     $pdo->prepare("INSERT INTO sales_sends (prospect_id, to_email, step, subject, provider_id, sent_by, sent_at) VALUES (?,?,?,?,?,?,?)")->execute([$p['id'], $to, $step, mb_substr($subject, 0, 250), $pid, $me['email'], gNow()]);
     $pdo->prepare("UPDATE sales_prospects SET status=IF(status IN ('new','approved'),'contacted',status), updated_at=? WHERE id=?")->execute([gNow(), $p['id']]);
     gOut(200, ['ok' => true, 'sent_today' => $today + 1]);
+}
+case 'machine_get': { gOut(200, ['settings' => saMachineSettings($pdo)]); }
+case 'machine_save': {
+    $cur = saMachineSettings($pdo);
+    $new = ['enabled' => !empty($b['enabled']), 'brief' => mb_substr(trim((string)($b['brief'] ?? $cur['brief'])), 0, 600), 'country' => mb_substr(trim((string)($b['country'] ?? $cur['country'])), 0, 80) ?: 'Egypt',
+        'count' => max(3, min(15, (int)($b['count'] ?? $cur['count']))), 'lang' => ($b['lang'] ?? $cur['lang']) === 'ar' ? 'ar' : 'en',
+        'auto_approve_score' => max(0, min(100, (int)($b['auto_approve_score'] ?? $cur['auto_approve_score']))), 'auto_send' => !empty($b['auto_send']),
+        'daily_cap' => max(1, min(80, (int)($b['daily_cap'] ?? $cur['daily_cap'])))];
+    $pdo->prepare("INSERT INTO seo_settings (k, v) VALUES ('sales_machine', ?) ON DUPLICATE KEY UPDATE v = VALUES(v)")->execute([json_encode($new)]);
+    gOut(200, ['ok' => true, 'settings' => $new]);
+}
+case 'funnel': {
+    $one = fn($sql) => (int)$pdo->query($sql)->fetchColumn();
+    gOut(200, [
+        'prospects_new' => $one("SELECT COUNT(*) FROM sales_prospects WHERE status='new'"), 'contacted' => $one("SELECT COUNT(*) FROM sales_prospects WHERE status='contacted'"),
+        'replied' => $one("SELECT COUNT(*) FROM sales_prospects WHERE status='replied'"), 'won' => $one("SELECT COUNT(*) FROM sales_prospects WHERE status='won'"),
+        'sent_7d' => $one("SELECT COUNT(*) FROM sales_sends WHERE sent_at > NOW() - INTERVAL 7 DAY"),
+        'leads_30d' => $one("SELECT COUNT(*) FROM leads WHERE created_at > NOW() - INTERVAL 30 DAY"),
+        'wa_responders' => $one("SELECT COUNT(*) FROM mkt_contacts WHERE FIND_IN_SET('wa-responder', REPLACE(tags, ', ', ','))"),
+        'email_sent_30d' => $one("SELECT COUNT(*) FROM mkt_sends WHERE status='sent' AND sent_at > NOW() - INTERVAL 30 DAY"),
+        'email_clicked_30d' => $one("SELECT COUNT(*) FROM mkt_sends WHERE clicked_at IS NOT NULL AND sent_at > NOW() - INTERVAL 30 DAY"),
+    ]);
 }
 case 'sends': { $st = $pdo->prepare("SELECT * FROM sales_sends WHERE prospect_id=? ORDER BY id"); $st->execute([(int)($_GET['id'] ?? 0)]); gOut(200, ['rows' => $st->fetchAll(PDO::FETCH_ASSOC)]); }
 default: gOut(400, ['error' => 'Unknown action']);

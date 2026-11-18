@@ -32,6 +32,7 @@ case 'contacts': {
     if ($f === 'opt_in' || $f === 'lead') { $w[] = "consent = ?"; $bind[] = $f; }
     if ($f === 'unsub') $w[] = "unsub_email = 1";
     if ($f === 'wa') $w[] = "wa_opt_in = 1 AND unsub_wa = 0";
+    if ($f === 'responder') $w[] = "FIND_IN_SET('wa-responder', REPLACE(tags, ', ', ','))";
     $st = $pdo->prepare("SELECT * FROM mkt_contacts WHERE " . implode(' AND ', $w) . " ORDER BY id DESC LIMIT 100 OFFSET " . ($page * 100)); $st->execute($bind);
     $cnt = $pdo->prepare("SELECT COUNT(*) FROM mkt_contacts WHERE " . implode(' AND ', $w)); $cnt->execute($bind);
     gOut(200, ['rows' => $st->fetchAll(PDO::FETCH_ASSOC), 'total' => (int)$cnt->fetchColumn()]);
@@ -58,13 +59,12 @@ case 'import': {
 }
 case 'sync': {
     // Pull leads + clients that have an email/phone into contacts (consent 'lead' — existing business relationship).
-    $n = 0;
-    try { foreach ($pdo->query("SELECT id, name, company, email, phone FROM leads WHERE (email IS NOT NULL AND email<>'') LIMIT 20000") as $r)
-        if (gUpsertContact($pdo, ['email' => $r['email'], 'phone' => $r['phone'], 'name' => $r['name'], 'company' => $r['company'], 'source' => 'lead', 'tags' => 'lead', 'lead_id' => (string)$r['id'], 'consent' => 'lead', 'consent_note' => 'From leads'])) $n++; }
-    catch (Throwable $e) { error_log('[marketing] lead sync: ' . $e->getMessage()); }
-    foreach ($pdo->query("SELECT id, name, email, phone FROM clients WHERE email IS NOT NULL AND email<>'' LIMIT 5000") as $r)
-        if (gUpsertContact($pdo, ['email' => $r['email'], 'phone' => $r['phone'], 'name' => $r['name'], 'company' => $r['name'], 'source' => 'client', 'tags' => 'client', 'client_id' => (string)$r['id'], 'consent' => 'lead', 'consent_note' => 'Client'])) $n++;
-    gOut(200, ['ok' => true, 'synced' => $n]);
+    gOut(200, ['ok' => true, 'synced' => gSyncLeadsAndClients($pdo)]);
+}
+case 'site_content': { gOut(200, gSiteContent(!empty($_GET['refresh']))); }
+case 'responders': {
+    $st = $pdo->query("SELECT id, name, company, phone, email, lead_id, updated_at FROM mkt_contacts WHERE FIND_IN_SET('wa-responder', REPLACE(tags, ', ', ',')) ORDER BY updated_at DESC LIMIT 100");
+    gOut(200, ['rows' => $st->fetchAll(PDO::FETCH_ASSOC)]);
 }
 case 'audience_count': { gOut(200, ['count' => audCount($pdo, (array)($b['audience'] ?? []), ($b['channel'] ?? 'email') === 'whatsapp' ? 'whatsapp' : 'email')]); }
 case 'campaigns': {
@@ -149,14 +149,26 @@ case 'wa_templates': {
     gOut(200, ['rows' => $rows, 'error' => $j['error']['message'] ?? null]);
 }
 case 'write': {
-    // Sara drafts newsletter blocks from a short brief.
-    $brief = mb_substr(trim($b['brief'] ?? ''), 0, 2000); if ($brief === '') gOut(400, ['error' => 'Write a short brief']);
+    // Sara drafts newsletter blocks from a short brief — optionally built around chosen website projects / articles.
+    $brief = mb_substr(trim($b['brief'] ?? ''), 0, 2000);
+    $items = []; foreach (array_slice((array)($b['items'] ?? []), 0, 6) as $it) if (is_array($it) && !empty($it['url']) && !empty($it['title'])) $items[$it['url']] = ['title' => mb_substr((string)$it['title'], 0, 160), 'summary' => mb_substr((string)($it['summary'] ?? ''), 0, 300), 'image' => (string)($it['image'] ?? ''), 'url' => (string)$it['url'], 'kind' => (string)($it['kind'] ?? 'project')];
+    if ($brief === '' && !$items) gOut(400, ['error' => 'Write a short brief or pick something from the website']);
     $lang = ($b['lang'] ?? 'en') === 'ar' ? 'Arabic (Egyptian-friendly, professional)' : 'English';
+    $itemText = ''; foreach ($items as $it) $itemText .= "- [{$it['kind']}] {$it['title']} — {$it['summary']} ({$it['url']})\n";
+    $prompt = "Write a newsletter in $lang" . ($brief !== '' ? " from this brief:\n\n$brief" : '') . "\n\n"
+        . ($items ? "Build it around these REAL pages from the admepro website. For EACH one, add a block of type \"card\" with the exact title and url given (never invent or change urls), a one-sentence reason to click in \"text\", and \"button\" (e.g. \"See the project\" / \"Read the article\"). Open with a short personal intro and close with a button to https://admepro.com. The goal is to send readers to these pages:\n$itemText\n" : '')
+        . "Return ONLY JSON: {\"subject\":\"…\",\"preheader\":\"…\",\"blocks\":[{\"type\":\"heading|text|button|divider|card\",\"text\":\"…\",\"url\":\"(buttons and cards only; https://admepro.com if unknown)\",\"title\":\"(cards only)\",\"button\":\"(cards only)\"}]}. 4–9 blocks, short paragraphs.";
     [$ok, $text, , $err] = gClaude(['max_tokens' => 4000, 'output_config' => ['effort' => 'low'],
-        'system' => 'You write email newsletters for admepro, a creative & digital marketing agency in Cairo (branding, social media, websites, production). Warm, confident, concise; no hype, no emojis in headings. Use {{first_name}} once in the greeting.',
-        'messages' => [['role' => 'user', 'content' => "Write a newsletter in $lang from this brief:\n\n$brief\n\nReturn ONLY JSON: {\"subject\":\"…\",\"preheader\":\"…\",\"blocks\":[{\"type\":\"heading|text|button|divider\",\"text\":\"…\",\"url\":\"(buttons only, use https://admepro.com if unknown)\"}]}. 4–8 blocks, short paragraphs."]]], 90);
+        'system' => 'You are Sara, admepro\'s senior content creator, writing email newsletters for admepro, a creative & digital marketing agency in Cairo (branding, social media, websites, production). Warm, confident, concise; no hype, no emojis in headings. Use {{first_name}} once in the greeting. Always point readers to our real projects and articles.',
+        'messages' => [['role' => 'user', 'content' => $prompt]]], 90);
     if (!$ok) gOut(502, ['error' => $err]);
     $j = gJson($text); if (!is_array($j) || empty($j['blocks'])) gOut(502, ['error' => 'Could not draft — try again']);
+    // Cards may only point at the pages that were chosen; fill image/title from the real item.
+    $j['blocks'] = array_values(array_filter(array_map(function ($bl) use ($items) {
+        if (($bl['type'] ?? '') !== 'card') return $bl;
+        $it = $items[$bl['url'] ?? ''] ?? null; if (!$it) return null;
+        return ['type' => 'card', 'title' => $it['title'], 'text' => (string)($bl['text'] ?? $it['summary']), 'url' => $it['url'], 'image' => $it['image'], 'button' => (string)($bl['button'] ?? 'Read more')];
+    }, (array)$j['blocks'])));
     gOut(200, $j);
 }
 default: gOut(400, ['error' => 'Unknown action']);

@@ -2898,7 +2898,9 @@ const AI_AGENT_DEFS = [
   {id:"account_executive", name:"Mai — Account Executive", color:"#a855f7",
    description:"Runs a fixed daily routine on every active client, internal-only: checks whether posting is keeping pace with the client's configured schedule (alerting the account manager + admins if not), checks whether the scheduled-post pipeline will run dry within 10 working days (alerting until new scheduled posts are added), writes a short daily performance analysis from that client's real post results, and keeps each client's memory sorted with the most important facts first. Runs server-side once a day (mai-daily-report-cron.php). Also mentionable directly in any task/post comment thread (type @Mai) for an on-demand analytical read grounded in that client's knowledge/memory."},,
   {id:"seo_agent", name:"Nour — SEO Growth Agent", color:"#059669",
-   description:"Runs weekly: reads Search Console, website visitors and the site itself, researches who ranks in Egypt and the GCC, then proposes better Google titles/descriptions, new article drafts and technical fixes in Website → SEO agent. Nothing goes live until an admin approves it (optionally auto-applies safe title fixes after a date you choose)."}
+   description:"Runs weekly: reads Search Console, website visitors and the site itself, researches who ranks in Egypt and the GCC, then proposes better Google titles/descriptions, new article drafts and technical fixes in Website → SEO agent. Nothing goes live until an admin approves it (optionally auto-applies safe title fixes after a date you choose)."},
+  {id:"sales_agent", name:"Karim — Sales Agent", color:"#f97316",
+   description:"Runs the daily sales machine (Growth → Sales agent): finds real companies that fit admepro — only ones with a published email or mobile number — drafts the 3-email outreach, syncs leads and clients into Marketing, turns WhatsApp-campaign replies into leads, and sends you a short summary. Nothing is emailed without your approval unless you switch auto-send on."}
 ];
 // Sara's character when she's talking directly WITH the team (comment
 // mentions) — distinct from her content-writing prompts above, which are
@@ -34443,7 +34445,7 @@ const G_STATUS_COLORS = {draft:"#6b7280",scheduled:"#2563eb",sending:"#d97706",s
 const GBadge = ({s})=><span style={{fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:999,background:(G_STATUS_COLORS[s]||"#6b7280")+"1f",color:G_STATUS_COLORS[s]||"#6b7280",textTransform:"capitalize"}}>{s}</span>;
 const GSetupNote = ({err})=> err ? <div style={{...gCard,borderColor:"#f59e0b",background:"#f59e0b14",fontSize:13}}>{err}{/migration/i.test(err)&&<div style={{marginTop:6,fontFamily:"monospace",fontSize:12}}>mysql -u root -p socialflow &lt; /var/www/socialflow/{(err.match(/migration-[a-z-]+\.sql/i)||["migration-marketing.sql"])[0]}</div>}</div> : null;
 
-function MarketingPage() {
+function MarketingPage({setPage}) {
   const [tab, setTab] = useState(()=>{ try{ return localStorage.getItem("sf_mkt_tab")||"campaigns"; }catch(e){ return "campaigns"; } });
   useEffect(()=>{ try{ localStorage.setItem("sf_mkt_tab",tab); }catch(e){} },[tab]);
   const [ov, setOv] = useState(null); const [err, setErr] = useState("");
@@ -34533,6 +34535,9 @@ function MktEditor({init,ov,onClose}) {
   const [saving,setSaving]=useState(false); const [msg,setMsg]=useState("");
   const [html,setHtml]=useState(""); const [brief,setBrief]=useState(""); const [lang,setLang]=useState("en"); const [writing,setWriting]=useState(false);
   const [testTo,setTestTo]=useState(""); const [when,setWhen]=useState(""); const [tpls,setTpls]=useState(null);
+  const [site,setSite]=useState(null); const [picked,setPicked]=useState([]); const [siteBusy,setSiteBusy]=useState(false);
+  const siteItems=[...(site?.projects||[]),...(site?.posts||[])];
+  const loadSite=async(refresh)=>{ setSiteBusy(true); try{ setSite(await mApi.get("site_content",refresh?{refresh:1}:{})); }catch(e){ setSite({error:e.message,projects:[],posts:[]}); } finally{ setSiteBusy(false); } };
   const s=(k,v)=>setF(p=>({...p,[k]:v}));
   const isEmail=f.channel==="email";
   useEffect(()=>{ if(!isEmail) return; const t=setTimeout(()=>mApi.post("preview",{blocks:f.blocks,preheader:f.preheader,lang:f.audience?.lang}).then(d=>setHtml(d.html)).catch(()=>{}),400); return ()=>clearTimeout(t); },[JSON.stringify(f.blocks),f.preheader,f.audience?.lang]);
@@ -34540,13 +34545,13 @@ function MktEditor({init,ov,onClose}) {
   const save=async()=>{ setSaving(true); setMsg(""); try{ const d=await mApi.post("campaign_save",f); s("id",d.id); setMsg("Saved"); return d.id; }catch(e){ setMsg(e.message); return null; } finally{ setSaving(false); } };
   const setBlock=(i,patch)=>s("blocks",f.blocks.map((b,j)=>j===i?{...b,...patch}:b));
   const move=(i,d)=>{ const a=[...f.blocks]; const j=i+d; if(j<0||j>=a.length) return; [a[i],a[j]]=[a[j],a[i]]; s("blocks",a); };
-  const write=async()=>{ setWriting(true); setMsg(""); try{ const d=await mApi.post("write",{brief,lang}); setF(p=>({...p,subject:d.subject||p.subject,preheader:d.preheader||p.preheader,blocks:d.blocks||p.blocks,name:p.name||d.subject||""})); if(lang==="ar") setF(p=>({...p,audience:{...p.audience,lang:"ar"}})); }catch(e){ setMsg(e.message); } finally{ setWriting(false); } };
+  const write=async()=>{ setWriting(true); setMsg(""); try{ const d=await mApi.post("write",{brief,lang,items:siteItems.filter(x=>picked.includes(x.url))}); setF(p=>({...p,subject:d.subject||p.subject,preheader:d.preheader||p.preheader,blocks:d.blocks||p.blocks,name:p.name||d.subject||""})); if(lang==="ar") setF(p=>({...p,audience:{...p.audience,lang:"ar"}})); }catch(e){ setMsg(e.message); } finally{ setWriting(false); } };
   const test=async()=>{ setMsg(""); try{ const d=await mApi.post("test",{...f,to:testTo}); setMsg("Test sent"+(d.to?" to "+d.to:"")); }catch(e){ setMsg(e.message); } };
   const schedule=async()=>{ const id=await save(); if(!id) return; const n=when?new Date(when).toLocaleString():"now";
     try{ const d=await mApi.post("audience_count",{channel:f.channel,audience:f.audience}); if(!confirm(`Send to ${d.count} people ${when?"on "+n:"now"}?`)) return;
       await mApi.post("schedule",{id,at:when?when.replace("T"," ")+":00":""}); onClose(); }catch(e){ setMsg(e.message); } };
   const tpl=(tpls?.rows||[]).find(t=>t.name===f.wa_template&&t.lang===f.wa_lang);
-  const BLOCK_TYPES=[["heading","Heading"],["text","Text"],["image","Image"],["button","Button"],["divider","Divider"]];
+  const BLOCK_TYPES=[["heading","Heading"],["text","Text"],["image","Image"],["button","Button"],["card","Project / article card"],["divider","Divider"]];
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
@@ -34561,9 +34566,27 @@ function MktEditor({init,ov,onClose}) {
             <div style={{...gCard,display:"flex",flexDirection:"column",gap:8,background:"linear-gradient(135deg,var(--accent)0d,transparent)"}}>
               <b style={{fontSize:13}}>✨ Write with Sara</b>
               <textarea value={brief} onChange={e=>setBrief(e.target.value)} rows={3} placeholder="e.g. Ramadan offer: 20% off social media packages for new clients until end of month. Mention our new video production studio." style={{...inputSt,resize:"vertical"}}/>
+              <div style={{borderTop:"1px dashed var(--border2)",paddingTop:8,display:"flex",flexDirection:"column",gap:6}}>
+                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                  <b style={{fontSize:12}}>🌐 Build it from our website</b>
+                  <button style={wBtn(false)} disabled={siteBusy} onClick={()=>loadSite(!!site)}>{siteBusy?"Loading…":site?"Refresh":"Choose projects & articles"}</button>
+                  {picked.length>0&&<span style={{fontSize:12,color:"var(--text2)"}}>{picked.length} picked — Sara will link readers to them</span>}
+                </div>
+                {site?.error&&<div style={{fontSize:12,color:"#dc2626"}}>{site.error}</div>}
+                {site&&!site.error&&siteItems.length===0&&<div style={{fontSize:12,color:"var(--text3)"}}>No live projects or articles found on the site yet.</div>}
+                {siteItems.length>0&&<div style={{maxHeight:200,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
+                  {siteItems.map(it=>(
+                    <label key={it.url} style={{display:"flex",gap:8,alignItems:"center",fontSize:12,cursor:"pointer",padding:"4px 6px",borderRadius:8,background:picked.includes(it.url)?"var(--accent)12":"transparent"}}>
+                      <input type="checkbox" checked={picked.includes(it.url)} onChange={e=>setPicked(p=>e.target.checked?(p.length>=6?p:[...p,it.url]):p.filter(x=>x!==it.url))}/>
+                      {it.image&&<img src={it.image} alt="" style={{width:34,height:34,objectFit:"cover",borderRadius:6}}/>}
+                      <span style={{flex:1,minWidth:0}}><b>{it.title}</b><span style={{color:"var(--text3)"}}> · {it.kind==="article"?"Article":"Project"}</span></span>
+                    </label>
+                  ))}
+                </div>}
+              </div>
               <div style={{display:"flex",gap:6,alignItems:"center"}}>
                 <button style={gPill(lang==="en")} onClick={()=>setLang("en")}>English</button><button style={gPill(lang==="ar")} onClick={()=>setLang("ar")}>Arabic</button>
-                <div style={{flex:1}}/><button style={wBtn(true)} disabled={writing||!brief.trim()} onClick={write}>{writing?"Writing…":"Draft it"}</button>
+                <div style={{flex:1}}/><button style={wBtn(true)} disabled={writing||(!brief.trim()&&picked.length===0)} onClick={write}>{writing?"Writing…":"Draft it"}</button>
               </div>
             </div>
             <div style={{...gCard,display:"flex",flexDirection:"column",gap:8}}>
@@ -34582,6 +34605,7 @@ function MktEditor({init,ov,onClose}) {
                   {b.type==="heading"&&<input value={b.text||""} onChange={e=>setBlock(i,{text:e.target.value})} style={{...inputSt,fontWeight:700}}/>}
                   {b.type==="text"&&<textarea value={b.text||""} onChange={e=>setBlock(i,{text:e.target.value})} rows={4} style={{...inputSt,resize:"vertical"}}/>}
                   {b.type==="image"&&<><input value={b.url||""} onChange={e=>setBlock(i,{url:e.target.value})} placeholder="Image URL (https://…)" style={inputSt}/><input value={b.link||""} onChange={e=>setBlock(i,{link:e.target.value})} placeholder="Link when clicked (optional)" style={inputSt}/></>}
+                  {b.type==="card"&&<><input value={b.title||""} onChange={e=>setBlock(i,{title:e.target.value})} placeholder="Title" style={{...inputSt,fontWeight:700}}/><textarea value={b.text||""} onChange={e=>setBlock(i,{text:e.target.value})} rows={2} placeholder="One line that makes them click" style={{...inputSt,resize:"vertical"}}/><input value={b.image||""} onChange={e=>setBlock(i,{image:e.target.value})} placeholder="Image URL" style={inputSt}/><div style={{display:"flex",gap:6}}><input value={b.button||""} onChange={e=>setBlock(i,{button:e.target.value})} placeholder="Button text" style={{...inputSt,flex:1}}/><input value={b.url||""} onChange={e=>setBlock(i,{url:e.target.value})} placeholder="https://…" style={{...inputSt,flex:2}}/></div></>}
                   {b.type==="button"&&<div style={{display:"flex",gap:6}}><input value={b.text||""} onChange={e=>setBlock(i,{text:e.target.value})} placeholder="Button text" style={{...inputSt,flex:1}}/><input value={b.url||""} onChange={e=>setBlock(i,{url:e.target.value})} placeholder="https://…" style={{...inputSt,flex:2}}/></div>}
                 </div>))}
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{BLOCK_TYPES.map(([k,lb])=><button key={k} style={wBtn(false)} onClick={()=>s("blocks",[...f.blocks,{type:k,text:"",url:k==="button"?"https://admepro.com":""}])}>+ {lb}</button>)}</div>
@@ -34639,7 +34663,7 @@ function MktContacts({ov,onChange}) {
       <GSetupNote err={err}/>
       <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
         <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search name, email, company, phone…" style={{...inputSt,flex:"1 1 220px"}}/>
-        {[["","All"],["opt_in","Subscribed"],["lead","Leads"],["wa","WhatsApp"],["unsub","Unsubscribed"]].map(([k,lb])=><button key={k} style={gPill(filter===k)} onClick={()=>setFilter(k)}>{lb}</button>)}
+        {[["","All"],["opt_in","Subscribed"],["lead","Leads"],["wa","WhatsApp"],["responder","Replied to WhatsApp"],["unsub","Unsubscribed"]].map(([k,lb])=><button key={k} style={gPill(filter===k)} onClick={()=>setFilter(k)}>{lb}</button>)}
       </div>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <button style={wBtn(true)} onClick={()=>setAdding({consent:"opt_in"})}>+ Add contact</button>
@@ -34738,6 +34762,9 @@ function SalesAgentPage({setPage}) {
   const run=async()=>{ setJobState({status:"queued",step:"Starting…"}); try{ const d=await sApi.post("research",{brief,country,count}); setJob(d.job); }catch(e){ setJobState({status:"error",error:e.message}); } };
   const running=jobState&&["queued","running"].includes(jobState.status);
   const counts=data?.counts||{};
+  const [mach,setMach]=useState(null); const [funnel,setFunnel]=useState(null); const [machMsg,setMachMsg]=useState("");
+  useEffect(()=>{ sApi.get("machine_get").then(d=>setMach(d.settings)).catch(()=>{}); sApi.get("funnel").then(setFunnel).catch(()=>{}); },[]);
+  const saveMach=async()=>{ setMachMsg(""); try{ const d=await sApi.post("machine_save",mach); setMach(d.settings); setMachMsg("Saved"); }catch(e){ setMachMsg(e.message); } };
   const EXAMPLES=["Real estate developers in New Cairo launching new compounds in 2026","Specialty coffee shops and restaurant groups in Cairo with weak Instagram","Private schools and nurseries in Sheikh Zayed","Skincare and cosmetics brands selling online in Saudi Arabia"];
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
@@ -34746,6 +34773,31 @@ function SalesAgentPage({setPage}) {
         <p style={{fontSize:13,color:"var(--text2)"}}>Finds real companies that fit admepro, the public decision makers, and drafts outreach for you to review</p>
       </div>
       <GSetupNote err={err}/>
+      {funnel&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>
+        {[["New prospects",funnel.prospects_new,"sales"],["Contacted",funnel.contacted,"sales"],["Replied",funnel.replied,"sales"],["Won",funnel.won,"sales"],["Emails · 7 days",funnel.sent_7d,"marketing"],["Leads · 30 days",funnel.leads_30d,"leads"],["WhatsApp replies",funnel.wa_responders,"marketing"],["Newsletter clicks · 30d",funnel.email_clicked_30d,"marketing"]].map(([k,v,pg])=>(
+          <div key={k} onClick={()=>setPage&&setPage(pg)} style={{...gCard,padding:"12px 14px",cursor:setPage?"pointer":"default"}}><div style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>{k}</div><div style={{fontSize:22,fontWeight:800,marginTop:2}}>{v??"—"}</div></div>
+        ))}
+      </div>}
+      {mach&&<div style={{...gCard,display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <b style={{fontSize:14}}>🤖 Daily machine</b>
+          <label style={{display:"flex",gap:6,alignItems:"center",fontSize:13,cursor:"pointer"}}><input type="checkbox" checked={mach.enabled} onChange={e=>setMach({...mach,enabled:e.target.checked})}/> Run every working day (Sun–Thu, 8 AM)</label>
+          <div style={{flex:1}}/><button style={wBtn(true)} onClick={saveMach}>Save</button>{machMsg&&<span style={{fontSize:12,color:machMsg==="Saved"?"#16a34a":"#dc2626"}}>{machMsg}</span>}
+        </div>
+        <div style={{fontSize:12,color:"var(--text2)"}}>Each day it finds new prospects (only companies with a published email or mobile number), drafts their 3-email sequence, syncs your leads and clients into Marketing, turns WhatsApp-campaign replies into leads, and WhatsApps you a summary.</div>
+        <textarea value={mach.brief} onChange={e=>setMach({...mach,brief:e.target.value})} rows={2} placeholder="Who should it look for every day? (same kind of brief as below)" style={{...inputSt,resize:"vertical"}}/>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",fontSize:12}}>
+          <input value={mach.country} onChange={e=>setMach({...mach,country:e.target.value})} placeholder="Country / city" style={{...inputSt,flex:"1 1 140px"}}/>
+          <select value={mach.count} onChange={e=>setMach({...mach,count:+e.target.value})} style={{...inputSt,width:130}}>{[3,5,8,10,15].map(n=><option key={n} value={n}>{n} per day</option>)}</select>
+          <select value={mach.lang} onChange={e=>setMach({...mach,lang:e.target.value})} style={{...inputSt,width:130}}><option value="en">Emails in English</option><option value="ar">Emails in Arabic</option></select>
+        </div>
+        <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"center",fontSize:12}}>
+          <label style={{display:"flex",gap:6,alignItems:"center"}}>Auto-approve score ≥ <input type="number" min="0" max="100" value={mach.auto_approve_score} onChange={e=>setMach({...mach,auto_approve_score:+e.target.value})} style={{...inputSt,width:70}}/> <span style={{color:"var(--text3)"}}>(0 = I approve myself)</span></label>
+          <label style={{display:"flex",gap:6,alignItems:"center",cursor:"pointer"}}><input type="checkbox" checked={mach.auto_send} onChange={e=>setMach({...mach,auto_send:e.target.checked})}/> Send approved emails automatically</label>
+          <label style={{display:"flex",gap:6,alignItems:"center"}}>Max emails/day <input type="number" min="1" max="80" value={mach.daily_cap} onChange={e=>setMach({...mach,daily_cap:+e.target.value})} style={{...inputSt,width:70}}/></label>
+        </div>
+        <div style={{fontSize:11,color:"var(--text3)"}}>Safe by default: nothing is emailed unless the prospect is approved AND auto-send is on. Follow-ups go out 3 and 7 days later; mark a prospect "Replied" to stop them.</div>
+      </div>}
       <div style={{...gCard,display:"flex",flexDirection:"column",gap:10,background:"linear-gradient(135deg,var(--accent)0f,transparent 60%)"}}>
         <span style={gLabel}>Who should the agent look for?</span>
         <textarea value={brief} onChange={e=>setBrief(e.target.value)} rows={3} placeholder="Describe the ideal client: industry, area, size, and what makes them need us…" style={{...inputSt,resize:"vertical"}}/>
@@ -57174,7 +57226,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
           />
         )}
         {page==="website"&&currentUser?.role==="admin"&&<WebsitePage setPage={setPage}/>}
-        {page==="marketing"&&["admin","account_director","account_manager","account_executive"].includes(currentUser?.role)&&<MarketingPage/>}
+        {page==="marketing"&&["admin","account_director","account_manager","account_executive"].includes(currentUser?.role)&&<MarketingPage setPage={setPage}/>}
         {page==="sales"&&["admin","account_director","account_manager","account_executive"].includes(currentUser?.role)&&<SalesAgentPage setPage={setPage}/>}
         {page==="recruitment"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.manage_recruitment"))&&(
           <RecruitmentPage currentUser={currentUser} appSettings={appSettings} onSaveSettings={saveAppSettings} team={data.team||[]} clients={data.clients||[]} onInviteUser={inviteUser} comments={data.comments||[]} onAddComment={handleAddApplicationComment}/>
