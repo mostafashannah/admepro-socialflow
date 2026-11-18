@@ -30976,7 +30976,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
               <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10}}>
                 {INTEGRATION_APPS.filter(a=>categoryFilter==="all"||a.category===categoryFilter).map(app=>(
                   <AppCard key={app.key} app={app} selected={f.app_key===app.key} onClick={()=>{
-                    if(app.key==="facebook"||app.key==="instagram"||app.key==="linkedin"||app.key==="tiktok") {
+                    if(app.key==="facebook"||app.key==="instagram"||app.key==="linkedin"||app.key==="tiktok"||app.key==="twitter") {
                       setF(p=>({...p,app_key:app.key,trigger:"task_completed",action:"publish_post"}));
                     } else if(app.key==="whatsapp") {
                       setF(p=>({...p,app_key:app.key,trigger:"new_lead",action:"send_message"}));
