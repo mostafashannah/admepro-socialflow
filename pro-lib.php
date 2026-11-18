@@ -1640,6 +1640,18 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
     }
     if ($name === 'create_task') {
         if (!$isAdmin) return ['error' => 'Only an admin can create tasks from WhatsApp.'];
+        // "Monay and Mostafa" → the same task for each person (a task has one assignee), created in one go.
+        $whoAll = trim((string)($input['assigned_to'] ?? ''));
+        $parts = $whoAll === '' ? [] : array_values(array_filter(array_map('trim', preg_split('/\s*(?:,|&|\+|\band\b|\x{0648}(?=\s))\s*/iu', $whoAll))));
+        if (count($parts) > 1 && count($parts) <= 6 && strpos($whoAll, '@') === false) {
+            $done = []; $errs = [];
+            foreach ($parts as $one) {
+                $r = runProTool($pdo, 'create_task', array_merge($input, ['assigned_to' => $one]), $senderRole, $senderId, $senderName, $fromPhone);
+                if (!empty($r['ok'])) $done[] = $r; else $errs[] = $one . ': ' . ($r['error'] ?? 'failed');
+            }
+            if (!$done) return ['error' => implode(' | ', $errs)];
+            return ['ok' => true, 'created_one_task_per_person' => true, 'tasks' => $done, 'failed' => $errs];
+        }
         $title = trim((string)($input['title'] ?? ''));
         if ($title === '') return ['error' => 'A task title is required.'];
         // Assignee: match an active team member by (partial) name or exact email.
@@ -2431,8 +2443,10 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
     $mutationAttempted = false;
     $lastContactReportResult = null;
     $contactReportAttempted = false;
-    for ($turn = 0; $turn < 4; $turn++) {
-        $payload = ['model' => 'claude-sonnet-5-5', 'max_tokens' => 500, 'system' => $system, 'messages' => $messages];
+    $lastToolError = null; $apiFailStatus = null; $turnsUsed = 0;
+    for ($turn = 0; $turn < 8; $turn++) {
+        $turnsUsed++;
+        $payload = ['model' => 'claude-sonnet-5-5', 'max_tokens' => 700, 'system' => $system, 'messages' => $messages];
         if ($tools) $payload['tools'] = $tools;
 
         [$status, $data, $raw] = callClaude($payload);
@@ -2443,6 +2457,7 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
             // then silently dropped the whole reply, with no message sent
             // to the user and no trace of why beyond "askPro returned NULL".
             error_log('[askPro] Claude API call failed: HTTP ' . $status . ' ' . substr((string)$raw, 0, 500));
+            $apiFailStatus = $status;
             break;
         }
 
@@ -2480,6 +2495,8 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                 if ($resolvedVoiceUrl) $toolInput['_voice_recording_url'] = $resolvedVoiceUrl;
             }
             $result = runProTool($pdo, $block['name'], $toolInput, (string)$senderRole, $senderId, $senderName, $fromPhone);
+            error_log('[askPro] tool ' . $block['name'] . ' -> ' . substr(json_encode($result), 0, 160));
+            if (is_array($result) && !empty($result['error'])) $lastToolError = (string)$result['error'];
             // Feeds the same "Full History" view the app's own Pro agent
             // page reads (activity_logs, filtered on the [agent:pro] tag)
             // — WhatsApp Pro never wrote here before, so its actions were
@@ -2511,7 +2528,12 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
         $messages[] = ['role' => 'user', 'content' => $toolResults];
     }
 
-    if ($reply === null) $reply = "Sorry, that took too long to look up — try asking again, or check the app directly.";
+    if ($reply === null) {
+        error_log('[askPro] no reply: turnsUsed=' . $turnsUsed . ' apiFail=' . var_export($apiFailStatus, true) . ' lastToolError=' . var_export($lastToolError, true));
+        if ($lastToolError) $reply = "I couldn't finish that: " . $lastToolError . " — tell me how to fix it and I'll try again.";
+        elseif ($apiFailStatus) $reply = "The AI service didn't answer just now (error $apiFailStatus) — please send that again in a minute.";
+        else $reply = "Sorry, that took too long to look up — try asking again, or check the app directly.";
+    }
 
     // The deterministic check described above: a mutating call that just
     // errored, paired with a reply that reads as a success confirmation, is
