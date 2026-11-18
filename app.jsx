@@ -29260,11 +29260,9 @@ const LEAD_SOURCES = [
 
 // Leads Center groups: where a lead came from, in plain business terms.
 const LEAD_GROUPS = [
-  {key:"cold",label:"Cold leads",color:"#0ea5e9",sources:["cold_call","sales_agent","prospect","prospecting","outreach","email_campaign","email"]},
-  {key:"website",label:"Website leads",color:"#16a34a",sources:["website","website_form","form"]},
-  {key:"social",label:"Social platforms",color:"#d90b2c",sources:["instagram","facebook","messenger","whatsapp","wa_campaign","fb_comment","ig_comment","li_comment","tiktok","twitter","x","linkedin","social"]},
-  {key:"referral",label:"Referrals & events",color:"#8b5cf6",sources:["referral","exhibition"]},
-  {key:"old",label:"Old data",color:"#6b7280",sources:["old_data"]},
+  {key:"cold",label:"Cold data",color:"#0ea5e9",sources:["cold_call","sales_agent","prospect","prospecting","outreach","email_campaign","email","old_data"]},
+  {key:"website",label:"Website",color:"#16a34a",sources:["website","website_form","form"]},
+  {key:"social",label:"Social media",color:"#d90b2c",sources:["instagram","facebook","messenger","whatsapp","wa_campaign","fb_comment","ig_comment","li_comment","tiktok","twitter","x","linkedin","social"]},
 ];
 // How long a lead has been waiting, for the "Today" view and the cards.
 const leadAgeHours = (l) => { const t = new Date(l.created_date||l.created_at||""); return isNaN(t) ? null : Math.max(0,(Date.now()-t.getTime())/3600000); };
@@ -30073,21 +30071,6 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
 
       {showRotationSettings&&<LeadRotationSettingsModal appSettings={appSettings} onSave={onSaveSettings} team={team} onClose={()=>setShowRotationSettings(false)}/>}
 
-      {/* Stats: one compact bar */}
-      <div style={{display:"flex",flexWrap:"wrap",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
-        {[
-          {label:"Total leads",val:leadsScope.length,color:"#3b82f6"},
-          {label:"Pipeline",val:`$${pipelineValue.toLocaleString()}`,color:"#8b5cf6"},
-          {label:"Closed won",val:`$${totalValue.toLocaleString()}`,color:"#10b981"},
-          {label:"Overdue",val:overdueCount,color:overdueCount>0?"#ef4444":"#6b7280"},
-        ].map((s,i)=>(
-          <div key={s.label} style={{flex:"1 1 140px",padding:"12px 18px",borderLeft:i?"1px solid var(--border)":"none"}}>
-            <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:4}}>{s.label}</p>
-            <p style={{fontSize:22,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1}}>{s.val}</p>
-          </div>
-        ))}
-      </div>
-
       {/* Where leads come from: type cards, then channels inside the chosen type */}
       {(()=>{
         const CH_LABEL = {whatsapp:"WhatsApp",messenger:"Messenger",instagram:"Instagram",facebook:"Facebook",fb_comment:"Facebook comments",ig_comment:"Instagram comments",li_comment:"LinkedIn comments",linkedin:"LinkedIn",tiktok:"TikTok",twitter:"X",x:"X",website:"Website",email:"Email replies",email_campaign:"Email campaigns",wa_campaign:"WhatsApp campaigns",referral:"Referral",cold_call:"Cold call",exhibition:"Exhibition",old_data:"Old data",other:"Other"};
@@ -30098,11 +30081,17 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
         const chRows = Object.entries(counts).filter(([k])=>!curGroup||leadGroupOf(k)===curGroup).sort((a,b)=>b[1]-a[1]);
         if(!leadsScope.length) return null;
         return <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>
-            {groupCards.map(g=>{ const on=curGroup===g.key; return <button key={g.key} type="button" onClick={()=>setSourceF(on&&sourceF==="group:"+g.key?"all":"group:"+g.key)} style={{textAlign:"left",padding:"10px 14px",background:on?g.color+"22":"var(--surface)",border:`1px solid ${on?g.color:"var(--border)"}`,borderLeft:`3px solid ${g.color}`,borderRadius:"var(--r)",cursor:"pointer"}}>
-              <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:3}}>{g.label}</p>
-              <p style={{fontSize:22,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:g.color,lineHeight:1}}>{gCounts[g.key]||0}</p>
-            </button>; })}
+          <div style={{display:"flex",flexWrap:"wrap",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+            {[{key:"all",label:"Total leads",color:"#3b82f6",n:leadsScope.length},
+              ...groupCards.map(g=>({key:g.key,label:g.label,color:g.color,n:gCounts[g.key]||0})),
+              {key:"overdue",label:"Overdue",color:overdueCount>0?"#ef4444":"#6b7280",n:overdueCount}].map((c,i)=>{
+              const clickable = c.key!=="overdue";
+              const on = c.key==="all" ? sourceF==="all" : curGroup===c.key;
+              return <button key={c.key} type="button" disabled={!clickable} onClick={()=>clickable&&setSourceF(c.key==="all"||(on&&sourceF==="group:"+c.key)?"all":"group:"+c.key)}
+                style={{flex:"1 1 120px",textAlign:"left",padding:"11px 18px",borderLeft:i?"1px solid var(--border)":"none",borderBottom:`2px solid ${on?c.color:"transparent"}`,background:on?c.color+"14":"transparent",cursor:clickable?"pointer":"default"}}>
+                <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:4}}>{c.label}</p>
+                <p style={{fontSize:22,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:c.color,lineHeight:1}}>{c.n}</p>
+              </button>; })}
           </div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
             <div style={{position:"relative",flex:"0 1 170px",minWidth:130}}>
