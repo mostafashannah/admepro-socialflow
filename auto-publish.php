@@ -138,6 +138,8 @@ foreach ($due as $post) {
     $design_urls   = json_decode($post['design_urls'] ?? '[]', true) ?: [];
     $design_assets = json_decode($post['design_assets'] ?? '[]', true) ?: [];
     $message       = trim(($post['caption'] ?? '') . "\n\n" . ($post['hashtags'] ?? ''));
+    // X has its own short caption (280-character limit); the main caption + hashtags only if none was written.
+    if ($platform === 'twitter' && trim((string)($post['x_caption'] ?? '')) !== '') $message = trim($post['x_caption']);
     // Use the LAST file added, not the first — matches publishPost() in app.jsx:
     // when a task has multiple attachments (revisions/replacements), the most
     // recently added one is the intended final version to actually publish.

@@ -1485,7 +1485,7 @@ function sbTable(entityName) {
 // Known columns per table — used to strip unknown fields before POST/PATCH
 const SB_SCHEMA = {
   projects: ["title","description","client_id","client_name","status","start_date","end_date","platforms","team_members","project_type","posting_start","posting_end"],
-  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","assigned_to_extra","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","published_platforms","platform_post_ids","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected","sector","content_completed_at","design_completed_at","design_assigned_to","published_at","pre_approval_stage","design_completed_dates","content_completed_dates","is_plan_parent","plan_items","is_routine","checklist","routine_status","routine_note","routine_flag","routine_completed_at","leader_review_status","leader_review_at","leader_review_to","leader_reviewer","leader_paused_secs","leader_review_note"],
+  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","assigned_to_extra","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","published_platforms","platform_post_ids","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected","sector","content_completed_at","design_completed_at","design_assigned_to","published_at","pre_approval_stage","design_completed_dates","content_completed_dates","is_plan_parent","plan_items","is_routine","checklist","routine_status","routine_note","routine_flag","routine_completed_at","leader_review_status","leader_review_at","leader_review_to","leader_reviewer","leader_paused_secs","leader_review_note","x_caption"],
   // address/website/contact_person were never real columns on the clients
   // table (mysql-schema.sql only has name/email/phone/logo_url/industry/
   // status/account_manager_id/notes/platforms/portal_password/username) —
@@ -2819,7 +2819,7 @@ async function publishPost(post, integration, tiktokOptions=null) {
       platform: integration.app_key,
       page_id: creds.page_id||"",
       access_token: creds.access_token||"",
-      message: [post.caption, post.hashtags].filter(Boolean).join("\n\n"),
+      message: (integration.app_key==="twitter" && (post.x_caption||"").trim()) ? post.x_caption.trim() : [post.caption, post.hashtags].filter(Boolean).join("\n\n"),
       image_url: imageUrl,
       image_urls: carouselUrls.length>1 ? carouselUrls : undefined,
       story_image_url: storyUrl,
@@ -7832,7 +7832,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                   <span style={{fontSize:12,fontWeight:700}}>Selected Caption</span>
                 </div>
                 <div style={{display:"flex",gap:6}}>
-                  <button onClick={()=>{ setCaptionDraft({caption:post.caption||"",hashtags:post.hashtags||"",text_on_visual:post.text_on_visual||"",reel_hook:post.reel_hook||""}); setCaptionInlineEdit(v=>!v); }} style={{padding:"3px 10px",borderRadius:6,fontSize:11,fontWeight:600,background:captionInlineEdit?"var(--accent)":"var(--surface)",color:captionInlineEdit?"#fff":"var(--text2)",border:"1px solid var(--border2)",cursor:"pointer"}}>
+                  <button onClick={()=>{ setCaptionDraft({caption:post.caption||"",hashtags:post.hashtags||"",text_on_visual:post.text_on_visual||"",reel_hook:post.reel_hook||"",x_caption:post.x_caption||""}); setCaptionInlineEdit(v=>!v); }} style={{padding:"3px 10px",borderRadius:6,fontSize:11,fontWeight:600,background:captionInlineEdit?"var(--accent)":"var(--surface)",color:captionInlineEdit?"#fff":"var(--text2)",border:"1px solid var(--border2)",cursor:"pointer"}}>
                     {captionInlineEdit?"Done":"Edit"}
                   </button>
                 </div>
@@ -7857,6 +7857,13 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                       <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:5}}>{post.post_type==="article"?"Article Body":"Caption"}</p>
                       <textarea value={captionDraft.caption} onChange={e=>setCaptionDraft(d=>({...d,caption:e.target.value}))} rows={4} style={{width:"100%",fontSize:13,lineHeight:1.7,color:"var(--text)",background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:6,padding:"8px 10px",resize:"vertical",fontFamily:"inherit"}}/>
                     </div>
+                    {(Array.isArray(post.platforms)?post.platforms:parseJ(post.platforms||"[]")).includes("twitter")&&(
+                      <div>
+                        <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:5}}>X caption (max 280)</p>
+                        <textarea value={captionDraft.x_caption||""} onChange={e=>setCaptionDraft(d=>({...d,x_caption:e.target.value}))} rows={3} style={{width:"100%",fontSize:13,lineHeight:1.6,color:"var(--text)",background:"var(--surface)",border:`1px solid ${(captionDraft.x_caption||captionDraft.caption||"").length>280?"#ef4444":"var(--border2)"}`,borderRadius:6,padding:"8px 10px"}}/>
+                        <div style={{fontSize:11,fontWeight:700,marginTop:3,color:(captionDraft.x_caption||captionDraft.caption||"").length>280?"#ef4444":"var(--text3)"}}>{(captionDraft.x_caption||captionDraft.caption||"").length} / 280</div>
+                      </div>
+                    )}
                     {post.post_type!=="story"&&(
                       <div>
                         <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:5}}>Hashtags</p>
@@ -8946,7 +8953,7 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
   const activeClientId = presetClient?.id || pickedClientId;
   const selectableProjects = activeClientId ? projects.filter(p=>p.client_id===activeClientId) : projects;
   const defaultAssignee = eligibleAssignees("planning",team).some(m=>m.email===currentUser?.email) ? currentUser.email : "";
-  const blankForm = {project_id:selectableProjects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:defaultAssignee,scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",due_date:"",due_time:"",content_mode:"new",platforms:["instagram"],platform_types:{},media:[],cover:null,publish_mode:"schedule",postStory:false,storyImage:null,estimated_minutes:"",sector:""};
+  const blankForm = {project_id:selectableProjects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:defaultAssignee,scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",due_date:"",due_time:"",content_mode:"new",platforms:["instagram"],platform_types:{},media:[],cover:null,publish_mode:"schedule",postStory:false,storyImage:null,estimated_minutes:"",sector:"",x_caption:""};
   // Opened by clicking a free slot on someone's Timeline (admin/AM only) —
   // prefill who it's for and when, instead of making them re-pick both.
   const [f,setF] = useState({...blankForm, ...(presetSlot||{})});
@@ -9066,8 +9073,11 @@ Return ONLY valid JSON (no markdown):
     setUploadingStory(false);
   };
 
+  // X allows 280 characters: when X is one of the platforms it gets its own caption (or the main one must already fit).
+  const xText = (f.x_caption||"").trim() ? f.x_caption : f.caption;
+  const xOk = !f.platforms.includes("twitter") || xText.trim().length<=280;
   const canSubmit = f.content_mode==="ready"
-    ? f.title.trim()&&f.project_id&&f.caption.trim()&&f.platforms.length&&(f.publish_mode!=="schedule"||(f.scheduled_date&&f.scheduled_time))&&!needsInstaCover
+    ? f.title.trim()&&f.project_id&&f.caption.trim()&&f.platforms.length&&(f.publish_mode!=="schedule"||(f.scheduled_date&&f.scheduled_time))&&!needsInstaCover&&xOk
     : f.title.trim()&&f.project_id&&f.platforms.length&&(!f.scheduled_date||f.scheduled_time);
 
   const submit = async () => {
@@ -9112,6 +9122,7 @@ Return ONLY valid JSON (no markdown):
         platform:primaryPl, platforms:f.platforms, post_type, priority:f.priority, stage:"scheduled",
         client_name: proj?.client_name||"", hashtags:"", sector:f.sector||"",
         caption:f.caption, design_assets, design_urls,
+        x_caption: f.platforms.includes("twitter") ? (f.x_caption||"").trim() : "",
         carousel_cover: post_type==="reel" ? (f.cover?.url||"") : "",
       };
       await (onAddReady ? onAddReady([single],{postNow:f.publish_mode==="now"}) : onAdd(single));
@@ -9245,6 +9256,14 @@ Return ONLY valid JSON (no markdown):
                 <Field label="Caption" required>
                   <textarea value={f.caption} onChange={e=>s("caption",e.target.value)} rows={3} placeholder="Write the caption to post…" style={{...inputSt,resize:"vertical"}}/>
                 </Field>
+                {f.platforms.includes("twitter")&&(
+                  <Field label="X caption (max 280 characters)" hint="X has its own caption so it never exceeds the limit. If you leave it empty the main caption is used, and it must be 280 characters or fewer.">
+                    <textarea value={f.x_caption||""} onChange={e=>s("x_caption",e.target.value)} rows={3} placeholder="Short version for X…" style={{...inputSt,resize:"vertical",borderColor:xOk?undefined:"#ef4444"}}/>
+                    <div style={{fontSize:11,marginTop:4,fontWeight:700,color:xOk?"var(--text3)":"#ef4444"}}>
+                      {(xText||"").trim().length} / 280{!xOk?" — too long for X: shorten it or write an X caption above":""}
+                    </div>
+                  </Field>
+                )}
                 <Field label="Platforms" required>
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
