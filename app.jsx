@@ -29266,6 +29266,9 @@ const LEAD_GROUPS = [
   {key:"referral",label:"Referrals & events",color:"#8b5cf6",sources:["referral","exhibition"]},
   {key:"old",label:"Old data",color:"#6b7280",sources:["old_data"]},
 ];
+// How long a lead has been waiting, for the "Today" view and the cards.
+const leadAgeHours = (l) => { const t = new Date(l.created_date||l.created_at||""); return isNaN(t) ? null : Math.max(0,(Date.now()-t.getTime())/3600000); };
+const fmtLeadAge = (h) => h==null ? "" : h<1 ? `${Math.max(1,Math.round(h*60))}m` : h<48 ? `${Math.round(h)}h` : `${Math.round(h/24)}d`;
 const leadGroupOf = (src) => { const s=String(src||"other").toLowerCase(); const g=LEAD_GROUPS.find(g=>g.sources.includes(s)); return g?g.key:"other"; };
 
 const ACTIVITY_ICONS = {
@@ -29728,6 +29731,7 @@ function LeadCard({lead, onClick, team}) {
   return (
     <div onClick={()=>onClick(lead)} style={{
       background:"var(--surface)",border:`1px solid ${overdue?"#ef444444":dueToday?"#f59e0b44":"var(--border)"}`,
+      borderLeft:`3px solid ${(LEAD_GROUPS.find(g=>g.key===leadGroupOf(lead.source))||{color:"#a16207"}).color}`,
       borderRadius:"var(--r)",padding:"12px 14px",cursor:"pointer",
       transition:"all 0.18s",display:"flex",flexDirection:"column",gap:8,
     }}
@@ -29760,6 +29764,17 @@ function LeadCard({lead, onClick, team}) {
           {overdue?" Overdue":dueToday?"Due Today":fmtFollowup(lead.followup_date)}
         </div>
       )}
+      {(lead.phone||(!lead.status||lead.status==="new"))&&(()=>{
+        const h = (!lead.status||lead.status==="new") ? leadAgeHours(lead) : null;
+        const wa = lead.phone ? waLink(lead.phone,"") : null;
+        return <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}} onClick={e=>e.stopPropagation()}>
+          {lead.phone&&<span style={{fontSize:11,color:"var(--text2)",direction:"ltr"}}>{lead.phone}</span>}
+          <span style={{flex:1}}/>
+          {h!=null&&<span title="Time since this lead arrived" style={{fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:99,background:h>=1?"#ef444422":"#6b728022",color:h>=1?"#ef4444":"var(--text3)"}}>waiting {fmtLeadAge(h)}</span>}
+          {wa&&<a href={wa} target="_blank" rel="noreferrer" title="Open WhatsApp" style={{fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:99,background:"#25D36622",color:"#25D366",textDecoration:"none"}}>WhatsApp</a>}
+          {lead.phone&&<a href={`tel:${String(lead.phone).replace(/\s/g,"")}`} title="Call" style={{fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:99,background:"var(--surface2)",color:"var(--text2)",textDecoration:"none",border:"1px solid var(--border2)"}}>Call</a>}
+        </div>;
+      })()}
     </div>
   );
 }
@@ -29859,7 +29874,7 @@ function LeadRotationSettingsModal({appSettings, onSave, team, onClose}) {
 function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead, onUpdateLead, onAddActivity, onConvertLead, onDeleteLead, appSettings, onSaveSettings}) {
   const [showRotationSettings, setShowRotationSettings] = useState(false);
   const [showImport, setShowImport] = useState(false);
-  const [view, setView] = useState("kanban");
+  const [view, setView] = useState(()=>["account_manager","account_director","account_executive"].includes(currentUser?.role)?"today":"kanban");
   const isAdmin = currentUser?.role==="admin";
   // Account managers only ever see leads assigned to them — not the whole
   // team's pipeline. Admins (and everyone else with page access, e.g.
@@ -30035,7 +30050,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
         </div>
         <div style={{display:"flex",gap:8}}>
           <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)"}}>
-            {[["kanban",Icons.grid],["list",Icons.list],...(isAdmin?[["bank",Icons.leads]]:[])].map(([v,ico])=>(
+            {[["today",Icons.clock],["kanban",Icons.grid],["list",Icons.list],...(isAdmin?[["bank",Icons.leads]]:[])].map(([v,ico])=>(
               <button key={v} onClick={()=>setView(v)} style={{padding:"5px 12px",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:view===v?"var(--accent)":"none",color:view===v?"#fff":"var(--text2)",display:"flex",alignItems:"center",gap:5}}>
                 <Ico d={ico} size={13}/>{v==="bank"?`Bank${bankLeads.length?` (${bankLeads.length})`:""}`:v.charAt(0).toUpperCase()+v.slice(1)}
               </button>
@@ -30114,6 +30129,53 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
           <button type="button" onClick={()=>{setSearch("");setSourceF("all");setAssigneeF("all");setCountryF("all");setIndustryF("all");}} style={{padding:"8px 14px",borderRadius:99,fontSize:12,fontWeight:700,color:"var(--accent)",border:"1px solid var(--accent)55",background:"transparent",cursor:"pointer"}}>Clear filters · {filtered.length} shown</button>}
       </div>
 
+      {/* TODAY VIEW: what to act on first */}
+      {view==="today"&&(()=>{
+        const open = l => !["closed_won","closed_lost","dead"].includes(l.status);
+        const isNew = l => !l.status||l.status==="new";
+        const overdueL = filtered.filter(l=>open(l)&&isOverdue(l.followup_date)).sort((a,b)=>String(a.followup_date).localeCompare(String(b.followup_date)));
+        const dueL = filtered.filter(l=>open(l)&&isDueToday(l.followup_date));
+        const seen = new Set([...overdueL,...dueL].map(l=>l.id));
+        const newL = filtered.filter(l=>isNew(l)&&!seen.has(l.id)).sort((a,b)=>(leadAgeHours(b)||0)-(leadAgeHours(a)||0));
+        const act = (l,patch,msg) => { onUpdateLead({...l,...patch}); if(msg) onAddActivity({lead_id:l.id,type:"status_change",content:msg,author_name:currentUser?.name||"User"}); };
+        const tomorrow = () => { const d=new Date(); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); };
+        const Row = ({l}) => {
+          const h = isNew(l) ? leadAgeHours(l) : null; const wa = l.phone ? waLink(l.phone,"") : null;
+          const grp = LEAD_GROUPS.find(g=>g.key===leadGroupOf(l.source));
+          const btn = {fontSize:11,fontWeight:700,padding:"6px 11px",borderRadius:99,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer",textDecoration:"none",whiteSpace:"nowrap"};
+          return <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",padding:"11px 14px",background:"var(--surface)",border:"1px solid var(--border)",borderLeft:`3px solid ${grp?grp.color:"#a16207"}`,borderRadius:"var(--r)"}}>
+            <div style={{flex:"1 1 220px",minWidth:0,cursor:"pointer"}} onClick={()=>setSelectedLead(l)}>
+              <p style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.name}{l.company?<span style={{fontWeight:500,color:"var(--text2)"}}> · {l.company}</span>:null}</p>
+              <p style={{fontSize:11,color:"var(--text3)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                <span style={{textTransform:"capitalize"}}>{String(l.source||"").replace(/_/g," ")||"lead"}</span>{l.phone?<span style={{direction:"ltr",display:"inline-block"}}> · {l.phone}</span>:null}{l.notes?` · ${String(l.notes).replace(/\s+/g," ").slice(0,70)}`:""}
+              </p>
+            </div>
+            {h!=null&&<span style={{fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:99,background:h>=1?"#ef444422":"#6b728022",color:h>=1?"#ef4444":"var(--text3)"}}>waiting {fmtLeadAge(h)}</span>}
+            {l.followup_date&&<span style={{fontSize:11,fontWeight:700,color:isOverdue(l.followup_date)?"#ef4444":"#f59e0b"}}>{isOverdue(l.followup_date)?"Overdue · ":"Today · "}{fmtFollowup(l.followup_date)}</span>}
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {wa&&<a href={wa} target="_blank" rel="noreferrer" style={{...btn,background:"#25D36622",color:"#25D366",borderColor:"#25D36655"}}>WhatsApp</a>}
+              {l.phone&&<a href={`tel:${String(l.phone).replace(/\s/g,"")}`} style={btn}>Call</a>}
+              {isNew(l)&&<button type="button" style={btn} onClick={()=>act(l,{status:"contacted"},"Status changed to Contacted")}>Contacted</button>}
+              <button type="button" style={btn} onClick={()=>act(l,{followup_date:tomorrow()},"Follow-up moved to tomorrow")}>Tomorrow</button>
+            </div>
+          </div>;
+        };
+        const Sec = ({title,color,items,empty}) => <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{width:8,height:8,borderRadius:"50%",background:color}}/>
+            <span style={{fontSize:11,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",color:"var(--text2)"}}>{title}</span>
+            <span style={{fontSize:10,color:"var(--text3)",background:"var(--surface2)",padding:"1px 8px",borderRadius:99,border:"1px solid var(--border)"}}>{items.length}</span>
+          </div>
+          {items.length?items.map(l=><Row key={l.id} l={l}/>):<p style={{fontSize:12,color:"var(--text3)",padding:"4px 2px"}}>{empty}</p>}
+        </div>;
+        if(!overdueL.length&&!dueL.length&&!newL.length) return <div style={{padding:"50px",textAlign:"center",color:"var(--text3)",border:"1px dashed var(--border)",borderRadius:"var(--r)"}}>You're all caught up. Nothing is overdue, due today or waiting for a first reply. 🎉</div>;
+        return <div style={{display:"flex",flexDirection:"column",gap:20}}>
+          <Sec title="Overdue follow-ups" color="#ef4444" items={overdueL} empty="Nothing overdue."/>
+          <Sec title="New, not contacted yet" color="#6b7280" items={newL} empty="Every new lead has been contacted."/>
+          <Sec title="Follow-ups due today" color="#f59e0b" items={dueL} empty="No follow-ups today."/>
+        </div>;
+      })()}
+
       {/* KANBAN VIEW */}
       {view==="kanban"&&(
         <div style={{display:"flex",gap:12,overflowX:"auto",paddingBottom:12,alignItems:"flex-start"}}>
@@ -30123,7 +30185,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
             const statusLeads = filtered.filter(l=>(LEAD_STATUS_MAP[l.status]?l.status:"new")===status.key);
             const val = statusLeads.reduce((a,l)=>a+num(l.value),0);
             return (
-              <div key={status.key} style={{minWidth:240,flexShrink:0,display:"flex",flexDirection:"column",gap:8}}
+              <div key={status.key} style={statusLeads.length===0&&status.key!=="new"?{width:54,flexShrink:0,display:"flex",flexDirection:"column",gap:8,opacity:0.75}:{minWidth:250,flexShrink:0,display:"flex",flexDirection:"column",gap:8}}
                 onDragOver={e=>{e.preventDefault();dragOverLeadStatus.current=status.key;}}
                 onDrop={e=>{
                   e.preventDefault();
@@ -30138,20 +30200,20 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 2px"}}>
                   <div style={{display:"flex",alignItems:"center",gap:7}}>
                     <div style={{width:8,height:8,borderRadius:"50%",background:status.color}}/>
-                    <span style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",color:"var(--text2)"}}>{status.label}</span>
+                    {!(statusLeads.length===0&&status.key!=="new")&&<span style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",color:"var(--text2)"}}>{status.label}</span>}
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:4}}>
                     {val>0&&<span style={{fontSize:9,color:"#10b981",fontWeight:700}}>${val.toLocaleString()}</span>}
                     <span style={{fontSize:10,color:"var(--text3)",background:"var(--surface2)",padding:"1px 7px",borderRadius:99,border:"1px solid var(--border)"}}>{statusLeads.length}</span>
                   </div>
                 </div>
-                <div style={{display:"flex",flexDirection:"column",gap:8,minHeight:60}}>
+                <div style={{display:"flex",flexDirection:"column",gap:8,minHeight:60,...(statusLeads.length>6?{maxHeight:"70vh",overflowY:"auto",paddingRight:2}:{})}}>
                   {statusLeads.map(l=>(
                     <div key={l.id} draggable onDragStart={e=>{dragLead.current=l;e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",l.id);}} onDragEnd={()=>{dragLead.current=null;}} style={{cursor:"grab"}}>
                       <LeadCard lead={l} onClick={setSelectedLead} team={team}/>
                     </div>
                   ))}
-                  {statusLeads.length===0&&<div style={{border:"1px dashed var(--border)",borderRadius:"var(--r)",padding:"20px",textAlign:"center",color:"var(--text3)",fontSize:11}}>No leads</div>}
+                  {statusLeads.length===0&&<div title={status.label} style={{border:"1px dashed var(--border)",borderRadius:"var(--r)",padding:status.key==="new"?"20px":"20px 0",textAlign:"center",color:"var(--text3)",fontSize:11}}>{status.key==="new"?"No leads":"·"}</div>}
                 </div>
               </div>
             );
