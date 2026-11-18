@@ -30099,35 +30099,31 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
               <p style={{fontSize:22,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:g.color,lineHeight:1}}>{gCounts[g.key]||0}</p>
             </button>; })}
           </div>
-          {chRows.length>1&&<div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-            <span style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginRight:2}}>Channels</span>
-            {chRows.map(([k,n])=><button key={k} type="button" onClick={()=>setSourceF(f=>f===k?(curGroup?"group:"+curGroup:"all"):k)} style={{padding:"4px 11px",borderRadius:99,fontSize:11.5,fontWeight:700,border:`1px solid ${sourceF===k?"var(--accent)":"var(--border2)"}`,background:sourceF===k?"var(--accent)":"var(--surface2)",color:sourceF===k?"#fff":"var(--text2)",cursor:"pointer",whiteSpace:"nowrap"}}>{CH_LABEL[k]||k.replace(/_/g," ")} · {n}</button>)}
-          </div>}
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+            <div style={{position:"relative",flex:"0 1 190px",minWidth:140}}>
+              <div style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",color:"var(--text3)"}}><Ico d={Icons.search} size={12}/></div>
+              <input value={search} onChange={e=>setSearch(e.target.value)} aria-label="Search leads" placeholder="Search…" style={{...inputSt,paddingLeft:28,paddingTop:5,paddingBottom:5,fontSize:12,borderRadius:99,height:30}}/>
+            </div>
+            <select value={assigneeF} onChange={e=>setAssigneeF(e.target.value)} style={{...inputSt,width:"auto",padding:"4px 8px",fontSize:11.5,borderRadius:99,height:30}}>
+              <option value="all">All assignees</option>
+              {(team||[]).filter(t=>["account_manager","account_director","account_executive","business_development"].includes(t.role)).map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
+            </select>
+            <select value={countryF} onChange={e=>setCountryF(e.target.value)} style={{...inputSt,width:"auto",padding:"4px 8px",fontSize:11.5,borderRadius:99,height:30}}>
+              <option value="all">All countries</option>
+              {LEAD_COUNTRIES.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+            <select value={industryF} onChange={e=>setIndustryF(e.target.value)} style={{...inputSt,width:"auto",padding:"4px 8px",fontSize:11.5,borderRadius:99,height:30}}>
+              <option value="all">All industries</option>
+              {industryOptions.map(i=><option key={i} value={i}>{i}</option>)}
+              {industryOptions.length===0&&<option value="" disabled>No industries tagged yet</option>}
+            </select>
+            {chRows.length>1&&<><span style={{width:1,height:18,background:"var(--border2)",margin:"0 4px"}}/>
+              {chRows.map(([k,n])=><button key={k} type="button" onClick={()=>setSourceF(f=>f===k?(curGroup?"group:"+curGroup:"all"):k)} style={{padding:"3px 10px",height:26,borderRadius:99,fontSize:11,fontWeight:700,border:`1px solid ${sourceF===k?"var(--accent)":"var(--border2)"}`,background:sourceF===k?"var(--accent)":"var(--surface2)",color:sourceF===k?"#fff":"var(--text2)",cursor:"pointer",whiteSpace:"nowrap"}}>{CH_LABEL[k]||k.replace(/_/g," ")} · {n}</button>)}</>}
+            {(search||sourceF!=="all"||assigneeF!=="all"||countryF!=="all"||industryF!=="all")&&
+              <button type="button" onClick={()=>{setSearch("");setSourceF("all");setAssigneeF("all");setCountryF("all");setIndustryF("all");}} style={{padding:"3px 11px",height:26,borderRadius:99,fontSize:11,fontWeight:700,color:"var(--accent)",border:"1px solid var(--accent)55",background:"transparent",cursor:"pointer"}}>Clear · {filtered.length} shown</button>}
+          </div>
         </div>;
       })()}
-
-      {/* One filter row */}
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-        <div style={{position:"relative",flex:"1 1 200px",maxWidth:300}}>
-          <div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"var(--text3)"}}><Ico d={Icons.search} size={14}/></div>
-          <input value={search} onChange={e=>setSearch(e.target.value)} aria-label="Search leads" placeholder="Search leads…" style={{...inputSt,paddingLeft:32,borderRadius:99}}/>
-        </div>
-        <select value={assigneeF} onChange={e=>setAssigneeF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12,borderRadius:99}}>
-          <option value="all">All assignees</option>
-          {(team||[]).filter(t=>["account_manager","account_director","account_executive","business_development"].includes(t.role)).map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
-        </select>
-        <select value={countryF} onChange={e=>setCountryF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12,borderRadius:99}}>
-          <option value="all">All countries</option>
-          {LEAD_COUNTRIES.map(c=><option key={c} value={c}>{c}</option>)}
-        </select>
-        <select value={industryF} onChange={e=>setIndustryF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12,borderRadius:99}}>
-          <option value="all">All industries</option>
-          {industryOptions.map(i=><option key={i} value={i}>{i}</option>)}
-          {industryOptions.length===0&&<option value="" disabled>No industries tagged yet</option>}
-        </select>
-        {(search||sourceF!=="all"||assigneeF!=="all"||countryF!=="all"||industryF!=="all")&&
-          <button type="button" onClick={()=>{setSearch("");setSourceF("all");setAssigneeF("all");setCountryF("all");setIndustryF("all");}} style={{padding:"8px 14px",borderRadius:99,fontSize:12,fontWeight:700,color:"var(--accent)",border:"1px solid var(--accent)55",background:"transparent",cursor:"pointer"}}>Clear filters · {filtered.length} shown</button>}
-      </div>
 
       {/* TODAY VIEW: what to act on first */}
       {view==="today"&&(()=>{
