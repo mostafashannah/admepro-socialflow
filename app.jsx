@@ -34779,8 +34779,14 @@ document.getElementById('nl').addEventListener('submit', async e => {
 function GrowthPage({setPage, renderLeads, isTeam, canLeads}) {
   const tabsAll = [["overview","Overview",isTeam],["prospecting","Prospecting",isTeam],["campaigns","Campaigns",isTeam],["audience","Audience",isTeam],["leads","Leads Center",canLeads],["setup","Setup",isTeam]].filter(t=>t[2]);
   const [tab,setTab] = useState(()=>{ let t="overview"; try{ t=localStorage.getItem("sf_growth_tab")||"overview"; }catch(e){} return tabsAll.some(x=>x[0]===t)?t:tabsAll[0][0]; });
-  const go = (t) => { setTab(t); try{ localStorage.setItem("sf_growth_tab",t); }catch(e){} try{ window.scrollTo({top:0}); }catch(e){} };
+  const go = (t) => { setTab(t); try{ localStorage.setItem("sf_growth_tab",t); }catch(e){} try{ window.dispatchEvent(new CustomEvent("sf-growth-tab",{detail:t})); }catch(e){} try{ window.scrollTo({top:0}); }catch(e){} };
   useEffect(()=>{ try{ const t=localStorage.getItem("sf_growth_tab"); if(t&&t!==tab&&tabsAll.some(x=>x[0]===t)) setTab(t); }catch(e){} },[]);
+  // The left menu's "Leads Center" item switches the tab while this page is already open.
+  useEffect(()=>{
+    const h = (e)=>{ const t=e?.detail; if(t&&tabsAll.some(x=>x[0]===t)) setTab(t); };
+    window.addEventListener("sf-growth-tab", h);
+    return ()=>window.removeEventListener("sf-growth-tab", h);
+  },[]);
   const [ov,setOv]=useState(null); const [err,setErr]=useState("");
   const loadOv=()=>{ if(!isTeam) return; mApi.get("overview").then(d=>{setOv(d);setErr("");}).catch(e=>setErr(e.message)); };
   useEffect(()=>{ loadOv(); },[]);
@@ -47082,6 +47088,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     ]}] : [])),
     ...((canViewCrm || ["admin","account_director","account_manager","account_executive"].includes(currentUser?.role)) ? [{ group: "GROWTH", icon: Icons.target, items: [
       {key:"growth", label:"Growth", ico:Icons.target},
+      {key:"growth_leads", label:"Leads Center", ico:Icons.users},
     ]}] : []),
     ...((canAgency||isAdmin) ? [{ group: "TOOLS", icon: Icons.wand, items: [
       ...(canAgency?[
@@ -47255,15 +47262,29 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     handleNav("home");
   };
 
+  // Which Growth tab is open, so "Growth" and "Leads Center" highlight correctly in the menu.
+  const [growthTabNow, setGrowthTabNow] = useState(()=>{ try{ return localStorage.getItem("sf_growth_tab")||"overview"; }catch(e){ return "overview"; } });
+  useEffect(()=>{
+    const h = (e)=>setGrowthTabNow(e?.detail||"overview");
+    window.addEventListener("sf-growth-tab", h);
+    return ()=>window.removeEventListener("sf-growth-tab", h);
+  },[]);
   const handleNav = (key) => {
-    setPage(key);
+    if(key==="growth_leads") {
+      try{ localStorage.setItem("sf_growth_tab","leads"); }catch(e){}
+      setPage("growth");
+      try{ window.dispatchEvent(new CustomEvent("sf-growth-tab",{detail:"leads"})); }catch(e){}
+    } else {
+      if(key==="growth" && growthTabNow==="leads") { try{ localStorage.setItem("sf_growth_tab","overview"); }catch(e){} try{ window.dispatchEvent(new CustomEvent("sf-growth-tab",{detail:"overview"})); }catch(e){} }
+      setPage(key);
+    }
     if(isMobile && onClose) onClose();
   };
 
   // ── Render helpers ────────────────────────────────────────────
   const NavItem = ({item, compact=false, indented=true}) => {
     const {key, label, ico} = item;
-    const active = page === key;
+    const active = key==="growth_leads" ? (page==="growth" && growthTabNow==="leads") : key==="growth" ? (page==="growth" && growthTabNow!=="leads") : page === key;
     return (
       <button
         key={key}
@@ -47491,7 +47512,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
               <div style={{display:"flex",flexDirection:"column",gap:2,maxHeight:280,overflowY:"auto"}}>
                 {searchResults.length===0 && <p style={{fontSize:12,color:"var(--text3)",padding:"8px 4px"}}>No matches.</p>}
                 {searchResults.map(item=>(
-                  <button key={item.key} onClick={()=>{ setPage(item.key); setSearchOpen(false); setSearchQuery(""); }} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 8px",borderRadius:8,background:"transparent",border:"none",color:"var(--text2)",fontSize:12.5,fontWeight:600,cursor:"pointer",textAlign:"left"}}>
+                  <button key={item.key} onClick={()=>{ handleNav(item.key); setSearchOpen(false); setSearchQuery(""); }} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 8px",borderRadius:8,background:"transparent",border:"none",color:"var(--text2)",fontSize:12.5,fontWeight:600,cursor:"pointer",textAlign:"left"}}>
                     <Ico d={item.ico} size={14}/> {item.label}
                   </button>
                 ))}
