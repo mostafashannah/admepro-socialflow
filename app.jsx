@@ -30629,7 +30629,7 @@ function ZernioPicker({platform="linkedin", onPick, picked}) {
       </div>
       {state.setup&&<p style={{fontSize:12,color:"#b45309"}}>Zernio isn't set up yet — add ZERNIO_API_KEY to config.php on the server.</p>}
       {state.error&&<p style={{fontSize:12,color:"#ef4444"}}>{state.error}</p>}
-      {state.accounts&&state.accounts.length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No LinkedIn accounts in Zernio yet — use "Add a new account in Zernio", then choose it here.</p>}
+      {state.accounts&&state.accounts.length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No {platform==="twitter"?"X":"LinkedIn"} accounts in Zernio yet — use "Add a new account in Zernio", then choose it here.</p>}
       {(state.accounts||[]).map(a=>(
         <button key={a.id} type="button" onClick={()=>onPick(a)} style={{textAlign:"left",padding:"8px 10px",background:picked===a.id?"var(--accent)18":"var(--surface)",border:`1px solid ${picked===a.id?"var(--accent)":"var(--border)"}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>
           {a.name||a.username||a.id}{a.needs_reconnect?" — needs reconnecting in Zernio":""}
@@ -30646,6 +30646,7 @@ const INTEGRATION_APPS = [
   {key:"whatsapp", label:"WhatsApp", category:"social", color:"#25D366", icon:Icons.waBrand, brand:true, description:"Connect a client's WhatsApp number to their inbox"},
   {key:"linkedin", label:"LinkedIn", category:"social", color:"#0A66C2", icon:Icons.linkedinBrand, brand:true, description:"Publish posts to LinkedIn (posting only — no DM/comment replies)"},
   {key:"tiktok", label:"TikTok", category:"social", color:"#000000", icon:Icons.tiktokBrand, brand:true, description:"Publish videos to TikTok and track per-video views/likes/comments"},
+  {key:"twitter", label:"X (Twitter)", category:"social", color:"#000000", icon:Icons.plug, description:"Publish posts to X through Zernio (280 characters)"},
   // Spreadsheet / Data
   {key:"google_sheets",label:"Google Sheets", category:"spreadsheet", color:"#0F9D58", icon:Icons.sheetsBrand, description:"Add rows to Google Sheets"},
   // Ecommerce
@@ -30836,7 +30837,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
   const categoryActions = INTEGRATION_ACTIONS[selectedApp?.category||"social"]||INTEGRATION_ACTIONS.social;
   const selectedAction = categoryActions.find(a=>a.key===f.action);
   const isWhatsApp = f.app_key==="whatsapp";
-  const isSocialPublish = f.app_key==="facebook"||f.app_key==="instagram"||f.app_key==="linkedin"||f.app_key==="tiktok"||isWhatsApp;
+  const isSocialPublish = f.app_key==="facebook"||f.app_key==="instagram"||f.app_key==="linkedin"||f.app_key==="tiktok"||f.app_key==="twitter"||isWhatsApp;
   const metaConnected = isWhatsApp
     ? !!(f.credentials?.phone_id && f.credentials?.access_token && f.client_id)
     : (!isSocialPublish || !!(f.credentials?.page_id && f.credentials?.access_token && f.client_id));
@@ -31052,6 +31053,29 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                     ))}
                   </div>
                 )}
+                {metaConnected&&(
+                  <div style={{padding:10,background:"#10b98122",border:"1px solid #10b98155",borderRadius:"var(--rs)",fontSize:12,color:"#10b981",display:"flex",alignItems:"center",gap:6}}>
+                    <Ico d={Icons.check} size={14} stroke="#10b981"/> Connected
+                  </div>
+                )}
+              </>)}
+              {f.app_key==="twitter"&&(<>
+                <Field label="Client" required hint="Which client does this X account belong to?">
+                  <select value={f.client_id||""} onChange={e=>{
+                    const c = clients.find(cl=>cl.id===e.target.value);
+                    sf("client_id", c?.id||"");
+                    sf("client_name", c?.name||"");
+                  }} style={inputSt}>
+                    <option value="">— Select a client —</option>
+                    {clients.filter(c=>c.status!=="hidden").map(c=>(
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </Field>
+                <div style={{padding:10,background:"#f59e0b22",border:"1px solid #f59e0b55",borderRadius:"var(--rs)",fontSize:12,color:"#b45309"}}>
+                  X posts go through Zernio: connect the client's X account in Zernio, then pick it below. Posts are limited to 280 characters, and X charges per post (about $0.015, or $0.20 for a post with a link) from Zernio's prepaid X balance.
+                </div>
+                <ZernioPicker platform="twitter" picked={f.credentials?.access_token==="zernio"?f.credentials?.page_id:""} onPick={a=>setF(p=>({...p,credentials:{...p.credentials,page_id:a.id,access_token:"zernio",provider:"zernio",account_name:a.name||a.username||""}}))}/>
                 {metaConnected&&(
                   <div style={{padding:10,background:"#10b98122",border:"1px solid #10b98155",borderRadius:"var(--rs)",fontSize:12,color:"#10b981",display:"flex",alignItems:"center",gap:6}}>
                     <Ico d={Icons.check} size={14} stroke="#10b981"/> Connected

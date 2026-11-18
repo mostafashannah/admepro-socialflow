@@ -71,13 +71,19 @@ if (!$platform || !$page_id || !$access_token || !$message) {
     exit;
 }
 
-if (!in_array($platform, ["facebook", "instagram", "linkedin", "tiktok"])) {
+if (!in_array($platform, ["facebook", "instagram", "linkedin", "tiktok", "twitter"])) {
     http_response_code(400);
-    echo json_encode(["error" => "Unsupported platform. Supported: facebook, instagram, linkedin, tiktok"]);
+    echo json_encode(["error" => "Unsupported platform. Supported: facebook, instagram, linkedin, tiktok, twitter"]);
     exit;
 }
 
-if ($platform === "linkedin") {
+if ($platform === "twitter") {
+    // X is posted through Zernio only (credentials: page_id = Zernio account id, access_token = "zernio").
+    require_once __DIR__ . '/zernio-lib.php';
+    if ($access_token !== ZERNIO_TOKEN_MARKER) { $http_code = 400; $response = ['error' => 'X must be connected through Zernio.']; }
+    elseif (mb_strlen($message) > 280) { $http_code = 422; $response = ['error' => 'X posts are limited to 280 characters (this one is ' . mb_strlen($message) . ').']; }
+    else [$http_code, $response] = zernio_publish('twitter', $page_id, $message, $image_url ? [$image_url] : []);
+} elseif ($platform === "linkedin") {
     [$http_code, $response] = linkedin_publish($page_id, $access_token, $message, $image_url);
 } elseif ($platform === "tiktok") {
     // TikTok publishes video only — image_url is expected to point at a

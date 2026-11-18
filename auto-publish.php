@@ -89,7 +89,7 @@ foreach ($due as $post) {
     }
     $alreadyDone = json_decode($post['published_platforms'] ?? '[]', true) ?: [];
     $targetPlatforms = array_values(array_diff(
-        array_filter(array_map('strtolower', array_map('trim', $allPlatforms)), fn($p) => in_array($p, ['facebook', 'instagram', 'linkedin', 'tiktok'], true)),
+        array_filter(array_map('strtolower', array_map('trim', $allPlatforms)), fn($p) => in_array($p, ['facebook', 'instagram', 'linkedin', 'tiktok', 'twitter'], true)),
         $alreadyDone
     ));
     if (!$targetPlatforms) continue; // nothing valid, or every platform already published
@@ -156,7 +156,12 @@ foreach ($due as $post) {
         }
     }
 
-    if ($platform === 'linkedin') {
+    if ($platform === 'twitter') {
+        require_once __DIR__ . '/zernio-lib.php';
+        if ($access_token !== ZERNIO_TOKEN_MARKER) { $code = 400; $resp = ['error' => 'X must be connected through Zernio.']; }
+        elseif (mb_strlen($message) > 280) { $code = 422; $resp = ['error' => 'X posts are limited to 280 characters (this one is ' . mb_strlen($message) . ').']; }
+        else [$code, $resp] = zernio_publish('twitter', $page_id, $message, $image_url ? [$image_url] : []);
+    } elseif ($platform === 'linkedin') {
         [$code, $resp] = linkedin_publish($page_id, $access_token, $message, $image_url);
     } elseif ($platform === 'tiktok') {
         if (!$image_url) {
