@@ -418,7 +418,7 @@ function maiContinueReportSession(PDO $pdo, array $session, $incomingText) {
         . "- Never ask \"anything else?\" while checklist items are still open; ask the next open item instead.\n"
         . "- Reply with the JSON only. Keep \"reply\" under 300 characters.";
     $callMai = function ($system, $maxTokens) {
-        [$st, $d] = callClaude(['model' => 'claude-sonnet-5-5', 'max_tokens' => $maxTokens, 'system' => $system, 'messages' => [['role' => 'user', 'content' => 'Continue the conversation now, following the instructions exactly.']]]);
+        [$st, $d] = callClaude(['model' => 'claude-sonnet-5-5', 'max_tokens' => $maxTokens, '_timeout' => 60, 'system' => $system, 'messages' => [['role' => 'user', 'content' => 'Continue the conversation now, following the instructions exactly.']]]);
         $r = '';
         if ($st >= 200 && $st < 300) foreach (($d['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $r .= $block['text']; }
         return [$st, $d, $r];

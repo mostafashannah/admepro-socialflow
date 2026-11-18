@@ -1997,12 +1997,15 @@ function askAiTeammate(PDO $pdo, string $agent, string $question, ?string $clien
 }
 
 function callClaude(array $payload) {
+    // Optional per-call timeout (seconds); not sent to the API. Default stays 30.
+    $timeout = 30;
+    if (isset($payload['_timeout'])) { $timeout = max(10, min(120, (int)$payload['_timeout'])); unset($payload['_timeout']); }
     $ch = curl_init('https://api.anthropic.com/v1/messages');
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
         CURLOPT_POSTFIELDS => json_encode($payload),
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 30,
+        CURLOPT_TIMEOUT => $timeout,
         CURLOPT_HTTPHEADER => [
             'x-api-key: ' . ANTHROPIC_API_KEY,
             'anthropic-version: 2023-06-01',
