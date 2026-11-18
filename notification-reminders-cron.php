@@ -245,6 +245,24 @@ if ($mode === 'digest') {
             'owed' => $owed, 'inv_overdue' => (int)$inv, 'inv_overdue_amt' => $invAmt,
         ];
     };
+    // Website numbers (site_events + website leads), computed once.
+    $websiteCache = null;
+    $website = function() use (&$websiteCache, $one, $rowsOf, $today) {
+        if ($websiteCache !== null) return $websiteCache ?: null;
+        $prevDay = date('Y-m-d', strtotime($today . ' -1 day')); $wk = date('Y-m-d', strtotime($today . ' -6 days'));
+        try { $pdo2 = null; $rowsOf("SELECT 1 FROM site_events LIMIT 1"); } catch (Throwable $e) { $websiteCache = false; return null; }
+        $vis = fn($f, $t) => (int)$one("SELECT COUNT(DISTINCT visitor) FROM site_events WHERE event='pageview' AND day BETWEEN :f AND :t", [':f'=>$f, ':t'=>$t]);
+        $leads = fn($f, $t) => (int)$one("SELECT COUNT(*) FROM leads WHERE source='website' AND DATE(created_at) BETWEEN :f AND :t", [':f'=>$f, ':t'=>$t]);
+        $src = $rowsOf("SELECT COALESCE(utm_source, ref_host, 'Direct') AS s FROM site_events WHERE event='pageview' AND day = :d GROUP BY s ORDER BY COUNT(DISTINCT visitor) DESC LIMIT 1", [':d'=>$today]);
+        $pg = $rowsOf("SELECT path FROM site_events WHERE event='pageview' AND day = :d GROUP BY path ORDER BY COUNT(*) DESC LIMIT 1", [':d'=>$today]);
+        return $websiteCache = [
+            'y_visitors' => $vis($today, $today), 'p_visitors' => $vis($prevDay, $prevDay),
+            'y_views' => (int)$one("SELECT COUNT(*) FROM site_events WHERE event='pageview' AND day = :d", [':d'=>$today]),
+            'y_leads' => $leads($today, $today), 'w_visitors' => $vis($wk, $today), 'w_leads' => $leads($wk, $today),
+            'y_clicks' => (int)$one("SELECT COUNT(*) FROM site_events WHERE event='click' AND day = :d", [':d'=>$today]),
+            'top_source' => $src[0]['s'] ?? '', 'top_page' => $pg[0]['path'] ?? '',
+        ];
+    };
     $recruitCache = null;
     $recruit = function() use (&$recruitCache, $one, $rowsOf) {
         if ($recruitCache !== null) return $recruitCache;
@@ -334,6 +352,17 @@ if ($mode === 'digest') {
             $body .= $line('This month so far: in '.$b($money($f['m_in'])).' · out '.$b($money($f['m_out'])).' · net <strong style="color:'.($net>=0?'#059669':'#dc2626').'">'.($net<0?'−':'').$money(abs($net)).'</strong>');
             if ($f['owed'] > 0) $body .= $line('Still owed (outstanding): '.$b($money($f['owed'])));
             if ($f['inv_overdue'] > 0) $body .= $line('<span style="color:#dc2626">'.$f['inv_overdue'].' overdue invoice'.($f['inv_overdue']==1?'':'s').' — '.$money($f['inv_overdue_amt']).'</span>');
+        }
+
+        if ($on('website') && $role === 'admin') {
+            $w = $website();
+            if ($w) {
+                $body .= $head('Website', '#3b82f6');
+                $dv = $w['y_visitors'] - $w['p_visitors'];
+                $body .= $line('Today: '.$b($w['y_visitors']).' visitor'.($w['y_visitors']==1?'':'s').' · '.$b($w['y_views']).' page views'.($w['p_visitors'] > 0 || $w['y_visitors'] > 0 ? ' <span style="color:'.($dv>=0?'#059669':'#dc2626').'">('.($dv>=0?'+':'−').abs($dv).' vs yesterday)</span>' : '').' · '.$b($w['y_leads']).' new lead'.($w['y_leads']==1?'':'s').' · '.$b($w['y_clicks']).' WhatsApp/call/email click'.($w['y_clicks']==1?'':'s'));
+                $body .= $line('Last 7 days: '.$b($w['w_visitors']).' visitors · '.$b($w['w_leads']).' lead'.($w['w_leads']==1?'':'s'));
+                if ($w['top_source']) $body .= $line('Top source today: '.htmlspecialchars($w['top_source']).($w['top_page'] ? ' · top page '.htmlspecialchars($w['top_page']) : ''));
+            }
         }
 
         if ($on('recruitment') && $canRecruit) {
