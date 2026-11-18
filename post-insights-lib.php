@@ -46,6 +46,26 @@ function fetch_one_platform_insights(PDO $pdo, array $post, string $platform, st
     if (!$access_token) { $out['error'] = "Integration has no access token"; return $out; }
     if (!$postId) { $out['error'] = "No external post ID recorded for {$platform}"; return $out; }
 
+    // Account connected through Zernio: read the post's numbers from Zernio's analytics API (included in the plan).
+    // $postId is the platform's own post id (what Zernio returned as platformPostId); Zernio accepts it directly.
+    if ($access_token === 'zernio') {
+        require_once __DIR__ . '/zernio-lib.php';
+        [$zc, $zr] = zernio_request('GET', '/analytics?' . http_build_query(['postId' => $postId]));
+        if ($zc === 202) { $out['error'] = 'Zernio is still syncing this post — try again in an hour'; return $out; }
+        if ($zc !== 200) { $out['error'] = 'Zernio: ' . ($zr['error'] ?? ('HTTP ' . $zc)); return $out; }
+        $pa = null;
+        foreach (($zr['platformAnalytics'] ?? []) as $x) { if (($x['platform'] ?? '') === ($platform === 'twitter' ? 'twitter' : $platform)) { $pa = $x['analytics'] ?? null; break; } }
+        $a = $pa ?? ($zr['analytics'] ?? null);
+        if (!$a) { $out['error'] = 'Zernio has no numbers for this post yet'; return $out; }
+        $out['likes'] = (int)($a['likes'] ?? 0);
+        $out['comments'] = (int)($a['comments'] ?? 0);
+        $out['shares'] = (int)($a['shares'] ?? 0);
+        // X doesn't report reach — fall back to impressions so the card isn't empty.
+        $reach = (int)($a['reach'] ?? 0); $imp = (int)($a['impressions'] ?? 0);
+        $out['reach'] = $reach > 0 ? $reach : ($imp > 0 ? $imp : (int)($a['views'] ?? 0));
+        return $out;
+    }
+
     $graphError = null;
     if ($platform === 'tiktok') {
         if (tiktok_looks_like_publish_id($postId)) {
