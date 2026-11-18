@@ -282,6 +282,29 @@ function gSiteContent($force = false) {
                 'image' => (string)$img, 'url' => $url, 'date' => (string)($j['date'] ?? ''), 'kind' => $kind === 'posts' ? 'article' : 'project'];
         }
     }
+    // Thumbnails: ask each live page for the preview image it declares itself (og:image), which is always the real, working URL.
+    // The project JSON only gives a relative path we can't map reliably. Fetched in parallel, a few seconds in total.
+    $refs = []; foreach (['projects', 'posts'] as $kind) foreach ($out[$kind] as $i => $it) $refs[] = [$kind, $i, $it['url']];
+    foreach (array_chunk($refs, 20) as $batch) {
+        $mh = curl_multi_init(); $hs = [];
+        foreach ($batch as $n => [$kind, $i, $url]) {
+            $c = curl_init($url);
+            curl_setopt_array($c, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 12, CURLOPT_FOLLOWLOCATION => true, CURLOPT_USERAGENT => 'Mozilla/5.0 (compatible; admepro-newsletter)', CURLOPT_HTTPHEADER => ['Accept: text/html']]);
+            curl_multi_add_handle($mh, $c); $hs[$n] = $c;
+        }
+        do { $st = curl_multi_exec($mh, $run); if ($run) curl_multi_select($mh, 1.0); } while ($run && $st === CURLM_OK);
+        foreach ($batch as $n => [$kind, $i, $url]) {
+            $html = (string)curl_multi_getcontent($hs[$n]); curl_multi_remove_handle($mh, $hs[$n]); curl_close($hs[$n]);
+            $head = substr($html, 0, 60000);
+            if (preg_match('#<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)#i', $head, $m) || preg_match('#<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']#i', $head, $m)) {
+                $img = html_entity_decode($m[1]);
+                if (!preg_match('#^https?://#', $img)) $img = rtrim(strpos($img, '//') === 0 ? 'https:' . $img : $site . '/' . ltrim($img, '/'));
+                $out[$kind][$i]['image'] = $img;
+            }
+            if ($out[$kind][$i]['summary'] === '' && preg_match('#<meta[^>]+(?:name|property)=["\'](?:og:description|description)["\'][^>]+content=["\']([^"\']+)#i', $head, $m2)) $out[$kind][$i]['summary'] = mb_substr(html_entity_decode($m2[1]), 0, 280);
+        }
+        curl_multi_close($mh);
+    }
     @file_put_contents($cache, json_encode($out, JSON_UNESCAPED_UNICODE));
     return $out;
 }
