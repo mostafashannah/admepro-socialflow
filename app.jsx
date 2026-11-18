@@ -34527,7 +34527,7 @@ function MktAudience({channel,aud,setAud,ov}) {
   const [count,setCount]=useState(null);
   useEffect(()=>{ const t=setTimeout(()=>mApi.post("audience_count",{channel,audience:aud}).then(d=>setCount(d.count)).catch(()=>setCount(null)),350); return ()=>clearTimeout(t); },[channel,JSON.stringify(aud)]);
   const toggle=(k,v)=>{ const cur=aud[k]||[]; setAud({...aud,[k]:cur.includes(v)?cur.filter(x=>x!==v):[...cur,v]}); };
-  const tags=Object.keys(ov?.tags||{}); const sources=(ov?.sources||[]).map(s=>s.source).filter(Boolean);
+  const tags=Object.keys(ov?.tags||{}).filter(t=>!t.startsWith("industry:")); const sources=(ov?.sources||[]).map(s=>s.source).filter(Boolean); const inds=Object.entries(ov?.industries||{});
   return (
     <div style={{...gCard,display:"flex",flexDirection:"column",gap:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><b style={{fontSize:14}}>Audience</b><span style={{fontSize:13,fontWeight:800,color:"var(--accent)"}}>{count==null?"…":count+" people"}</span></div>
@@ -34535,6 +34535,7 @@ function MktAudience({channel,aud,setAud,ov}) {
         <button style={gPill((aud.consent||[]).includes("opt_in"))} onClick={()=>toggle("consent","opt_in")}>Subscribed</button>
         <button style={gPill((aud.consent||[]).includes("lead"))} onClick={()=>toggle("consent","lead")}>Leads & clients</button>
       </div></div>:<div style={{fontSize:12,color:"var(--text2)"}}>Only people who opted in to WhatsApp updates are included. Anyone who replies STOP is removed automatically.</div>}
+      {inds.length>0&&<div><span style={gLabel}>Industry (optional — any of)</span><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{inds.map(([k,v])=><button key={k} style={gPill((aud.industries||[]).includes(k))} onClick={()=>toggle("industries",k)}>{v.label} <span style={{opacity:.6}}>{v.n}</span></button>)}</div></div>}
       {sources.length>0&&<div><span style={gLabel}>Source (optional)</span><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{sources.map(s=><button key={s} style={gPill((aud.sources||[]).includes(s))} onClick={()=>toggle("sources",s)}>{s}</button>)}</div></div>}
       {tags.length>0&&<div><span style={gLabel}>Tags (optional — any of)</span><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{tags.map(s=><button key={s} style={gPill((aud.tags||[]).includes(s))} onClick={()=>toggle("tags",s)}>{s} <span style={{opacity:.6}}>{ov.tags[s]}</span></button>)}</div></div>}
       <div><span style={gLabel}>Language</span><div style={{display:"flex",gap:6}}>{[["","All"],["en","English"],["ar","Arabic"]].map(([k,lb])=><button key={k} style={gPill((aud.lang||"")===k)} onClick={()=>setAud({...aud,lang:k||undefined})}>{lb}</button>)}</div></div>
@@ -34661,7 +34662,7 @@ function MktContacts({ov,onChange}) {
   const [adding,setAdding]=useState(null); const [imp,setImp]=useState(null); const [busy,setBusy]=useState("");
   const load=()=>mApi.get("contacts",{q,filter}).then(d=>{setData(d);setErr("");}).catch(e=>setErr(e.message));
   useEffect(()=>{ const t=setTimeout(load,250); return ()=>clearTimeout(t); },[q,filter]);
-  const sync=async()=>{ setBusy("sync"); try{ const d=await mApi.post("sync"); alert(`${d.synced} contacts synced from Leads and Clients.`); load(); onChange&&onChange(); }catch(e){ alert(e.message); } finally{ setBusy(""); } };
+  const sync=async()=>{ setBusy("sync"); try{ const d=await mApi.post("sync"); alert(`${d.synced} contacts synced from Leads and Clients${d.tagged?`, ${d.tagged} sorted into industries by AI`:""}. Run it again to sort more.`); load(); onChange&&onChange(); }catch(e){ alert(e.message); } finally{ setBusy(""); } };
   const saveC=async(c)=>{ try{ await mApi.post("contact_save",c); setAdding(null); load(); onChange&&onChange(); }catch(e){ alert(e.message); } };
   const parseCsv=(txt)=>{ const lines=txt.split(/\r?\n/).filter(l=>l.trim()); if(!lines.length) return [];
     const split=l=>{ const out=[]; let cur="",qq=false; for(const ch of l){ if(ch==='"'){qq=!qq;continue;} if((ch===","||ch===";")&&!qq){out.push(cur);cur="";continue;} cur+=ch; } out.push(cur); return out.map(x=>x.trim()); };
@@ -34675,6 +34676,7 @@ function MktContacts({ov,onChange}) {
       <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
         <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search name, email, company, phone…" style={{...inputSt,flex:"1 1 220px"}}/>
         {[["","All"],["opt_in","Subscribed"],["lead","Leads"],["wa","WhatsApp"],["responder","Replied to WhatsApp"],["unsub","Unsubscribed"]].map(([k,lb])=><button key={k} style={gPill(filter===k)} onClick={()=>setFilter(k)}>{lb}</button>)}
+        {Object.keys(ov?.industries||{}).length>0&&<select value={filter.startsWith("industry:")?filter:""} onChange={e=>setFilter(e.target.value)} style={{...inputSt,width:170}}><option value="">Industry…</option>{Object.entries(ov.industries).map(([k,v])=><option key={k} value={"industry:"+k}>{v.label} ({v.n})</option>)}</select>}
       </div>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <button style={wBtn(true)} onClick={()=>setAdding({consent:"opt_in"})}>+ Add contact</button>

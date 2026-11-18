@@ -21,7 +21,8 @@ case 'overview': {
     $tags = []; foreach ($pdo->query("SELECT tags FROM mkt_contacts WHERE tags IS NOT NULL AND tags<>'' LIMIT 5000") as $r) foreach (explode(',', $r['tags']) as $t) { $t = trim($t); if ($t !== '') $tags[$t] = ($tags[$t] ?? 0) + 1; }
     arsort($tags);
     $sources = $pdo->query("SELECT source, COUNT(*) n FROM mkt_contacts GROUP BY source ORDER BY n DESC")->fetchAll(PDO::FETCH_ASSOC);
-    gOut(200, ['contacts' => $c, 'last30' => $s, 'tags' => array_slice($tags, 0, 40, true), 'sources' => $sources,
+    $industries = []; foreach (G_INDUSTRIES as $slug => $label) { $q = $pdo->prepare("SELECT COUNT(*) FROM mkt_contacts WHERE email IS NOT NULL AND unsub_email = 0 AND bounced = 0 AND FIND_IN_SET(?, REPLACE(tags, ', ', ','))"); $q->execute(['industry:' . $slug]); $c = (int)$q->fetchColumn(); if ($c) $industries[$slug] = ['label' => $label, 'n' => $c]; }
+    gOut(200, ['contacts' => $c, 'last30' => $s, 'tags' => array_slice($tags, 0, 40, true), 'sources' => $sources, 'industries' => $industries,
         'config' => ['from' => defined('MARKETING_FROM') ? MARKETING_FROM : 'admepro <news@admepro.com>', 'wa_marketing_number' => defined('WA_MKT_PHONE_ID') && WA_MKT_PHONE_ID ? 'separate' : 'main', 'templates' => defined('WA_WABA_ID') && WA_WABA_ID ? true : false,
             'signup_url' => gBase() . '/newsletter-signup.php']]);
 }
@@ -32,6 +33,7 @@ case 'contacts': {
     if ($f === 'opt_in' || $f === 'lead') { $w[] = "consent = ?"; $bind[] = $f; }
     if ($f === 'unsub') $w[] = "unsub_email = 1";
     if ($f === 'wa') $w[] = "wa_opt_in = 1 AND unsub_wa = 0";
+    if (strpos($f, 'industry:') === 0) { $w[] = "FIND_IN_SET(?, REPLACE(tags, ', ', ','))"; $bind[] = $f; }
     if ($f === 'responder') $w[] = "FIND_IN_SET('wa-responder', REPLACE(tags, ', ', ','))";
     $st = $pdo->prepare("SELECT * FROM mkt_contacts WHERE " . implode(' AND ', $w) . " ORDER BY id DESC LIMIT 100 OFFSET " . ($page * 100)); $st->execute($bind);
     $cnt = $pdo->prepare("SELECT COUNT(*) FROM mkt_contacts WHERE " . implode(' AND ', $w)); $cnt->execute($bind);
@@ -59,7 +61,8 @@ case 'import': {
 }
 case 'sync': {
     // Pull leads + clients that have an email/phone into contacts (consent 'lead' — existing business relationship).
-    gOut(200, ['ok' => true, 'synced' => gSyncLeadsAndClients($pdo)]);
+    $tagged = 0; $n = gSyncLeadsAndClients($pdo, $tagged);
+    gOut(200, ['ok' => true, 'synced' => $n, 'tagged' => $tagged]);
 }
 case 'site_content': { gOut(200, gSiteContent(!empty($_GET['refresh']))); }
 case 'responders': {

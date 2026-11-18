@@ -49,7 +49,7 @@ function saApprove(PDO $pdo, array $p) {
         }
         $leadId = (string)$pdo->lastInsertId();
     }
-    foreach ($contacts as $c) gUpsertContact($pdo, ['email' => $c['email'], 'phone' => $c['phone'], 'name' => $c['name'] ?? null, 'company' => $p['company'], 'source' => 'sales_agent', 'tags' => 'prospect', 'consent' => 'lead', 'consent_note' => 'B2B prospect (public business contact)', 'lead_id' => $leadId]);
+    foreach ($contacts as $c) gUpsertContact($pdo, ['email' => $c['email'], 'phone' => $c['phone'], 'name' => $c['name'] ?? null, 'company' => $p['company'], 'source' => 'sales_agent', 'tags' => trim('prospect,' . gIndustryTag(($p['industry'] ?? '') . ' ' . ($p['company'] ?? '')), ','), 'consent' => 'lead', 'consent_note' => 'B2B prospect (public business contact)', 'lead_id' => $leadId]);
     $pdo->prepare("UPDATE sales_prospects SET status=IF(status='new','approved',status), lead_id=?, updated_at=? WHERE id=?")->execute([$leadId, gNow(), $p['id']]);
     return [true, $leadId];
 }

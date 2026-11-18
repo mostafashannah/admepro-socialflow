@@ -79,6 +79,7 @@ function gAudienceWhere(array $aud, $channel, array &$bind) {
     }
     if (!empty($aud['sources'])) { $s = array_slice((array)$aud['sources'], 0, 20); $w[] = "source IN (" . implode(',', array_fill(0, count($s), '?')) . ")"; foreach ($s as $x) $bind[] = (string)$x; }
     if (!empty($aud['tags'])) { $o = []; foreach (array_slice((array)$aud['tags'], 0, 20) as $t) { $o[] = "FIND_IN_SET(?, REPLACE(tags, ', ', ','))"; $bind[] = trim((string)$t); } $w[] = '(' . implode(' OR ', $o) . ')'; }
+    if (!empty($aud['industries'])) { $o = []; foreach (array_slice((array)$aud['industries'], 0, 20) as $t) { $o[] = "FIND_IN_SET(?, REPLACE(tags, ', ', ','))"; $bind[] = 'industry:' . trim((string)$t); } $w[] = '(' . implode(' OR ', $o) . ')'; }
     if (!empty($aud['lang'])) { $w[] = "(lang = ? OR lang IS NULL)"; $bind[] = (string)$aud['lang']; }
     return implode(' AND ', $w);
 }
@@ -227,14 +228,70 @@ function gBody() { $j = json_decode(file_get_contents('php://input') ?: '[]', tr
 
 
 /* ─────────── sync leads + clients into marketing contacts (used by the Contacts page and the daily machine) ─────────── */
-function gSyncLeadsAndClients(PDO $pdo) {
+const G_INDUSTRIES = ['real-estate' => 'Real estate', 'food-beverage' => 'Food & beverage', 'retail-fashion' => 'Retail & fashion', 'health-beauty' => 'Health & beauty',
+    'education' => 'Education', 'technology' => 'Technology', 'automotive' => 'Automotive', 'hospitality-travel' => 'Hospitality & travel',
+    'finance-insurance' => 'Finance & insurance', 'construction-industry' => 'Construction & industry', 'professional-services' => 'Professional services',
+    'media-entertainment' => 'Media & entertainment', 'other' => 'Other'];
+
+/** Cheap keyword match (English + Arabic) from an industry field, a company name or notes → industry slug, or null. */
+function gIndustrySlug($text) {
+    $t = mb_strtolower((string)$text);
+    if (trim($t) === '') return null;
+    $map = [
+        'real-estate' => ['real estate', 'realestate', 'property', 'developer', 'developments', 'compound', 'عقار', 'تطوير', 'كمبوند'],
+        'food-beverage' => ['restaurant', 'cafe', 'café', 'coffee', 'food', 'bakery', 'catering', 'beverage', 'مطعم', 'كافيه', 'قهوة', 'أغذية', 'حلويات'],
+        'retail-fashion' => ['fashion', 'clothing', 'apparel', 'retail', 'jewel', 'boutique', 'shoes', 'ملابس', 'أزياء', 'مجوهرات', 'تجزئة'],
+        'health-beauty' => ['clinic', 'medical', 'dental', 'hospital', 'pharma', 'health', 'beauty', 'skincare', 'cosmetic', 'salon', 'spa', 'عيادة', 'طبي', 'تجميل', 'صيدلية'],
+        'education' => ['school', 'academy', 'university', 'education', 'nursery', 'training', 'مدرسة', 'أكاديمية', 'جامعة', 'تعليم', 'حضانة'],
+        'technology' => ['software', 'tech', 'it services', 'saas', 'app ', 'digital solutions', 'برمجيات', 'تقنية'],
+        'automotive' => ['auto', 'car ', 'cars', 'motor', 'vehicle', 'سيارات', 'موتورز'],
+        'hospitality-travel' => ['hotel', 'resort', 'travel', 'tourism', 'tours', 'فندق', 'سياحة', 'سفر'],
+        'finance-insurance' => ['bank', 'finance', 'insurance', 'investment', 'fintech', 'بنك', 'تمويل', 'تأمين', 'استثمار'],
+        'construction-industry' => ['construction', 'contracting', 'engineering', 'manufactur', 'factory', 'industrial', 'steel', 'مقاولات', 'هندسة', 'مصنع', 'صناعة'],
+        'professional-services' => ['consult', 'law ', 'legal', 'accounting', 'agency', 'recruit', 'محاماة', 'استشارات', 'محاسبة'],
+        'media-entertainment' => ['media', 'film', 'music', 'production', 'entertainment', 'events', 'إنتاج', 'إعلام', 'فعاليات'],
+    ];
+    foreach ($map as $slug => $words) foreach ($words as $w) if (mb_strpos($t, $w) !== false) return $slug;
+    return null;
+}
+function gIndustryTag($text) { $s = gIndustrySlug($text); return $s ? 'industry:' . $s : ''; }
+
+/** AI pass for contacts that still have no industry tag: one call, up to $limit contacts, always ends with a tag (other as a fallback). */
+function gClassifyUntaggedIndustries(PDO $pdo, $limit = 40) {
+    $st = $pdo->prepare("SELECT id, name, company, email, tags FROM mkt_contacts WHERE (tags IS NULL OR tags NOT LIKE '%industry:%') AND ((company IS NOT NULL AND company <> '') OR (name IS NOT NULL AND name <> '')) AND source IN ('lead','client','sales_agent','import','newsletter','website') ORDER BY id DESC LIMIT " . (int)$limit);
+    $st->execute(); $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+    if (!$rows) return 0;
+    $list = ''; foreach ($rows as $r) $list .= $r['id'] . ' | ' . ($r['company'] ?: $r['name']) . ' | ' . substr((string)strrchr((string)$r['email'], '@'), 1) . "\n";
+    [$ok, $text] = gClaude(['max_tokens' => 2500, 'output_config' => ['effort' => 'low'], 'system' => 'You classify businesses by industry. Reply with ONE JSON object mapping each id to one slug, nothing else.',
+        'messages' => [['role' => 'user', 'content' => "Slugs: " . implode(', ', array_keys(G_INDUSTRIES)) . "\nUse \"other\" only if none fit. Lines are: id | company or person | email domain\n$list\nReturn {\"<id>\":\"<slug>\", …} for every id."]]], 90);
+    $j = $ok ? gJson($text) : null; if (!is_array($j)) return 0;
     $n = 0;
-    try { foreach ($pdo->query("SELECT id, name, company, email, phone FROM leads WHERE ((email IS NOT NULL AND email<>'') OR (phone IS NOT NULL AND phone<>'')) LIMIT 20000") as $r)
-        if (gUpsertContact($pdo, ['email' => $r['email'], 'phone' => $r['phone'], 'name' => $r['name'], 'company' => $r['company'], 'source' => 'lead', 'tags' => 'lead', 'lead_id' => (string)$r['id'], 'consent' => 'lead', 'consent_note' => 'From leads'])) $n++; }
-    catch (Throwable $e) { error_log('[growth] lead sync: ' . $e->getMessage()); }
-    try { foreach ($pdo->query("SELECT id, name, email, phone FROM clients WHERE email IS NOT NULL AND email<>'' LIMIT 5000") as $r)
-        if (gUpsertContact($pdo, ['email' => $r['email'], 'phone' => $r['phone'], 'name' => $r['name'], 'company' => $r['name'], 'source' => 'client', 'tags' => 'client', 'client_id' => (string)$r['id'], 'consent' => 'lead', 'consent_note' => 'Client'])) $n++; }
-    catch (Throwable $e) { error_log('[growth] client sync: ' . $e->getMessage()); }
+    foreach ($rows as $r) {
+        $slug = $j[(string)$r['id']] ?? null; if (!is_string($slug) || !isset(G_INDUSTRIES[$slug])) continue;
+        $tags = implode(',', array_unique(array_filter(array_merge(array_map('trim', explode(',', (string)$r['tags'])), ['industry:' . $slug]))));
+        $pdo->prepare("UPDATE mkt_contacts SET tags = ?, updated_at = ? WHERE id = ?")->execute([$tags, gNow(), $r['id']]); $n++;
+    }
+    return $n;
+}
+
+/* ─────────── sync leads + clients into marketing contacts (used by the Contacts page and the daily machine) ───────────
+ * Only REAL leads come across (category lead, not job seekers / service providers / contacts with no number) and each contact
+ * is tagged with its industry, so campaigns can target an industry. Returns [contacts synced, contacts newly tagged by AI]. */
+function gSyncLeadsAndClients(PDO $pdo, &$tagged = null) {
+    $n = 0;
+    try {
+        foreach ($pdo->query("SELECT * FROM leads WHERE ((email IS NOT NULL AND email<>'') OR (phone IS NOT NULL AND phone<>'')) AND (category IS NULL OR category IN ('', 'lead')) LIMIT 20000") as $r) {
+            $ind = gIndustryTag(($r['industry'] ?? '') ?: ($r['company'] ?? '') . ' ' . ($r['name'] ?? ''));
+            if (gUpsertContact($pdo, ['email' => $r['email'], 'phone' => $r['phone'], 'name' => $r['name'], 'company' => $r['company'] ?? null, 'source' => 'lead', 'tags' => trim('lead,' . $ind, ','), 'lead_id' => (string)$r['id'], 'consent' => 'lead', 'consent_note' => 'From leads'])) $n++;
+        }
+    } catch (Throwable $e) { error_log('[growth] lead sync: ' . $e->getMessage()); }
+    try {
+        foreach ($pdo->query("SELECT * FROM clients WHERE email IS NOT NULL AND email<>'' LIMIT 5000") as $r) {
+            $ind = gIndustryTag(($r['industry'] ?? '') ?: ($r['name'] ?? ''));
+            if (gUpsertContact($pdo, ['email' => $r['email'], 'phone' => $r['phone'] ?? null, 'name' => $r['name'], 'company' => $r['name'], 'source' => 'client', 'tags' => trim('client,' . $ind, ','), 'client_id' => (string)$r['id'], 'consent' => 'lead', 'consent_note' => 'Client'])) $n++;
+        }
+    } catch (Throwable $e) { error_log('[growth] client sync: ' . $e->getMessage()); }
+    $tagged = 0; try { $tagged = gClassifyUntaggedIndustries($pdo, 40); } catch (Throwable $e) { error_log('[growth] industry classify: ' . $e->getMessage()); }
     return $n;
 }
 
