@@ -71,7 +71,7 @@ function forwardToExternalBot(PDO $pdo, array $settings, string $clientId, strin
 
 function findIntegrationCreds(PDO $pdo, string $clientId, string $channel) {
     // channel is already resolved to an app_key by the caller (instagram|facebook|whatsapp).
-    $appKey = in_array($channel, ['instagram', 'facebook', 'whatsapp'], true) ? $channel : 'facebook';
+    $appKey = in_array($channel, ['instagram', 'facebook', 'whatsapp', 'linkedin'], true) ? $channel : 'facebook';
     $stmt = $pdo->prepare("SELECT credentials FROM integrations WHERE client_id = :cid AND app_key = :k AND status = 'active' LIMIT 1");
     $stmt->execute([':cid' => $clientId, ':k' => $appKey]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -691,7 +691,7 @@ function maybeAutoReply(PDO $pdo, string $clientId, string $clientName, string $
     if (!$settings['enabled']) { $log('bot disabled'); return; }
     if (!in_array($channel, $settings['channels'], true)) { $log('channel not enabled in settings: ' . json_encode($settings['channels'])); return; }
 
-    $isComment   = $channel === 'fb_comment' || $channel === 'ig_comment';
+    $isComment   = $channel === 'fb_comment' || $channel === 'ig_comment' || $channel === 'li_comment';
     $isWhatsApp  = $channel === 'whatsapp';
     if ($isComment && !$externalId) { $log('comment channel but no external_id'); return; }
 
@@ -730,7 +730,8 @@ function maybeAutoReply(PDO $pdo, string $clientId, string $clientName, string $
         $log('generateBotReply returned empty (Claude opted out or API error) — using fallback message');
     }
 
-    if ($settings['mode'] === 'auto') {
+    // LinkedIn comments (through Zernio) always wait for a person's approval for now, whatever the client's mode.
+    if ($settings['mode'] === 'auto' && $channel !== 'li_comment') {
         // Resolve the channel to the integration app_key that holds the send credentials.
         $appKey = $isWhatsApp ? 'whatsapp' : ($isComment ? ($channel === 'ig_comment' ? 'instagram' : 'facebook') : $channel);
         $creds = findIntegrationCreds($pdo, $clientId, $appKey);

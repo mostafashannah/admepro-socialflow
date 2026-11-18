@@ -15000,6 +15000,7 @@ const INBOX_CHANNEL_MAP = {
   whatsapp:   {label:"WhatsApp",     icon:Icons.waBrand,   color:"#25d366", brand:true},
   fb_comment: {label:"FB Comments",  icon:Icons.fbBrand,   color:"#1877f2", brand:true},
   ig_comment: {label:"IG Comments",  icon:Icons.igBrand,   color:"#c13584", brand:true},
+  li_comment: {label:"LinkedIn Comments", icon:Icons.linkedinBrand, color:"#0a66c2", brand:true},
 };
 // Renders a channel's real platform logo (Messenger/Instagram/WhatsApp) as a
 // filled brand mark in the platform colour, or a fallback chat glyph.
@@ -15343,7 +15344,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
             <div>
               <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>Channels</p>
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                {["instagram","messenger","fb_comment","ig_comment","whatsapp"].map(ch=>{
+                {["instagram","messenger","fb_comment","ig_comment","li_comment","whatsapp"].map(ch=>{
                   const on = botChannels.includes(ch);
                   const meta = INBOX_CHANNEL_MAP[ch];
                   return (
@@ -30660,7 +30661,7 @@ const INTEGRATION_APPS = [
   {key:"whatsapp", label:"WhatsApp", category:"social", color:"#25D366", icon:Icons.waBrand, brand:true, description:"Connect a client's WhatsApp number to their inbox"},
   {key:"linkedin", label:"LinkedIn", category:"social", color:"#0A66C2", icon:Icons.linkedinBrand, brand:true, description:"Publish posts to LinkedIn (posting only — no DM/comment replies)"},
   {key:"tiktok", label:"TikTok", category:"social", color:"#000000", icon:Icons.tiktokBrand, brand:true, description:"Publish videos to TikTok and track per-video views/likes/comments"},
-  ...(typeof window!=="undefined" && window.SF_ENABLE_X_VIA_ZERNIO ? [{key:"twitter", label:"X (Twitter)", category:"social", color:"#000000", icon:Icons.plug, description:"Publish posts to X through Zernio (280 characters)"}] : []), // on hold — set window.SF_ENABLE_X_VIA_ZERNIO=true to show
+  {key:"twitter", label:"X (Twitter)", category:"social", color:"#000000", icon:Icons.plug, description:"Publish posts to X through Zernio (280 characters)"},
   // Spreadsheet / Data
   {key:"google_sheets",label:"Google Sheets", category:"spreadsheet", color:"#0F9D58", icon:Icons.sheetsBrand, description:"Add rows to Google Sheets"},
   // Ecommerce
@@ -54072,7 +54073,7 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
   // Send a manual reply to a customer in the per-client social inbox (Messenger/Instagram/WhatsApp)
   // fb_comment/ig_comment channels reply publicly via the comment's own id (external_id),
   // not a DM recipient — everything else is a normal Messenger/Instagram DM send.
-  const inboxAppKey = (channel) => channel==="whatsapp" ? "whatsapp" : (channel==="instagram"||channel==="ig_comment") ? "instagram" : "facebook";
+  const inboxAppKey = (channel) => channel==="whatsapp" ? "whatsapp" : channel==="li_comment" ? "linkedin" : (channel==="instagram"||channel==="ig_comment") ? "instagram" : "facebook";
   const inboxSendBody = (channel, customerId, externalId, creds, message) => channel==="whatsapp"
     ? {channel, recipient_id:customerId, phone_id:creds.phone_id, access_token:creds.access_token, message}
     : {channel, recipient_id:customerId, external_id:externalId||"", page_id:creds.page_id, access_token:creds.access_token, message};

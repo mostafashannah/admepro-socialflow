@@ -64,3 +64,14 @@ function zernio_publish($platform, $accountId, $message, $mediaUrls = [], array 
         'status'  => $post['status'] ?? ($pl['status'] ?? null),
     ]];
 }
+
+/** Reply to a comment through Zernio. $externalId = "<platform post id>||<comment id>" as stored by zernio-webhook.php. */
+function zernio_reply_comment($accountId, $externalId, $message) {
+    [$postId, $commentId] = array_pad(explode('||', (string)$externalId, 2), 2, '');
+    if ($postId === '' || $commentId === '') return [400, ['error' => 'Missing post or comment id for the reply']];
+    [$code, $resp] = zernio_request('POST', '/inbox/comments/' . rawurlencode($postId),
+        ['accountId' => $accountId, 'commentId' => $commentId, 'message' => $message],
+        ['Idempotency-Key: sf-' . sha1($accountId . '|' . $externalId . '|' . $message)]);
+    if ($code >= 200 && $code < 300) return [200, $resp];
+    return [$code ?: 502, ['error' => $resp['error'] ?? 'Zernio could not post the reply', 'detail' => $resp]];
+}

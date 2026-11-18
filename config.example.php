@@ -140,3 +140,4 @@ define('RECRUITMENT_SMTP_PORT', 465);
 
 // Zernio (zernio.com) — posts to LinkedIn and other platforms through one API key. Server-side only, never in the app.
 define('ZERNIO_API_KEY', '');
+define('ZERNIO_WEBHOOK_SECRET', ''); // any long random string; use the same one in Zernio's webhook settings

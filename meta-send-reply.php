@@ -41,9 +41,18 @@ if (!$channel || !$accessToken || !$message || (!$recipientId && !$externalId)) 
     exit;
 }
 
-if (!in_array($channel, ['messenger', 'instagram', 'fb_comment', 'ig_comment', 'whatsapp'], true)) {
+if (!in_array($channel, ['messenger', 'instagram', 'fb_comment', 'ig_comment', 'whatsapp', 'li_comment'], true)) {
     http_response_code(400);
-    echo json_encode(['error' => 'Unsupported channel. Supported: messenger, instagram, fb_comment, ig_comment, whatsapp']);
+    echo json_encode(['error' => 'Unsupported channel. Supported: messenger, instagram, fb_comment, ig_comment, whatsapp, li_comment']);
+    exit;
+}
+
+// LinkedIn comments are answered through Zernio (page_id = the Zernio account id).
+if ($channel === 'li_comment') {
+    require_once __DIR__ . '/zernio-lib.php';
+    [$zc, $zr] = zernio_reply_comment($pageId, $externalId, $message);
+    http_response_code($zc);
+    echo json_encode($zr);
     exit;
 }
 
