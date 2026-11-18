@@ -4,8 +4,9 @@ if (PHP_SAPI !== 'cli') { http_response_code(404); exit; } // server-only script
 // One-time (and re-runnable) cleanup of admepro's own Leads center — nothing is deleted, rows are only re-labelled:
 //   php leads-cleanup.php           dry run: prints what WOULD change
 //   php leads-cleanup.php apply     writes the changes
-// Rules: a lead that came from a social platform (Instagram, Facebook, Messenger, WhatsApp, comments, TikTok, X, LinkedIn)
-// must have a phone number, otherwise category = no_contact. A social lead that the AI reads as a job seeker, a service
+// Rules: EVERY lead in the Leads center must have a phone number, otherwise category = no_contact (hidden, not deleted;
+// leads with an email keep receiving email campaigns). A lead from a social platform (Instagram, Facebook, Messenger, WhatsApp,
+// comments, TikTok, X, LinkedIn) A social lead that the AI reads as a job seeker, a service
 // provider pitching us, or noise is re-labelled hiring / service_provider / not_lead. Only category "lead" shows in the
 // Leads center. Undo a row by setting its category back to 'lead'.
 // ================================================================
@@ -24,12 +25,12 @@ foreach ($rows as $r) {
     $own = $r['client_name'] ? preg_match('/^admepro$/i', trim($r['client_name'])) : ($r['client_id'] ? in_array($r['client_id'], $ownIds, true) : !preg_match("/ on (.{1,60}?)['’]s account/i", (string)$r['notes']));
     if (!$own) continue;
     $src = strtolower(trim((string)$r['source']));
-    if (!in_array($src, $SOCIAL, true)) continue;
+    $isSocial = in_array($src, $SOCIAL, true);
     $n['checked']++;
     $digits = preg_replace('/\D/', '', (string)$r['phone']);
     $new = null;
-    if (strlen($digits) < 7) $new = 'no_contact';
-    elseif ($n['ai_calls'] < 250) {
+    if (strlen($digits) < 7) $new = 'no_contact';        // every source: no phone number = not in the Leads center
+    elseif ($isSocial && $n['ai_calls'] < 250) {
         $text = trim(preg_replace('/src_id:\S+/', '', (string)$r['notes']));
         if (mb_strlen($text) > 20) {
             $n['ai_calls']++;

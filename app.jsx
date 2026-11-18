@@ -29874,7 +29874,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const isRealLead = l => {
     const cat = String(l.category||"lead").toLowerCase();
     if(cat && cat!=="lead") return false;
-    if(SOCIAL_SRC.includes(String(l.source||"").toLowerCase()) && String(l.phone||"").replace(/\D/g,"").length<7) return false;
+    if(String(l.phone||"").replace(/\D/g,"").length<7) return false;   // every lead needs a phone number
     return true;
   };
   const [showHiddenLeads,setShowHiddenLeads] = useState(false);
@@ -30021,7 +30021,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
         <div>
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Leads & CRM</h2>
-          <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{leadsScope.length} leads · ${pipelineValue.toLocaleString()} pipeline{hiddenOwn.length>0&&<> · <button onClick={()=>setShowHiddenLeads(v=>!v)} title="Job applicants, service providers, noise, and social contacts without a phone number" style={{color:"var(--accent)",fontWeight:700,fontSize:12,textDecoration:"underline"}}>{showHiddenLeads?"hide":"show"} {hiddenOwn.length} not-leads</button></>}</p>
+          <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{leadsScope.length} leads · ${pipelineValue.toLocaleString()} pipeline{hiddenOwn.length>0&&<> · <button onClick={()=>setShowHiddenLeads(v=>!v)} title="Job applicants, service providers, noise, and contacts without a phone number" style={{color:"var(--accent)",fontWeight:700,fontSize:12,textDecoration:"underline"}}>{showHiddenLeads?"hide":"show"} {hiddenOwn.length} not-leads</button></>}</p>
         </div>
         <div style={{display:"flex",gap:8}}>
           <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)"}}>
