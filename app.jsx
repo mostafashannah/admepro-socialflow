@@ -30053,74 +30053,65 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
 
       {showRotationSettings&&<LeadRotationSettingsModal appSettings={appSettings} onSave={onSaveSettings} team={team} onClose={()=>setShowRotationSettings(false)}/>}
 
-      {/* Stats */}
-      <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
+      {/* Stats: one compact bar */}
+      <div style={{display:"flex",flexWrap:"wrap",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
         {[
-          {label:"Total Leads",val:leadsScope.length,color:"#3b82f6"},
-          {label:"Pipeline Value",val:`$${pipelineValue.toLocaleString()}`,color:"#8b5cf6"},
-          {label:"Closed Won",val:`$${totalValue.toLocaleString()}`,color:"#10b981"},
+          {label:"Total leads",val:leadsScope.length,color:"#3b82f6"},
+          {label:"Pipeline",val:`$${pipelineValue.toLocaleString()}`,color:"#8b5cf6"},
+          {label:"Closed won",val:`$${totalValue.toLocaleString()}`,color:"#10b981"},
           {label:"Overdue",val:overdueCount,color:overdueCount>0?"#ef4444":"#6b7280"},
-        ].map(s=>(
-          <div key={s.label} style={{padding:"16px 20px",background:"var(--surface)",border:`1px solid ${s.label==="Overdue"&&overdueCount>0?"#ef444444":"var(--border)"}`,borderRadius:"var(--r)"}}>
-            <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>{s.label}</p>
-            <p style={{fontSize:typeof s.val==="string"?20:28,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1}}>{s.val}</p>
+        ].map((s,i)=>(
+          <div key={s.label} style={{flex:"1 1 140px",padding:"12px 18px",borderLeft:i?"1px solid var(--border)":"none"}}>
+            <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:4}}>{s.label}</p>
+            <p style={{fontSize:22,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1}}>{s.val}</p>
           </div>
         ))}
       </div>
 
-      {/* Leads Center: every channel in one strip, click to filter */}
+      {/* Where leads come from: type cards, then channels inside the chosen type */}
       {(()=>{
         const CH_LABEL = {whatsapp:"WhatsApp",messenger:"Messenger",instagram:"Instagram",facebook:"Facebook",fb_comment:"Facebook comments",ig_comment:"Instagram comments",li_comment:"LinkedIn comments",linkedin:"LinkedIn",tiktok:"TikTok",twitter:"X",x:"X",website:"Website",email:"Email replies",email_campaign:"Email campaigns",wa_campaign:"WhatsApp campaigns",referral:"Referral",cold_call:"Cold call",exhibition:"Exhibition",old_data:"Old data",other:"Other"};
-        const counts = {};
-        leadsScope.forEach(l=>{ const k=String(l.source||"other").toLowerCase()||"other"; counts[k]=(counts[k]||0)+1; });
-        const rows = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
-        if(!rows.length) return null;
+        const counts = {}; leadsScope.forEach(l=>{ const k=String(l.source||"other").toLowerCase()||"other"; counts[k]=(counts[k]||0)+1; });
         const gCounts = {}; leadsScope.forEach(l=>{ const g=leadGroupOf(l.source); gCounts[g]=(gCounts[g]||0)+1; });
-        const groupCards = [...LEAD_GROUPS, {key:"other",label:"Other",color:"#a16207"}];
+        const groupCards = [...LEAD_GROUPS, {key:"other",label:"Other",color:"#a16207"}].filter(g=>g.key!=="other"||gCounts.other);
+        const curGroup = sourceF.startsWith("group:") ? sourceF.slice(6) : (sourceF!=="all" ? leadGroupOf(sourceF) : null);
+        const chRows = Object.entries(counts).filter(([k])=>!curGroup||leadGroupOf(k)===curGroup).sort((a,b)=>b[1]-a[1]);
+        if(!leadsScope.length) return null;
         return <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:10}}>
-            {groupCards.map(g=>{ const on=sourceF==="group:"+g.key; return <button key={g.key} type="button" onClick={()=>setSourceF(on?"all":"group:"+g.key)} style={{textAlign:"left",padding:"12px 14px",background:on?g.color+"22":"var(--surface)",border:`1px solid ${on?g.color:"var(--border)"}`,borderRadius:"var(--r)",cursor:"pointer"}}>
-              <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:4}}>{g.label}</p>
-              <p style={{fontSize:24,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:g.color,lineHeight:1}}>{gCounts[g.key]||0}</p>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>
+            {groupCards.map(g=>{ const on=curGroup===g.key; return <button key={g.key} type="button" onClick={()=>setSourceF(on&&sourceF==="group:"+g.key?"all":"group:"+g.key)} style={{textAlign:"left",padding:"10px 14px",background:on?g.color+"22":"var(--surface)",border:`1px solid ${on?g.color:"var(--border)"}`,borderLeft:`3px solid ${g.color}`,borderRadius:"var(--r)",cursor:"pointer"}}>
+              <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:3}}>{g.label}</p>
+              <p style={{fontSize:22,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:g.color,lineHeight:1}}>{gCounts[g.key]||0}</p>
             </button>; })}
           </div>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-          <span style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase"}}>Channels</span>
-          <button type="button" onClick={()=>setSourceF("all")} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,border:`1px solid ${sourceF==="all"?"var(--accent)":"var(--border2)"}`,background:sourceF==="all"?"var(--accent)":"var(--surface2)",color:sourceF==="all"?"#fff":"var(--text2)",cursor:"pointer"}}>All · {leadsScope.length}</button>
-          {rows.map(([k,n])=><button key={k} type="button" onClick={()=>setSourceF(f=>f===k?"all":k)} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,border:`1px solid ${sourceF===k?"var(--accent)":"var(--border2)"}`,background:sourceF===k?"var(--accent)":"var(--surface2)",color:sourceF===k?"#fff":"var(--text2)",cursor:"pointer",whiteSpace:"nowrap"}}>{CH_LABEL[k]||k.replace(/_/g," ")} · {n}</button>)}
-        </div>
+          {chRows.length>1&&<div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+            <span style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginRight:2}}>Channels</span>
+            {chRows.map(([k,n])=><button key={k} type="button" onClick={()=>setSourceF(f=>f===k?(curGroup?"group:"+curGroup:"all"):k)} style={{padding:"4px 11px",borderRadius:99,fontSize:11.5,fontWeight:700,border:`1px solid ${sourceF===k?"var(--accent)":"var(--border2)"}`,background:sourceF===k?"var(--accent)":"var(--surface2)",color:sourceF===k?"#fff":"var(--text2)",cursor:"pointer",whiteSpace:"nowrap"}}>{CH_LABEL[k]||k.replace(/_/g," ")} · {n}</button>)}
+          </div>}
         </div>;
       })()}
 
-      {/* Filters */}
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",overflowX:"auto"}}>
-        <div style={{position:"relative",flex:1,maxWidth:260}}>
+      {/* One filter row */}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+        <div style={{position:"relative",flex:"1 1 200px",maxWidth:300}}>
           <div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"var(--text3)"}}><Ico d={Icons.search} size={14}/></div>
           <input value={search} onChange={e=>setSearch(e.target.value)} aria-label="Search leads" placeholder="Search leads…" style={{...inputSt,paddingLeft:32,borderRadius:99}}/>
         </div>
-        <select value={sourceF} onChange={e=>setSourceF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12,borderRadius:99}}>
-          <option value="all">All Sources</option>
-          {LEAD_SOURCES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
-        </select>
-        {/* Always-visible shortcut to the Old Data leads, instead of having
-            to dig for it inside the Source dropdown every time. */}
-        <button type="button" onClick={()=>setSourceF(f=>f==="old_data"?"all":"old_data")}
-          style={{padding:"9px 14px",borderRadius:99,fontSize:12,fontWeight:700,border:`1px solid ${sourceF==="old_data"?"var(--accent)":"var(--border2)"}`,background:sourceF==="old_data"?"var(--accent)":"var(--surface2)",color:sourceF==="old_data"?"#fff":"var(--text2)",cursor:"pointer",whiteSpace:"nowrap"}}>
-          Old Data
-        </button>
         <select value={assigneeF} onChange={e=>setAssigneeF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12,borderRadius:99}}>
-          <option value="all">All Assignees</option>
+          <option value="all">All assignees</option>
           {(team||[]).filter(t=>["account_manager","account_director","account_executive","business_development"].includes(t.role)).map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
         </select>
         <select value={countryF} onChange={e=>setCountryF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12,borderRadius:99}}>
-          <option value="all">All Countries</option>
+          <option value="all">All countries</option>
           {LEAD_COUNTRIES.map(c=><option key={c} value={c}>{c}</option>)}
         </select>
         <select value={industryF} onChange={e=>setIndustryF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12,borderRadius:99}}>
-          <option value="all">All Industries</option>
+          <option value="all">All industries</option>
           {industryOptions.map(i=><option key={i} value={i}>{i}</option>)}
           {industryOptions.length===0&&<option value="" disabled>No industries tagged yet</option>}
         </select>
+        {(search||sourceF!=="all"||assigneeF!=="all"||countryF!=="all"||industryF!=="all")&&
+          <button type="button" onClick={()=>{setSearch("");setSourceF("all");setAssigneeF("all");setCountryF("all");setIndustryF("all");}} style={{padding:"8px 14px",borderRadius:99,fontSize:12,fontWeight:700,color:"var(--accent)",border:"1px solid var(--accent)55",background:"transparent",cursor:"pointer"}}>Clear filters · {filtered.length} shown</button>}
       </div>
 
       {/* KANBAN VIEW */}
