@@ -29269,6 +29269,8 @@ const LEAD_GROUPS = [
 // How long a lead has been waiting, for the "Today" view and the cards.
 const leadAgeHours = (l) => { const t = new Date(l.created_date||l.created_at||""); return isNaN(t) ? null : Math.max(0,(Date.now()-t.getTime())/3600000); };
 const fmtLeadAge = (h) => h==null ? "" : h<1 ? `${Math.max(1,Math.round(h*60))}m` : h<48 ? `${Math.round(h)}h` : `${Math.round(h/24)}d`;
+// One size for every control in the Leads toolbar (search, dropdowns, chips).
+const TB_CTRL = {height:26,minHeight:0,lineHeight:"24px",fontSize:11,fontWeight:600,borderRadius:99,boxSizing:"border-box",margin:0};
 const leadGroupOf = (src) => { const s=String(src||"other").toLowerCase(); const g=LEAD_GROUPS.find(g=>g.sources.includes(s)); return g?g.key:"other"; };
 
 const ACTIVITY_ICONS = {
@@ -30103,19 +30105,19 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
             </button>; })}
           </div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-            <div style={{position:"relative",flex:"0 1 190px",minWidth:140}}>
+            <div style={{position:"relative",flex:"0 1 170px",minWidth:130}}>
               <div style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",color:"var(--text3)"}}><Ico d={Icons.search} size={12}/></div>
-              <input value={search} onChange={e=>setSearch(e.target.value)} aria-label="Search leads" placeholder="Search…" style={{...inputSt,paddingLeft:28,paddingTop:5,paddingBottom:5,fontSize:12,borderRadius:99,height:30}}/>
+              <input value={search} onChange={e=>setSearch(e.target.value)} aria-label="Search leads" placeholder="Search…" style={{...inputSt,...TB_CTRL,paddingLeft:26,paddingRight:8}}/>
             </div>
-            <select value={assigneeF} onChange={e=>setAssigneeF(e.target.value)} style={{...inputSt,width:"auto",padding:"4px 8px",fontSize:11.5,borderRadius:99,height:30}}>
+            <select value={assigneeF} onChange={e=>setAssigneeF(e.target.value)} style={{...inputSt,...TB_CTRL,width:"auto",padding:"0 8px"}}>
               <option value="all">All assignees</option>
               {(team||[]).filter(t=>["account_manager","account_director","account_executive","business_development"].includes(t.role)).map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
             </select>
-            <select value={countryF} onChange={e=>setCountryF(e.target.value)} style={{...inputSt,width:"auto",padding:"4px 8px",fontSize:11.5,borderRadius:99,height:30}}>
+            <select value={countryF} onChange={e=>setCountryF(e.target.value)} style={{...inputSt,...TB_CTRL,width:"auto",padding:"0 8px"}}>
               <option value="all">All countries</option>
               {LEAD_COUNTRIES.map(c=><option key={c} value={c}>{c}</option>)}
             </select>
-            <select value={industryF} onChange={e=>setIndustryF(e.target.value)} style={{...inputSt,width:"auto",padding:"4px 8px",fontSize:11.5,borderRadius:99,height:30}}>
+            <select value={industryF} onChange={e=>setIndustryF(e.target.value)} style={{...inputSt,...TB_CTRL,width:"auto",padding:"0 8px"}}>
               <option value="all">All industries</option>
               {industryOptions.map(i=><option key={i} value={i}>{i}</option>)}
               {industryOptions.length===0&&<option value="" disabled>No industries tagged yet</option>}
