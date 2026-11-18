@@ -29258,6 +29258,16 @@ const LEAD_SOURCES = [
   {key:"old_data",label:"Old Data"}, {key:"other",label:"Other"},
 ];
 
+// Leads Center groups: where a lead came from, in plain business terms.
+const LEAD_GROUPS = [
+  {key:"cold",label:"Cold leads",color:"#0ea5e9",sources:["cold_call","sales_agent","prospect","prospecting","outreach","email_campaign","email"]},
+  {key:"website",label:"Website leads",color:"#16a34a",sources:["website","website_form","form"]},
+  {key:"social",label:"Social platforms",color:"#d90b2c",sources:["instagram","facebook","messenger","whatsapp","wa_campaign","fb_comment","ig_comment","li_comment","tiktok","twitter","x","linkedin","social"]},
+  {key:"referral",label:"Referrals & events",color:"#8b5cf6",sources:["referral","exhibition"]},
+  {key:"old",label:"Old data",color:"#6b7280",sources:["old_data"]},
+];
+const leadGroupOf = (src) => { const s=String(src||"other").toLowerCase(); const g=LEAD_GROUPS.find(g=>g.sources.includes(s)); return g?g.key:"other"; };
+
 const ACTIVITY_ICONS = {
   note:"", call:"", email:"", meeting:"",
   followup:"", status_change:"", converted:"",
@@ -29968,7 +29978,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const industryOptions = Array.from(new Set(leadsScope.map(l=>l.industry).filter(Boolean))).sort();
   const matchesLeadFilters = (l) => {
     if(search&&!l.name.toLowerCase().includes(search.toLowerCase())&&!(l.company||"").toLowerCase().includes(search.toLowerCase())) return false;
-    if(sourceF!=="all"&&l.source!==sourceF) return false;
+    if(sourceF!=="all"&&(sourceF.startsWith("group:")?leadGroupOf(l.source)!==sourceF.slice(6):l.source!==sourceF)) return false;
     if(assigneeF!=="all"&&l.assigned_to!==assigneeF) return false;
     if(countryF!=="all"&&leadCountry(l.phone)!==countryF) return false;
     if(industryF!=="all"&&(l.industry||"")!==industryF) return false;
@@ -30065,10 +30075,20 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
         leadsScope.forEach(l=>{ const k=String(l.source||"other").toLowerCase()||"other"; counts[k]=(counts[k]||0)+1; });
         const rows = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
         if(!rows.length) return null;
-        return <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+        const gCounts = {}; leadsScope.forEach(l=>{ const g=leadGroupOf(l.source); gCounts[g]=(gCounts[g]||0)+1; });
+        const groupCards = [...LEAD_GROUPS, {key:"other",label:"Other",color:"#a16207"}];
+        return <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:10}}>
+            {groupCards.map(g=>{ const on=sourceF==="group:"+g.key; return <button key={g.key} type="button" onClick={()=>setSourceF(on?"all":"group:"+g.key)} style={{textAlign:"left",padding:"12px 14px",background:on?g.color+"22":"var(--surface)",border:`1px solid ${on?g.color:"var(--border)"}`,borderRadius:"var(--r)",cursor:"pointer"}}>
+              <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:4}}>{g.label}</p>
+              <p style={{fontSize:24,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:g.color,lineHeight:1}}>{gCounts[g.key]||0}</p>
+            </button>; })}
+          </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
           <span style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase"}}>Channels</span>
           <button type="button" onClick={()=>setSourceF("all")} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,border:`1px solid ${sourceF==="all"?"var(--accent)":"var(--border2)"}`,background:sourceF==="all"?"var(--accent)":"var(--surface2)",color:sourceF==="all"?"#fff":"var(--text2)",cursor:"pointer"}}>All · {leadsScope.length}</button>
           {rows.map(([k,n])=><button key={k} type="button" onClick={()=>setSourceF(f=>f===k?"all":k)} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,border:`1px solid ${sourceF===k?"var(--accent)":"var(--border2)"}`,background:sourceF===k?"var(--accent)":"var(--surface2)",color:sourceF===k?"#fff":"var(--text2)",cursor:"pointer",whiteSpace:"nowrap"}}>{CH_LABEL[k]||k.replace(/_/g," ")} · {n}</button>)}
+        </div>
         </div>;
       })()}
 
