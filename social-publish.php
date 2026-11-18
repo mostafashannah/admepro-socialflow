@@ -107,5 +107,19 @@ if ($platform === "twitter") {
 } else {
     [$http_code, $response] = meta_publish($platform, $page_id, $access_token, $message, $image_url, $scheduled_at ?: null, $story_image_url ?: null, $post_type ?: null, $cover_url ?: null, $image_urls ?: null);
 }
+// Record this manual publish on the matching integration (status dot, error badge, activity log), best effort.
+try {
+    $okRun = $http_code >= 200 && $http_code < 300;
+    $dbp = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4', DB_USER, DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    $f = $dbp->prepare("SELECT id, name FROM integrations WHERE app_key = ? AND status IN ('active','error') AND credentials LIKE ? LIMIT 1");
+    $f->execute([$platform, '%' . str_replace(['%', '_'], ['\\%', '\\_'], $page_id) . '%']);
+    if ($ig = $f->fetch(PDO::FETCH_ASSOC)) {
+        $msg = $okRun ? 'Published manually' : ('Manual publish failed: ' . mb_substr(is_string($response['error'] ?? null) ? $response['error'] : json_encode($response['error'] ?? $response), 0, 200));
+        $dbp->prepare("UPDATE integrations SET last_run_at = NOW(), last_run_status = ?, last_run_message = ?, run_count = run_count + 1, error_count = IF(?, 0, error_count + 1) WHERE id = ?")
+            ->execute([$okRun ? 'success' : 'error', $msg, $okRun ? 1 : 0, $ig['id']]);
+        $dbp->prepare("INSERT INTO integration_logs (id, integration_id, integration_name, status, error, payload_summary, triggered_by) VALUES (UUID(), ?, ?, ?, ?, ?, 'manual-publish')")
+            ->execute([$ig['id'], $ig['name'], $okRun ? 'success' : 'error', $okRun ? null : json_encode($response), 'Manual publish (' . $platform . ')']);
+    }
+} catch (Throwable $e) { error_log('[social-publish] run log: ' . $e->getMessage()); }
 http_response_code($http_code);
 echo json_encode($response);

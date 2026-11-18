@@ -237,7 +237,7 @@ foreach ($due as $post) {
 
     $runUpd = $pdo->prepare(
         "UPDATE integrations SET last_run_at = :now, last_run_status = :status, last_run_message = :msg,
-         run_count = run_count + 1, error_count = error_count + :errinc WHERE id = :iid"
+         run_count = run_count + 1, error_count = IF(:errinc = 0, 0, error_count + :errinc) WHERE id = :iid"
     );
     $runUpd->execute([
         ':now'    => $now->format('Y-m-d H:i:s'),

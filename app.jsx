@@ -19801,6 +19801,41 @@ function TrelloConnectModal({open, onClose, client, existingIntegration, onSave}
   );
 }
 
+// "N errors" badge for an integration: counts only errors since the last success that haven't been hidden. Click it
+// to read the details; "Hide" keeps the log history but clears the badge (hidden ids live in the integration's config).
+function IntegErrorBadge({integ, logs, onUpdate}) {
+  const [open,setOpen] = React.useState(false);
+  const cfg = parseMaybeJson(integ.config,{}) || {};
+  const hidden = Array.isArray(cfg.errors_hidden_ids) ? cfg.errors_hidden_ids : [];
+  const ts = l => { const d = new Date(String(l.created_at||l.created_date||"").replace(" ","T")); return isNaN(d) ? 0 : d.getTime(); };
+  const lastOk = Math.max(0, ...(logs||[]).filter(l=>l.status==="success").map(ts));
+  const errs = (logs||[]).filter(l=>l.status==="error" && ts(l)>lastOk && !hidden.includes(l.id)).sort((a,b)=>ts(b)-ts(a));
+  if(!errs.length) return null;
+  const nice = (raw) => { try { const j = JSON.parse(raw); const e = j.error; return typeof e==="string" ? e : (e?.error_user_msg||e?.message||JSON.stringify(e||j)); } catch(_) { return String(raw||"Unknown error"); } };
+  return (
+    <div style={{position:"relative"}}>
+      <button type="button" onClick={()=>setOpen(o=>!o)} title="Show error details" style={{cursor:"pointer",padding:"2px 8px",borderRadius:99,background:"#ef444422",border:"1px solid #ef444444",fontSize:10,fontWeight:700,color:"#ef4444"}}>{errs.length} error{errs.length!==1?"s":""}</button>
+      {open&&(
+        <div style={{position:"absolute",top:"130%",left:0,zIndex:30,width:380,maxWidth:"80vw",background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:10,padding:12,boxShadow:"0 8px 28px var(--shadow)"}}>
+          <p style={{fontSize:11,fontWeight:800,color:"var(--text2)",marginBottom:8}}>Error details</p>
+          <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:220,overflowY:"auto"}}>
+            {errs.slice(0,10).map(l=>(
+              <div key={l.id} style={{fontSize:12,lineHeight:1.5}}>
+                <div style={{fontSize:10,color:"var(--text3)"}}>{fmtDate(l.created_at||l.created_date)}{l.payload_summary?` · ${l.payload_summary}`:""}</div>
+                <div style={{color:"#ef4444",wordBreak:"break-word"}}>{nice(l.error)}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:10}}>
+            <button type="button" onClick={()=>setOpen(false)} style={{padding:"5px 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>Close</button>
+            <button type="button" onClick={()=>{ onUpdate({id:integ.id, name:integ.name, status:integ.status, config:JSON.stringify({...cfg, errors_hidden_ids:[...hidden, ...errs.map(l=>l.id)].slice(-200)})}); setOpen(false); }} style={{padding:"5px 12px",borderRadius:8,border:"none",background:"var(--accent)",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>Hide</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ClientIntegrationsSubTab({client, integrations, integrationLogs, currentUser, onAdd, onUpdate, onDelete, onRetry}) {
   const [showWizard, setShowWizard] = useState(false);
   const [editIntegration, setEditIntegration] = useState(null);
@@ -19848,7 +19883,7 @@ function ClientIntegrationsSubTab({client, integrations, integrationLogs, curren
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <p style={{fontWeight:700,fontSize:13}}>{integ.name}</p>
                   <div style={{padding:"2px 8px",borderRadius:99,background:st.bg,border:`1px solid ${st.color}44`,fontSize:10,fontWeight:700,color:st.color}}>{st.label}</div>
-                  {integ.error_count>0&&<div style={{padding:"2px 8px",borderRadius:99,background:"#ef444422",border:"1px solid #ef444444",fontSize:10,fontWeight:700,color:"#ef4444"}}>{integ.error_count} errors</div>}
+                  <IntegErrorBadge integ={integ} logs={logs} onUpdate={onUpdate}/>
                 </div>
                 <p style={{fontSize:11,color:"var(--text3)",marginTop:3}}>{app.label} · {integ.run_count||0} runs{integ.last_run_at?` · Last: ${fmtDate(integ.last_run_at)}`:""} · {logs.length} log{logs.length!==1?"s":""}</p>
               </div>
@@ -31500,7 +31535,7 @@ function IntegrationsPage({integrations, integrationLogs, currentUser, clients=[
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                     <p style={{fontWeight:800,fontSize:14}}>{integ.name}</p>
                     <div style={{padding:"2px 8px",borderRadius:99,background:st.bg,border:`1px solid ${st.color}44`,fontSize:10,fontWeight:700,color:st.color}}>{st.label}</div>
-                    {integ.error_count>0&&<div style={{padding:"2px 8px",borderRadius:99,background:"#ef444422",border:"1px solid #ef444444",fontSize:10,fontWeight:700,color:"#ef4444"}}>{integ.error_count} errors</div>}
+                    <IntegErrorBadge integ={integ} logs={logs} onUpdate={onUpdate}/>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:12,fontSize:12,color:"var(--text2)"}}>
                     <span>{trigger.icon} {trigger.label}</span>
