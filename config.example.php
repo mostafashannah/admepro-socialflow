@@ -145,3 +145,7 @@ define('ZERNIO_WEBHOOK_SECRET', ''); // any long random string; use the same one
 // Mai's reports as a link (no login). Optional:
 // define('MAI_FORM_BASE_URL', 'https://socialflow.admepro.com');   // where the link points (default shown)
 // define('MAI_FORM_MODE', false);                                  // set false to go back to the WhatsApp chat check-ins
+
+// WhatsApp messages about publishing go to each client's account manager and every account director.
+// Add anyone else (comma separated emails) who should get all of them, e.g. an account manager covering several clients:
+// define('PUBLISH_ALERT_EXTRA_EMAILS', 'haneen@example.com');

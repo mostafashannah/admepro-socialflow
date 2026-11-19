@@ -8301,6 +8301,31 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
             );
           })()}
           {post.stage==="client_approval"&&<ClientApprovalLinkCard post={post} client={client} currentUser={currentUser}/>}
+          {/* Warnings: things that stop this post reaching a platform, shown before anyone is surprised by them */}
+          {(()=>{
+            const nm = pl => ({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"X",tiktok:"TikTok"}[pl]||pl);
+            const warns = [];
+            const xText = (post.x_caption||"").trim() || [post.caption,post.hashtags].filter(Boolean).join("\n\n");
+            if(allPostPlatforms.includes("twitter") && !alreadyPublishedPlatforms.includes("twitter") && xText.length>280)
+              warns.push(`X: the text is ${xText.length} characters and X allows 280. Add a short "X caption" (Edit caption).`);
+            if(post.stage==="published"){
+              const miss = allPostPlatforms.filter(pl=>!alreadyPublishedPlatforms.includes(pl));
+              if(miss.length) warns.push(`Marked Published, but it was never sent to: ${miss.map(nm).join(", ")}.`);
+            }
+            if(post.stage==="scheduled"){
+              if(!String(post.scheduled_date||"").trim()) warns.push("No scheduled date: the auto-publisher skips this post. Set a date and time, or publish it manually.");
+              if(!allPostPlatforms.length) warns.push("No platform is selected, so it can't be published automatically.");
+              if(Number(post.publish_attempts||0)>=3) warns.push("The auto-publisher gave up after 3 failed attempts. Fix the problem, then save the post again to retry.");
+              let pe = null; try{ pe = typeof post.publish_error==="string" && post.publish_error ? JSON.parse(post.publish_error) : post.publish_error; }catch(e){}
+              if(pe && typeof pe==="object") Object.entries(pe).forEach(([pl,err])=>{ const msg = typeof err==="string" ? err : (err?.error?.message || err?.error || ""); if(msg) warns.push(`${nm(pl)}: ${String(typeof msg==="string"?msg:JSON.stringify(msg)).slice(0,160)}`); });
+            }
+            return warns.length ? (
+              <div style={{padding:"10px 12px",background:"#f59e0b14",border:"1px solid #f59e0b55",borderRadius:"var(--rs)",display:"flex",flexDirection:"column",gap:4}}>
+                <p style={{fontSize:11,fontWeight:800,color:"#b45309",letterSpacing:"0.06em",textTransform:"uppercase",margin:0}}>Needs attention</p>
+                {warns.map((w,i)=><p key={i} style={{fontSize:12,color:"var(--text2)",margin:0,lineHeight:1.45}}>• {w}</p>)}
+              </div>
+            ) : null;
+          })()}
           {/* Publish Now — shown when post is scheduled and a matching social integration is active */}
           {FEATURE_FLAGS.social_publishing&&post.stage==="scheduled"&&post.task_type!=="grid_layout"&&(
             <div style={{display:"flex",flexDirection:"column",gap:8}}>

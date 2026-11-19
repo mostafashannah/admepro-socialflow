@@ -27,6 +27,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/meta-lib.php';
 require_once __DIR__ . '/linkedin-lib.php';
 require_once __DIR__ . '/tiktok-lib.php';
+require_once __DIR__ . '/publish-alert-lib.php';   // WhatsApp messages: published / could not publish / daily list of posts that need attention
 
 if (!defined('AUTO_PUBLISH_ENABLED') || !AUTO_PUBLISH_ENABLED) {
     echo json_encode(['skipped' => true, 'reason' => 'AUTO_PUBLISH_ENABLED is not true in config.php']);
@@ -292,6 +293,7 @@ foreach ($due as $post) {
             ':pp' => json_encode(array_values(array_unique($alreadyDone))),
             ':ppi' => json_encode($platformPostIds), ':id' => $post['id'],
         ]);
+        paNotifyPublished($pdo, $post, array_values(array_unique($alreadyDone)));
     } else {
         // Partial progress (e.g. Instagram went out, Facebook failed) is
         // saved either way so a retry never re-posts to a platform that
@@ -303,16 +305,20 @@ foreach ($due as $post) {
             ':pp' => json_encode(array_values(array_unique($alreadyDone))),
             ':ppi' => json_encode($platformPostIds), ':id' => $post['id'],
         ]);
+        if ($attempts + 1 >= 3 && $errorsByPlatform) paNotifyGaveUp($pdo, $post, $errorsByPlatform, array_values(array_unique($alreadyDone)));
     }
   } catch (Throwable $e) {
     error_log('[auto-publish] post ' . ($post['id'] ?? '?') . ' crashed: ' . $e->getMessage());
     try {
         $pdo->prepare("UPDATE posts SET publish_attempts = :att, publish_error = :err WHERE id = :id")
             ->execute([':att' => (int)($post['publish_attempts'] ?? 0) + 1, ':err' => json_encode(['crash' => mb_substr($e->getMessage(), 0, 300) . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')']), ':id' => $post['id']]);
+        if ((int)($post['publish_attempts'] ?? 0) + 1 >= 3) paNotifyGaveUp($pdo, $post, ['crash' => $e->getMessage()]);
     } catch (Throwable $e2) { /* nothing more we can do */ }
     $results[] = ['post_id' => $post['id'] ?? null, 'platform' => '-', 'ok' => false, 'http_code' => 0];
   }
 }
+
+paDailyDigest($pdo);   // once a day from 10:00: posts that need a person (no date / no platform / X text too long / missing platform)
 
 header('Content-Type: application/json');
 echo json_encode(['checked' => count($due), 'published' => count($results), 'results' => $results]);
