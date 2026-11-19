@@ -16272,6 +16272,7 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
         <div className="fade-in" style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"var(--accentbg)",border:"1px solid var(--accent)44",borderRadius:"var(--rs)"}}>
           <span style={{fontSize:12,fontWeight:700,color:"var(--accent)"}}>{totalSelected} selected</span>
           <button onClick={()=>setBulkPicker(true)} style={{fontSize:12,fontWeight:700,padding:"6px 12px",borderRadius:6,border:"1px solid var(--accent)",background:"var(--surface)",color:"var(--accent)",cursor:"pointer"}}>Move</button>
+          {selected.size>0&&<button onClick={()=>downloadAllMedia((assets||[]).filter(a=>selected.has(a.id)), ((currentPath||"").split("/").filter(Boolean).pop()||"files"))} title="Download the selected files as one .zip" style={{fontSize:12,fontWeight:700,padding:"6px 12px",borderRadius:6,border:"1px solid var(--accent)",background:"var(--surface)",color:"var(--accent)",cursor:"pointer"}}>Download ({selected.size})</button>}
           {isAdmin&&<button onClick={bulkDelete} style={{fontSize:12,fontWeight:700,padding:"6px 12px",borderRadius:6,border:"1px solid #ef444455",background:"var(--surface)",color:"#ef4444",cursor:"pointer"}}>Delete</button>}
           <button onClick={clearSelection} style={{fontSize:12,fontWeight:600,padding:"6px 12px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text2)",cursor:"pointer",marginLeft:"auto"}}>Clear</button>
         </div>
