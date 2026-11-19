@@ -23,10 +23,12 @@ $n = 0;
 foreach ($rows as $p) {
     if ($only !== '' && stripos((string)$p['client_name'], $only) === false) continue;
     $d = trim((string)$p['scheduled_date']); $t = trim((string)$p['scheduled_time']) ?: '09:00';
-    try { $at = new DateTime("$d $t"); } catch (Throwable $e) { $at = null; }
-    if (!$at || $at > $now) continue;
+    $noDate = ($d === '');
+    try { $at = new DateTime(($d === '' ? date('Y-m-d') : $d) . " $t"); } catch (Throwable $e) { $at = null; }
+    if (!$at || ($at > $now && !$noDate)) continue;
     $n++;
     $why = [];
+    if ($noDate) $why[] = 'NO SCHEDULED DATE on this post, so the auto-publisher skips it. Open the post, set the date and time, or publish it manually.';
     if ($p['task_type'] === 'grid_layout') $why[] = 'task type is grid_layout (design only, never published)';
     if ($p['auto_publish_enabled'] !== null && (int)$p['auto_publish_enabled'] === 0) $why[] = "this CLIENT has auto-publishing switched OFF (Settings > Scheduling > Auto Publishing), so it waits for a manual Publish Now";
     if ((int)$p['publish_attempts'] >= 3) $why[] = 'gave up after ' . (int)$p['publish_attempts'] . ' failed attempts';
