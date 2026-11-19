@@ -43614,8 +43614,8 @@ const POINTS_RULES_DEFAULT = [
   ["mai_full",       "Mai check-in completed, all points",      5],
   ["mai_missed",     "Mai check-in missed",                   -10],
   ["lead_won",       "Lead closed won",                        25],
-  // From the attendance records: a day with a check-in and check-out totalling under 8 hours (the same 8h line the salary deduction uses).
-  ["short_day",      "Worked less than 8 hours in a day",      -3],
+  // From the time tracked on tasks: a month whose average tracked hours per working day is under 8 (one deduction per month).
+  ["short_hours",    "Average daily tracked hours under 8 (each month)", -10],
   // Team leaders also earn/lose from how their team performs (each task delivered by someone they lead).
   ["team_on_time",   "Team leader: a team member's task on time",   2],
   ["team_clean",     "Team leader: a team member's task, no revisions", 1],
@@ -43630,7 +43630,7 @@ function pointsConfig(appSettings) {
   return { enabled: !!c.enabled, visibility: c.visibility || "private", reward_note: c.reward_note || "", rules, adjustments: Array.isArray(c.adjustments) ? c.adjustments : [], prizes: Array.isArray(c.prizes) ? c.prizes : [], redemptions: Array.isArray(c.redemptions) ? c.redemptions : [], start_month: c.start_month || "", members: Array.isArray(c.members) ? c.members : null };
 }
 // month = "YYYY-MM". Returns {total, lines:[{date,label,pts}]}
-function calcMemberPoints(member, month, {perfLogs, posts, maiSessions, leads, attendance, cfg}) {
+function calcMemberPoints(member, month, {perfLogs, posts, maiSessions, leads, cfg}) {
   const lines = []; const R = cfg.rules; const inM = d => !!d && (month ? String(d).slice(0,7) === month : (!cfg.start_month || String(d).slice(0,7) >= cfg.start_month));
   const add = (date, key, label) => { if (R[key]) lines.push({date: String(date||"").slice(0,10), label, pts: R[key]}); };
   const email = member.email;
@@ -43680,12 +43680,18 @@ function calcMemberPoints(member, month, {perfLogs, posts, maiSessions, leads, a
     if (l.status !== "closed_won" || !(l.assigned_to === email || l.assigned_to === member.id)) return;
     const d = l.updated_at || l.updated_date || l.created_date; if (inM(d)) add(d, "lead_won", `Lead won: ${l.name || l.company || ""}`);
   });
-  // Short days: present, with both check-in and check-out recorded, and under 8 hours worked.
-  (attendance||[]).forEach(a => {
-    if (!(a.team_member_id === member.id || (a.member_name && a.member_name === member.name)) || a.status !== "present" || !inM(a.work_date)) return;
-    const worked = workedHoursFor(a.check_in, a.check_out);
-    if (worked != null && worked < 8) add(a.work_date, "short_day", `Short day: ${worked.toFixed(1)}h worked (under 8h)`);
-  });
+  // Task-timer hours: for each finished month, the average tracked hours per working day (a day with at least 1 minute tracked).
+  // Under 8h = one deduction for that month. Today is skipped (unfinished) and so is a month with fewer than 3 tracked days.
+  if (R.short_hours) {
+    const todayStr = new Date().toISOString().slice(0,10); const byDay = {};
+    (timerBridge.entries||[]).forEach(t => {
+      if (t.user_email !== email || !t.date) return; const d = String(t.date).slice(0,10); if (d >= todayStr || !inM(d)) return;
+      byDay[d] = (byDay[d]||0) + (Number(t.total_seconds)||0);
+    });
+    const byMonth = {};
+    Object.entries(byDay).forEach(([d,secs]) => { if (secs < 60) return; const m = d.slice(0,7); (byMonth[m] = byMonth[m] || {days:0,secs:0,last:d}); byMonth[m].days++; byMonth[m].secs += secs; if (d > byMonth[m].last) byMonth[m].last = d; });
+    Object.entries(byMonth).forEach(([m,v]) => { const avg = v.secs/3600/v.days; if (v.days >= 3 && avg < 8) add(v.last, "short_hours", `Daily average ${avg.toFixed(1)}h over ${v.days} working days in ${m} (under 8h)`); });
+  }
   (cfg.adjustments||[]).forEach(a => { if (a.email === email && inM(a.date)) lines.push({date: a.date, label: `Manual: ${a.reason || "adjustment"}`, pts: Number(a.pts)||0, manual: true, id: a.id}); });
   lines.sort((a,b) => b.date.localeCompare(a.date));
   return { total: lines.reduce((s,l) => s + l.pts, 0), lines };
@@ -44023,8 +44029,8 @@ function PointsSettings({appSettings, onSaveSettings}) {
   );
 }
 
-const pointsBridge = {appSettings:null, leads:[], team:[], attendance:[], onSaveSettings:null, currentUser:null};
-const pointsData = () => ({perfLogs: perfBridge.logs, posts: perfBridge.posts, maiSessions: perfBridge.mai, leads: pointsBridge.leads, attendance: pointsBridge.attendance});
+const pointsBridge = {appSettings:null, leads:[], team:[], onSaveSettings:null, currentUser:null};
+const pointsData = () => ({perfLogs: perfBridge.logs, posts: perfBridge.posts, maiSessions: perfBridge.mai, leads: pointsBridge.leads});
 // My Performance: own points (+ public leaderboard). Renders nothing while points are OFF.
 function MyPointsSection() {
   const cfg = pointsConfig(pointsBridge.appSettings);
@@ -54515,7 +54521,7 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
   timerBridge.entries = data.timeEntries||[];
   roleBridge.role = currentUser?.role||"";
   perfBridge.logs = data.perfLogs||[]; perfBridge.mai = data.maiReportSessions||[]; perfBridge.posts = data.posts||[];
-  pointsBridge.appSettings = appSettings; pointsBridge.leads = data.leads||[]; pointsBridge.team = data.team||[]; pointsBridge.attendance = data.attendanceRecords||[]; pointsBridge.onSaveSettings = (x)=>saveAppSettings(x); pointsBridge.currentUser = currentUser;
+  pointsBridge.appSettings = appSettings; pointsBridge.leads = data.leads||[]; pointsBridge.team = data.team||[]; pointsBridge.onSaveSettings = (x)=>saveAppSettings(x); pointsBridge.currentUser = currentUser;
   clientAssetsBridge.assets = data.assets; clientAssetsBridge.addAsset = addAsset; clientAssetsBridge.clients = data.clients||[];
 
   const updateAsset = async (id, patch) => {
