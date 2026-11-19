@@ -43630,11 +43630,12 @@ function pointsConfig(appSettings) {
   if (typeof c === "string") { try { c = JSON.parse(c); } catch(e) { c = null; } }
   c = c && typeof c === "object" ? c : {};
   const rules = {}; POINTS_RULES_DEFAULT.forEach(([k,,v]) => { rules[k] = (c.rules && c.rules[k] != null && !isNaN(Number(c.rules[k]))) ? Number(c.rules[k]) : v; });
-  return { enabled: !!c.enabled, visibility: c.visibility || "private", reward_note: c.reward_note || "", rules, adjustments: Array.isArray(c.adjustments) ? c.adjustments : [], prizes: Array.isArray(c.prizes) ? c.prizes : [], redemptions: Array.isArray(c.redemptions) ? c.redemptions : [], start_month: c.start_month || "", members: Array.isArray(c.members) ? c.members : null };
+  return { enabled: !!c.enabled, visibility: c.visibility || "private", reward_note: c.reward_note || "", rules, adjustments: Array.isArray(c.adjustments) ? c.adjustments : [], prizes: Array.isArray(c.prizes) ? c.prizes : [], redemptions: Array.isArray(c.redemptions) ? c.redemptions : [], start_month: c.start_month || "", members: Array.isArray(c.members) ? c.members : null, member_starts: (c.member_starts && typeof c.member_starts === "object") ? c.member_starts : {} };
 }
 // month = "YYYY-MM". Returns {total, lines:[{date,label,pts}]}
 function calcMemberPoints(member, month, {perfLogs, posts, maiSessions, leads, cfg}) {
-  const lines = []; const R = cfg.rules; const inM = d => !!d && (month ? String(d).slice(0,7) === month : (!cfg.start_month || String(d).slice(0,7) >= cfg.start_month));
+  const lines = []; const R = cfg.rules; const ps = (cfg.member_starts && cfg.member_starts[member.email]) || "";   // this person's own start day (set when points were switched on for them)
+  const inM = d => !!d && (month ? String(d).slice(0,7) === month : (!cfg.start_month || String(d).slice(0,7) >= cfg.start_month)) && (!ps || String(d).slice(0,10) >= ps);
   const add = (date, key, label) => { if (R[key]) lines.push({date: String(date||"").slice(0,10), label, pts: R[key]}); };
   const email = member.email;
   (perfLogs||[]).forEach(l => {
@@ -43990,7 +43991,15 @@ function PointsSettings({appSettings, onSaveSettings}) {
   const save = async () => {
     setSaving(true);
     let raw = appSettings?.points_system; if (typeof raw==="string") { try { raw = JSON.parse(raw); } catch(e) { raw = {}; } }
-    await onSaveSettings({points_system:{...(raw||{}), ...form, members}});
+    // Anyone newly switched on starts counting TODAY (people already in the programme keep their current start).
+    const today = new Date().toISOString().slice(0,10);
+    const before = new Set(cfg.members || eligibleTeam.map(m=>m.email));
+    const starts = {...(cfg.member_starts||{})};
+    if (members) {
+      members.forEach(e => { if (!before.has(e) && !starts[e]) starts[e] = today; });
+      Object.keys(starts).forEach(e => { if (!members.includes(e)) delete starts[e]; });   // switched off: forget the start, so switching on again restarts from that day
+    }
+    await onSaveSettings({points_system:{...(raw||{}), ...form, members, member_starts: starts}});
     setSaving(false);
   };
   const inp = {padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13};
@@ -44011,7 +44020,7 @@ function PointsSettings({appSettings, onSaveSettings}) {
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:6,paddingLeft:24}}>
             {eligibleTeam.map(m=>(
               <label key={m.id} style={{display:"flex",gap:8,fontSize:13,cursor:"pointer",alignItems:"center"}}>
-                <input type="checkbox" checked={members.includes(m.email)} onChange={()=>setMembers(ms=>ms.includes(m.email)?ms.filter(x=>x!==m.email):[...ms,m.email])}/>{m.name}
+                <input type="checkbox" checked={members.includes(m.email)} onChange={()=>setMembers(ms=>ms.includes(m.email)?ms.filter(x=>x!==m.email):[...ms,m.email])}/>{m.name}{cfg.member_starts?.[m.email]&&members.includes(m.email)?<span style={{fontSize:10,color:"var(--text3)"}}> · from {cfg.member_starts[m.email]}</span>:null}
               </label>
             ))}
           </div>
