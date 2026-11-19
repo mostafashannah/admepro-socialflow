@@ -33,6 +33,13 @@ if (!defined('AUTO_PUBLISH_ENABLED') || !AUTO_PUBLISH_ENABLED) {
     exit;
 }
 
+// ONE run at a time. A reel can take up to 2 minutes (we wait for the platform to process it) plus the Sara-learning call per
+// platform, so on a short cron interval a second run used to start while the first was still going, see the same post still
+// "scheduled" and publish it again: that is how one post ended up published several times. The lock is released automatically
+// when this process ends, even if it crashes.
+$apLock = fopen(sys_get_temp_dir() . '/sf-auto-publish.lock', 'c');
+if (!$apLock || !flock($apLock, LOCK_EX | LOCK_NB)) { echo json_encode(['skipped' => true, 'reason' => 'another auto-publish run is still in progress']); exit; }
+
 // Redundant now that config.php itself calls date_default_timezone_set(APP_TIMEZONE)
 // for every script that requires it — kept as a defensive fallback in case this
 // runs against an older config.php that doesn't do that yet.
@@ -218,6 +225,12 @@ foreach ($due as $post) {
         // processing) is what post-insights-cron.php needs stored instead.
         $lastExtId = $resp['video_id'] ?? $resp['id'] ?? $resp['post_id'] ?? $lastExtId;
         if ($lastExtId) $platformPostIds[$platform] = $lastExtId;
+        // Save this platform as done RIGHT NOW (not only at the end of the post): if this run is cut off before the final
+        // update, the next run must never publish this platform again.
+        try {
+            $pdo->prepare("UPDATE posts SET published_platforms = :pp, platform_post_ids = :ppi WHERE id = :id")
+                ->execute([':pp' => json_encode(array_values(array_unique($alreadyDone))), ':ppi' => json_encode($platformPostIds), ':id' => $post['id']]);
+        } catch (Throwable $e) { error_log('[auto-publish] could not save published platform for ' . $post['id'] . ': ' . $e->getMessage()); }
         sara_learn_from_publish($pdo, $post, $platform);
     } else {
         $errorsByPlatform[$platform] = $resp;
