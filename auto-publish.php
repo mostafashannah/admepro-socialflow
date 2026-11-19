@@ -102,7 +102,17 @@ foreach ($due as $post) {
         array_filter(array_map('strtolower', array_map('trim', $allPlatforms)), fn($p) => in_array($p, ['facebook', 'instagram', 'linkedin', 'tiktok', 'twitter'], true)),
         $alreadyDone
     ));
-    if (!$targetPlatforms) continue; // nothing valid, or every platform already published
+    if (!$targetPlatforms) {
+        // Every platform already went out but the post never moved to Published (e.g. a run was cut off before the final update):
+        // just move it now. Never publishes anything.
+        $lowAll = array_values(array_filter(array_map('strtolower', array_map('trim', $allPlatforms))));
+        if ($lowAll && !array_diff($lowAll, $alreadyDone)) {
+            $ids = json_decode($post['platform_post_ids'] ?? '{}', true) ?: [];
+            $pdo->prepare("UPDATE posts SET stage = 'published', published_at = COALESCE(published_at, :now), external_post_id = COALESCE(external_post_id, :ext), publish_error = NULL WHERE id = :id")
+                ->execute([':now' => $now->format('Y-m-d H:i:s'), ':ext' => $ids ? reset($ids) : null, ':id' => $post['id']]);
+        }
+        continue; // nothing valid, or every platform already published
+    }
 
     $anyOk = false;
     $anyAttempted = false;
@@ -253,13 +263,14 @@ foreach ($due as $post) {
 
     $runUpd = $pdo->prepare(
         "UPDATE integrations SET last_run_at = :now, last_run_status = :status, last_run_message = :msg,
-         run_count = run_count + 1, error_count = IF(:errinc = 0, 0, error_count + :errinc) WHERE id = :iid"
+         run_count = run_count + 1, error_count = IF(:errzero = 0, 0, error_count + :errinc) WHERE id = :iid"
     );
     $runUpd->execute([
         ':now'    => $now->format('Y-m-d H:i:s'),
         ':status' => $ok ? 'success' : 'error',
         ':msg'    => $ok ? "Published post {$post['id']}" : "Failed to publish post {$post['id']}",
         ':errinc' => $ok ? 0 : 1,
+        ':errzero' => $ok ? 0 : 1,   // same value, separate name: PDO with native prepares forbids reusing one named parameter
         ':iid'    => $integration['id'],
     ]);
 
