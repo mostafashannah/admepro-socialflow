@@ -9,11 +9,14 @@ if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVE
 //     connection every 3 days ("reconnect Bino's Instagram"), and it is written to the activity log.
 // Crontab (server):   30 6 * * * php /var/www/socialflow/token-health-cron.php
 // Manual run:         php token-health-cron.php            (prints a report, no WhatsApp with 'dry')
+//                     php token-health-cron.php resend     (sends the current warnings to the account managers / directors now, ignoring the 3-day wait; admins are not messaged again)
 // ================================================================
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/pro-lib.php'; // sendWhatsAppReply()
+require_once __DIR__ . '/publish-alert-lib.php'; // paRecipients(): the client's account manager + account directors
 
 $dry = (($argv[1] ?? '') === 'dry');
+$resend = (($argv[1] ?? '') === 'resend');
 $pdo = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4', DB_USER, DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 // The app's DB user can't CREATE tables: run migration-token-health.sql once as the MySQL admin.
 $haveTable = true;
@@ -26,7 +29,7 @@ function th_get($url) {
     return json_decode((string)$r, true) ?: [];
 }
 
-$rows = $pdo->query("SELECT id, app_key, client_name, credentials FROM integrations WHERE status = 'active' AND app_key IN ('facebook','instagram')")->fetchAll(PDO::FETCH_ASSOC);
+$rows = $pdo->query("SELECT id, app_key, client_id, client_name, credentials FROM integrations WHERE status = 'active' AND app_key IN ('facebook','instagram')")->fetchAll(PDO::FETCH_ASSOC);
 $report = []; $problems = [];
 $save = $haveTable ? $pdo->prepare("INSERT INTO token_health (integration_id, checked_at, state, expires_at, note) VALUES (?, NOW(), ?, ?, ?)
   ON DUPLICATE KEY UPDATE checked_at = NOW(), state = VALUES(state), expires_at = VALUES(expires_at), note = VALUES(note)") : null;
@@ -68,7 +71,7 @@ foreach ($rows as $r) {
     }
     if (!$dry && $save) $save->execute([$r['id'], $state, $exp, $note]);
     $report[] = sprintf('%-34s %-9s %s', $label, $state, $note);
-    if (in_array($state, ['dead', 'no_token', 'expiring'], true)) $problems[] = ['id' => $r['id'], 'label' => $label, 'state' => $state, 'note' => $note, 'exp' => $exp];
+    if (in_array($state, ['dead', 'no_token', 'expiring'], true)) $problems[] = ['id' => $r['id'], 'client_id' => $r['client_id'], 'label' => $label, 'state' => $state, 'note' => $note, 'exp' => $exp];
 }
 echo implode("\n", $report) . "\n";
 
@@ -81,12 +84,24 @@ foreach ($problems as $p) {
     $la = null; if ($last) { $last->execute([$p['id']]); $la = $last->fetchColumn(); }
     if (!$la || strtotime($la) < time() - 3 * 86400) $due[] = $p;
 }
+if ($resend) $due = $problems;   // resend: everything that is wrong right now
 if (!$due) { echo "Problems already alerted recently.\n"; exit; }
 $lines = array_map(fn($p) => '• ' . $p['label'] . ($p['state'] === 'expiring' ? ' — expires ' . date('j M', strtotime($p['exp'])) : ' — needs reconnecting'), $due);
 $msg = "🔌 Social connections need attention:\n" . implode("\n", $lines) . "\nReconnect in SocialFlow → Integrations.";
 $admins = $pdo->query("SELECT whatsapp_number FROM team_members WHERE role = 'admin' AND status = 'active' AND whatsapp_number IS NOT NULL AND whatsapp_number <> ''")->fetchAll(PDO::FETCH_COLUMN);
-foreach ($admins as $num) { try { sendWhatsAppReply($num, $msg); } catch (Throwable $e) { error_log('[token-health] whatsapp: ' . $e->getMessage()); } }
+if (!$resend) foreach ($admins as $num) { try { sendWhatsAppReply($num, $msg); } catch (Throwable $e) { error_log('[token-health] whatsapp: ' . $e->getMessage()); } }
+// The people who answer for each client (account manager + account directors) get the connections that affect them.
+$adminPhones = array_map(fn($n) => preg_replace('/\D/', '', (string)$n), $admins);
+$byPerson = [];
+foreach ($due as $p) {
+    foreach (paRecipients($pdo, $p['client_id'] ?? '') as $email => $r) { $byPerson[$email]['r'] = $r; $byPerson[$email]['lines'][] = '• ' . $p['label'] . ($p['state'] === 'expiring' ? ' — expires ' . date('j M', strtotime($p['exp'])) : ' — needs reconnecting'); }
+}
+$teamSent = 0;
+foreach ($byPerson as $email => $d) {
+    if (in_array(preg_replace('/\D/', '', (string)$d['r']['phone']), $adminPhones, true)) continue;   // admins already got the full list
+    try { sendWhatsAppReply($d['r']['phone'], "🔌 Social connections need attention (posts cannot publish to them until fixed):\n" . implode("\n", array_unique($d['lines'])) . "\nReconnect in SocialFlow → Integrations."); $teamSent++; } catch (Throwable $e) { error_log('[token-health] team whatsapp: ' . $e->getMessage()); }
+}
 $mark = $haveTable ? $pdo->prepare("UPDATE token_health SET last_alert_at = NOW() WHERE integration_id = ?") : null;
 $log = $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), 'Connection needs attention', 'integrations', ?, 'warning', 'cron')");
 foreach ($due as $p) { if ($mark) $mark->execute([$p['id']]); $log->execute([$p['label'] . ': ' . $p['note']]); }
-echo "Alerted " . count($admins) . " admin(s) about " . count($due) . " connection(s).\n";
+echo ($resend ? "Resent to " : "Alerted " . count($admins) . " admin(s) and ") . $teamSent . " account manager(s)/director(s) about " . count($due) . " connection(s).\n";
