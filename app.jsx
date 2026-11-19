@@ -43684,7 +43684,7 @@ function calcMemberPoints(member, month, {perfLogs, posts, maiSessions, leads, c
   // Task-timer hours, checked daily: once it is 9 PM in Cairo, every working day (not weekend / holiday / approved leave) on which the
   // member tracked under 7 hours on tasks costs points. Only people who use the timer at all (at least one tracked day) are checked,
   // and never for days before their first tracked day.
-  if (R.short_day) {
+  if (R.short_day && !["account_manager","account_director","account_executive"].includes(member.role)) {   // not applied to account managers
     const cairo = (() => { try { const f = new Intl.DateTimeFormat("en-CA",{timeZone:"Africa/Cairo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",hourCycle:"h23"}).formatToParts(new Date()); const g = t => f.find(x=>x.type===t)?.value; return {date:`${g("year")}-${g("month")}-${g("day")}`, hour:Number(g("hour"))}; } catch(e) { const d=new Date(); return {date:d.toISOString().slice(0,10), hour:d.getUTCHours()+2}; } })();
     const prevDay = ymd => { const d = new Date(ymd+"T00:00:00Z"); d.setUTCDate(d.getUTCDate()-1); return d.toISOString().slice(0,10); };
     const lastClosed = cairo.hour >= 21 ? cairo.date : prevDay(cairo.date);
@@ -43835,7 +43835,14 @@ function PrizesStore({member, cfg, data}) {
 function RedemptionRequests({cfg}) {
   const pend = (cfg.redemptions||[]).filter(r=>r.status==="pending");
   const done = (cfg.redemptions||[]).filter(r=>r.status!=="pending").slice(-8).reverse();
-  const decide = (id, status) => savePointsPatch(raw => ({...raw, redemptions:(raw.redemptions||[]).map(r=>r.id===id?{...r,status,decided_by:pointsBridge.currentUser?.email,decided_at:new Date().toISOString().slice(0,10)}:r)}));
+  const decide = async (id, status) => {
+    const req = (cfg.redemptions||[]).find(x=>x.id===id);
+    await savePointsPatch(raw => ({...raw, redemptions:(raw.redemptions||[]).map(r=>r.id===id?{...r,status,decided_by:pointsBridge.currentUser?.email,decided_at:new Date().toISOString().slice(0,10)}:r)}));
+    // Approving a time-off prize adds it straight to the person's leave credit (only the first time it is approved).
+    if (status === "approved" && req && req.status === "pending" && req.type !== "money" && pointsBridge.grantTimeOff) {
+      try { await pointsBridge.grantTimeOff(req); } catch(e) { console.error("[points] could not add the time off to leave credit", e); try{ window.alert("The prize was approved, but adding the time off to the leave credit failed. Please add it manually in the member's leave settings."); }catch(_){} }
+    }
+  };
   if (!pend.length && !done.length) return null;
   return (
     <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:8}}>
@@ -44052,7 +44059,7 @@ function PointsSettings({appSettings, onSaveSettings}) {
   );
 }
 
-const pointsBridge = {appSettings:null, leads:[], team:[], leaves:[], onSaveSettings:null, currentUser:null};
+const pointsBridge = {appSettings:null, leads:[], team:[], leaves:[], onSaveSettings:null, currentUser:null, grantTimeOff:null};
 const pointsData = () => ({perfLogs: perfBridge.logs, posts: perfBridge.posts, maiSessions: perfBridge.mai, leads: pointsBridge.leads});
 // My Performance: own points (+ public leaderboard). Renders nothing while points are OFF.
 function MyPointsSection() {
@@ -54544,6 +54551,20 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
   timerBridge.entries = data.timeEntries||[];
   roleBridge.role = currentUser?.role||"";
   perfBridge.logs = data.perfLogs||[]; perfBridge.mai = data.maiReportSessions||[]; perfBridge.posts = data.posts||[];
+  // A time-off prize goes straight into leave credit: hours -> this month's personal-leave allowance (the monthly reset clears
+  // anything unused on the 1st), days -> the vacation allowance. A leave_credit_events row (negative amount) records it.
+  pointsBridge.grantTimeOff = async (r) => {
+    const m = (data.team||[]).find(t=>t.email===r.email); if (!m) return;
+    const v = Number(r.value)||0; if (v <= 0) return;
+    const monthKey = new Date().toISOString().slice(0,7), today = new Date().toISOString().slice(0,10);
+    if ((r.unit||"days") === "hours") {
+      await updateTeamMember(m.id, {personal_leave_hours_used: Number(m.personal_leave_hours_used||0) - v});
+      ce("LeaveCreditEvent",[{team_member_id:m.id, member_name:m.name, credit_type:"personal_leave_hours", amount:-v, month_key:monthKey, work_date:today, reason:"points_prize"}]).catch(()=>{});
+    } else {
+      await updateTeamMember(m.id, {vacation_days_total: Number(m.vacation_days_total??21) + v});
+      ce("LeaveCreditEvent",[{team_member_id:m.id, member_name:m.name, credit_type:"vacation_days", amount:-v, month_key:monthKey, work_date:today, reason:"points_prize"}]).catch(()=>{});
+    }
+  };
   pointsBridge.appSettings = appSettings; pointsBridge.leads = data.leads||[]; pointsBridge.team = data.team||[]; pointsBridge.leaves = data.leaveRequests||[]; pointsBridge.onSaveSettings = (x)=>saveAppSettings(x); pointsBridge.currentUser = currentUser;
   clientAssetsBridge.assets = data.assets; clientAssetsBridge.addAsset = addAsset; clientAssetsBridge.clients = data.clients||[];
 
