@@ -43622,6 +43622,7 @@ const POINTS_RULES_DEFAULT = [
   ["team_late",      "Team leader: a team member's task late",    -2],
   ["team_extension", "Team leader: a team member moved a due date", -1],
 ];
+const SHORT_DAY_RULE_FROM = "2026-11-19";
 function pointsConfig(appSettings) {
   let c = appSettings?.points_system;
   if (typeof c === "string") { try { c = JSON.parse(c); } catch(e) { c = null; } }
@@ -43704,7 +43705,8 @@ function calcMemberPoints(member, month, {perfLogs, posts, maiSessions, leads, c
         const c = new Date(String(r.start_date||"").slice(0,10)+"T00:00:00Z"), e = new Date(String(r.end_date||r.start_date||"").slice(0,10)+"T00:00:00Z");
         if (isNaN(c) || isNaN(e)) return; for (let i=0; c<=e && i<400; i++, c.setUTCDate(c.getUTCDate()+1)) leaveDays.add(c.toISOString().slice(0,10));
       });
-      const from = [trackedDays[0], cfg.start_month ? cfg.start_month+"-01" : ""].filter(Boolean).sort().pop();
+      // New rule: never applied to days before it went live (19 Nov 2026), so earlier days keep the points they already had.
+      const from = [trackedDays[0], cfg.start_month ? cfg.start_month+"-01" : "", SHORT_DAY_RULE_FROM].filter(Boolean).sort().pop();
       for (let d = from, i = 0; d <= lastClosed && i < 400; d = (()=>{ const x=new Date(d+"T00:00:00Z"); x.setUTCDate(x.getUTCDate()+1); return x.toISOString().slice(0,10); })(), i++) {
         if (!inM(d) || holidays.has(d) || leaveDays.has(d)) continue;
         const dow = new Date(d+"T00:00:00Z").getUTCDay(); if (weekend.includes(dow === 0 ? 7 : dow)) continue;
