@@ -43985,20 +43985,16 @@ function PointsSettings({appSettings, onSaveSettings}) {
   const cfg = pointsConfig(appSettings);
   const [form, setForm] = useState(()=>({enabled:cfg.enabled, visibility:cfg.visibility, reward_note:cfg.reward_note, rules:{...cfg.rules}, prizes:cfg.prizes.map(p=>({...p})), start_month:cfg.start_month||new Date().toISOString().slice(0,7)}));
   const [members, setMembers] = useState(()=>cfg.members);
+  const [memberStarts, setMemberStarts] = useState(()=>({...(cfg.member_starts||{})}));   // email -> "YYYY-MM-DD": the day points start for that person
   const eligibleTeam = (pointsBridge.team||[]).filter(m=>(m.status||"active")==="active" && !POINTS_ROLES_EXCLUDED.includes(m.role)).sort((a,b)=>(a.name||"").localeCompare(b.name||""));
   const setPrize = (i, patch) => setForm(f=>({...f, prizes:f.prizes.map((p,j)=>j===i?{...p,...patch}:p)}));
   const [saving, setSaving] = useState(false);
   const save = async () => {
     setSaving(true);
     let raw = appSettings?.points_system; if (typeof raw==="string") { try { raw = JSON.parse(raw); } catch(e) { raw = {}; } }
-    // Anyone newly switched on starts counting TODAY (people already in the programme keep their current start).
-    const today = new Date().toISOString().slice(0,10);
-    const before = new Set(cfg.members || eligibleTeam.map(m=>m.email));
-    const starts = {...(cfg.member_starts||{})};
-    if (members) {
-      members.forEach(e => { if (!before.has(e) && !starts[e]) starts[e] = today; });
-      Object.keys(starts).forEach(e => { if (!members.includes(e)) delete starts[e]; });   // switched off: forget the start, so switching on again restarts from that day
-    }
+    // Each ticked person keeps the start date shown beside their name (empty = counts from the general start month).
+    const starts = {};
+    if (members) members.forEach(e => { if (memberStarts[e]) starts[e] = memberStarts[e]; });
     await onSaveSettings({points_system:{...(raw||{}), ...form, members, member_starts: starts}});
     setSaving(false);
   };
@@ -44020,7 +44016,7 @@ function PointsSettings({appSettings, onSaveSettings}) {
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:6,paddingLeft:24}}>
             {eligibleTeam.map(m=>(
               <label key={m.id} style={{display:"flex",gap:8,fontSize:13,cursor:"pointer",alignItems:"center"}}>
-                <input type="checkbox" checked={members.includes(m.email)} onChange={()=>setMembers(ms=>ms.includes(m.email)?ms.filter(x=>x!==m.email):[...ms,m.email])}/>{m.name}{cfg.member_starts?.[m.email]&&members.includes(m.email)?<span style={{fontSize:10,color:"var(--text3)"}}> · from {cfg.member_starts[m.email]}</span>:null}
+                <input type="checkbox" checked={members.includes(m.email)} onChange={()=>{ const on = members.includes(m.email); setMembers(ms=>on?ms.filter(x=>x!==m.email):[...ms,m.email]); setMemberStarts(st=>{ const n={...st}; if(on) delete n[m.email]; else n[m.email]=new Date().toISOString().slice(0,10); return n; }); }}/>{m.name}{members.includes(m.email)?<span style={{display:"inline-flex",alignItems:"center",gap:4,marginLeft:8,fontSize:10,color:"var(--text3)"}}>starts <input type="date" value={memberStarts[m.email]||""} onClick={e=>e.stopPropagation()} onChange={e=>setMemberStarts(st=>({...st,[m.email]:e.target.value}))} style={{...inp,padding:"2px 6px",fontSize:11}}/></span>:null}
               </label>
             ))}
           </div>
