@@ -34,6 +34,7 @@ foreach ($rows as $p) {
     if (!$all && $p['platform']) $all = [strtolower(trim($p['platform']))];
     $done = json_decode((string)$p['published_platforms'], true) ?: [];
     $valid = ['facebook', 'instagram', 'linkedin', 'tiktok', 'twitter'];
+    if (!$all) $why[] = 'NO PLATFORM is selected on this post, so it can never be published automatically. Open the post and choose where it should go.';
     foreach ($all as $pl) {
         $pl = strtolower(trim($pl));
         if (in_array($pl, $done, true)) continue;

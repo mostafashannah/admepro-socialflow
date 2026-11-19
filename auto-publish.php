@@ -69,6 +69,9 @@ $due = $pdo->query(
 $results = [];
 
 foreach ($due as $post) {
+  // One bad post must never stop the others, and must never make a platform that already went out get published again:
+  // anything that throws is caught here, written to the post's publish_error (visible in publish-diagnose.php) and counted as a failed attempt.
+  try {
     $attempts = (int)($post['publish_attempts'] ?? 0);
     if ($attempts >= 3) continue;
 
@@ -290,6 +293,14 @@ foreach ($due as $post) {
             ':ppi' => json_encode($platformPostIds), ':id' => $post['id'],
         ]);
     }
+  } catch (Throwable $e) {
+    error_log('[auto-publish] post ' . ($post['id'] ?? '?') . ' crashed: ' . $e->getMessage());
+    try {
+        $pdo->prepare("UPDATE posts SET publish_attempts = :att, publish_error = :err WHERE id = :id")
+            ->execute([':att' => (int)($post['publish_attempts'] ?? 0) + 1, ':err' => json_encode(['crash' => mb_substr($e->getMessage(), 0, 300) . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')']), ':id' => $post['id']]);
+    } catch (Throwable $e2) { /* nothing more we can do */ }
+    $results[] = ['post_id' => $post['id'] ?? null, 'platform' => '-', 'ok' => false, 'http_code' => 0];
+  }
 }
 
 header('Content-Type: application/json');
