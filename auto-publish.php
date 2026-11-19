@@ -201,7 +201,7 @@ foreach ($due as $post) {
             $code = 502; $resp = ['error' => 'Reel processing timed out: Instagram was still processing the video after ' . $maxMin . ' minutes.'];
         } elseif ($code !== 200) {
             unset($pending['instagram']); $savePending();
-            $detail = $resp['detail']['status_code'] ?? ($resp['detail']['error']['message'] ?? ($resp['error'] ?? ''));
+            $detail = trim(($resp['detail']['status_code'] ?? '') . ' ' . ($resp['detail']['status'] ?? '')) ?: ($resp['detail']['error']['message'] ?? ($resp['error'] ?? ''));
             $code = 502; $resp = ['error' => 'Instagram rejected the reel video: ' . (is_string($detail) ? $detail : json_encode($detail)) . ' (check the video format and length, vertical 9:16, H.264 + AAC, under 90 seconds)'];
         } else { unset($pending['instagram']); $savePending(); }
     } elseif ($platform === 'twitter') {
@@ -341,13 +341,16 @@ foreach ($due as $post) {
         // saved either way so a retry never re-posts to a platform that
         // already succeeded — only the attempt counter advances toward the
         // 3-try cutoff, and only for the platform(s) still failing.
+        // A video Instagram rejected fails identically every time: give up now instead of repeating it three times.
+        $hardFail = false; foreach ($errorsByPlatform as $e) { if (strpos(json_encode($e), 'rejected the reel video') !== false) $hardFail = true; }
+        $newAttempts = $hardFail ? 3 : $attempts + ($errorsByPlatform ? 1 : 0);
         $upd = $pdo->prepare("UPDATE posts SET publish_attempts = :att, publish_error = :err, published_platforms = :pp, platform_post_ids = :ppi WHERE id = :id");
         $upd->execute([
-            ':att' => $attempts + ($errorsByPlatform ? 1 : 0), ':err' => json_encode($errorsByPlatform),   // waiting for a reel is not a failed attempt
+            ':att' => $newAttempts, ':err' => json_encode($errorsByPlatform),   // waiting for a reel is not a failed attempt
             ':pp' => json_encode(array_values(array_unique($alreadyDone))),
             ':ppi' => json_encode($platformPostIds), ':id' => $post['id'],
         ]);
-        if ($attempts + 1 >= 3 && $errorsByPlatform) paNotifyGaveUp($pdo, $post, $errorsByPlatform, array_values(array_unique($alreadyDone)));
+        if ($newAttempts >= 3 && $errorsByPlatform && $attempts < 3) paNotifyGaveUp($pdo, $post, $errorsByPlatform, array_values(array_unique($alreadyDone)));
     }
   } catch (Throwable $e) {
     error_log('[auto-publish] post ' . ($post['id'] ?? '?') . ' crashed: ' . $e->getMessage());

@@ -129,7 +129,7 @@ function ig_publish_carousel($v, $ig_user_id, $access_token, $caption, $image_ur
     }
 
     $status_ep = "https://graph.instagram.com/{$v}/{$resp['id']}?" . http_build_query([
-        'fields' => 'status_code', 'access_token' => $access_token,
+        'fields' => 'status_code,status', 'access_token' => $access_token,
     ]);
     for ($i = 0; $i < 12; $i++) {
         usleep(($i === 0 ? 500 : 1500) * 1000);
@@ -185,7 +185,7 @@ function fb_publish_carousel($v, $page_id, $access_token, $message, $image_urls,
 //   [502, {error, ...}]          — Meta reported ERROR or cURL failed
 function ig_poll_and_publish($v, $ig_user_id, $access_token, $container_id) {
     $status_ep = "https://graph.instagram.com/{$v}/{$container_id}?" . http_build_query([
-        'fields' => 'status_code', 'access_token' => $access_token,
+        'fields' => 'status_code,status', 'access_token' => $access_token,
     ]);
     [, $statusResp] = meta_curl_get($status_ep);
     $status = $statusResp['status_code'] ?? null;
@@ -210,7 +210,7 @@ function ig_publish_media($v, $ig_user_id, $access_token, $image_url, $caption, 
     }
 
     $status_ep = "https://graph.instagram.com/{$v}/{$resp['id']}?" . http_build_query([
-        'fields' => 'status_code', 'access_token' => $access_token,
+        'fields' => 'status_code,status', 'access_token' => $access_token,
     ]);
     for ($i = 0; $i < 12; $i++) {
         usleep(($i === 0 ? 500 : 1500) * 1000);
