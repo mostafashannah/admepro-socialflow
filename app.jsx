@@ -41583,119 +41583,148 @@ function QualitySparkline({logs}) {
 // ════════════════════════════════════════════════════════════════
 // TEAM PERFORMANCE PAGE (admin / director only)
 // ════════════════════════════════════════════════════════════════
-function TeamPerformancePage({currentUser, perfLogs, aiInsights, team, maiReportSessions, posts}) {
-  const ranked = calcAllPerf(team, perfLogs, currentUser?.role==="admin", maiReportSessions, posts);
-  const teamAvg = ranked.length ? Math.round(ranked.reduce((a,m)=>a+m.perf.score,0)/ranked.length) : 0;
-  const best = ranked[0];
-  const worst = ranked[ranked.length-1];
-  const [selectedMember, setSelectedMember] = React.useState(null);
+// Plain-language recommendations for one person, worked out from the numbers on the page itself (no AI call: instant, free,
+// and always consistent with what the card shows). Most urgent first, at most three.
+function perfRecommendations(m, hrs) {
+  const p = m.perf, out = [];
+  const isAM = ["account_manager","account_director","account_executive"].includes(m.role);
+  if (!p.total && p.maiScore == null && !p.overdueCount) return [{tone:"warn", text:"No delivered tasks logged yet, so there is nothing to judge. Check that their work is being moved through the stages."}];
+  if (p.overdueCount > 0) out.push({tone:"bad", w:100, text:`${p.overdueCount} overdue task${p.overdueCount===1?"":"s"}: clear these first, or ask for a new due date before the deadline passes.`});
+  if (p.total >= 3 && p.onTimeRate < 75) out.push({tone:"bad", w:90, text:`Only ${p.onTimeRate}% delivered on time: split work into earlier checkpoints and raise blockers before the due date.`});
+  if (p.maiScore != null && p.maiScore < 70) out.push({tone:"warn", w:88, text:`Check-in score is ${p.maiScore}%: complete both daily reports on time.`});
+  if (!isAM && hrs && hrs.days >= 3 && hrs.avg < 7) out.push({tone:"warn", w:85, text:`Tracks ${fmtHrsMin(hrs.avg)} a day on average (target 7h+): make sure the timer runs on every task.`});
+  if (p.total >= 3 && p.avgRevisions >= 1.5) out.push({tone:"warn", w:80, text:`Tasks come back for changes (${p.avgRevisions} revisions on average): confirm the brief and references before starting.`});
+  if (p.total >= 3 && p.completionRate < 85) out.push({tone:"warn", w:75, text:`${100-p.completionRate}% of deliveries were rejected: agree what the finished result should look like before starting.`});
+  if (p.total >= 3 && p.avgQuality < 75) out.push({tone:"warn", w:70, text:`Quality averages ${p.avgQuality}/100: ask for a quick review before delivering the next few tasks.`});
+  out.sort((a,b) => b.w - a.w);
+  const top = out.slice(0, 3);
+  if (!top.length && p.total < 3 && p.maiScore == null) top.push({tone:"good", text:`Only ${p.total} delivered task${p.total===1?"":"s"} so far, too early to judge. All good for now: keep timers and due dates up to date.`});
+  if (!top.length) top.push({tone:"good", text: p.score >= 85 ? "Excellent and consistent. Give them the more complex work, and consider pairing them with someone who needs support." : "On track. Keep the current pace and keep timers and due dates up to date."});
+  return top;
+}
 
+function TeamPerformancePage({currentUser, perfLogs, aiInsights, team, maiReportSessions, posts}) {
+  // Only people who still work here, and only roles measured by tasks (the office boy is not).
+  const activeTeam = (team||[]).filter(m => (m.status||"active")==="active" && m.role!=="office_boy");
+  const ranked = calcAllPerf(activeTeam, perfLogs, currentUser?.role==="admin", maiReportSessions, posts);
+  const teamAvg = ranked.length ? Math.round(ranked.reduce((a,m)=>a+m.perf.score,0)/ranked.length) : 0;
+  const best = ranked[0], worst = ranked[ranked.length-1];
+  const totalOverdue = ranked.reduce((a,m)=>a+(m.perf.overdueCount||0),0);
+  const [q, setQ] = React.useState(""); const [roleF, setRoleF] = React.useState("all"); const [sortBy, setSortBy] = React.useState("score");
   const unreadInsights = (aiInsights||[]).filter(i=>!i.is_read);
 
+  const pcfg = pointsConfig(pointsBridge.appSettings), pdata = pointsData();
+  const month = new Date().toISOString().slice(0,7);
+  const since30 = new Date(Date.now()-30*864e5).toISOString().slice(0,10);
+  const rows = ranked.map((m,i) => {
+    const hrs = avgDailyHours(m.email, null, since30);
+    const pts = (pcfg.enabled && pointsEligible(m, pcfg)) ? calcMemberPoints(m, month, {...pdata, cfg:pcfg}).total : null;
+    return {m, rank:i+1, hrs, pts, recs:perfRecommendations(m, hrs)};
+  });
+  const roles = [...new Set(ranked.map(m=>m.role))];
+  const shown = rows
+    .filter(r => (roleF==="all" || r.m.role===roleF) && (!q || (r.m.name||"").toLowerCase().includes(q.toLowerCase())))
+    .sort((a,b) => sortBy==="overdue" ? (b.m.perf.overdueCount||0)-(a.m.perf.overdueCount||0)
+                 : sortBy==="points" ? (b.pts??-1e9)-(a.pts??-1e9)
+                 : sortBy==="hours" ? (a.hrs.days?a.hrs.avg:99)-(b.hrs.days?b.hrs.avg:99)
+                 : a.rank-b.rank);
+  const toneCol = {bad:"#ef4444", warn:"#f59e0b", good:"#10b981"};
+  const inp = {padding:"7px 12px",borderRadius:99,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:12};
+
   return (
-    <div className="fade-in" style={{maxWidth:960}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24,flexWrap:"wrap",gap:12}}>
+    <div className="fade-in" style={{maxWidth:1000}}>
+      <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:12}}>
         <div>
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:22,fontWeight:800,margin:0}}>Team Performance</h2>
-          <p style={{color:"var(--text3)",fontSize:13,margin:"4px 0 0"}}>Weekly overview · {ranked.length} team members</p>
+          <p style={{color:"var(--text3)",fontSize:13,margin:"4px 0 0"}}>{ranked.length} active team members · everything about each person in one place</p>
         </div>
-        <div style={{display:"flex",gap:10,alignItems:"center"}}>
-          <div style={{padding:"8px 16px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,textAlign:"center"}}>
-            <p style={{fontSize:10,color:"var(--text3)",margin:0,textTransform:"uppercase",letterSpacing:"0.05em"}}>Team Avg</p>
-            <p style={{fontSize:20,fontWeight:800,margin:0,color:perfColor(teamAvg)}}>{teamAvg}</p>
+      </div>
+
+      {/* One summary bar */}
+      <div style={{display:"flex",flexWrap:"wrap",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,overflow:"hidden",marginBottom:16}}>
+        {[["Team average",teamAvg,perfColor(teamAvg),""],
+          ["Top performer",best?best.perf.score:"—","#10b981",best?best.name:""],
+          ["Needs support",worst&&best&&worst.email!==best.email?worst.perf.score:"—","#ef4444",worst&&best&&worst.email!==best.email?worst.name:""],
+          ["Overdue tasks",totalOverdue,totalOverdue>0?"#ef4444":"#6b7280",""]].map(([l,v,c,sub],i)=>(
+          <div key={l} style={{flex:"1 1 150px",padding:"12px 18px",borderLeft:i?"1px solid var(--border)":"none"}}>
+            <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",margin:"0 0 4px"}}>{l}</p>
+            <p style={{fontSize:24,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:c,margin:0,lineHeight:1}}>{v}</p>
+            {sub&&<p style={{fontSize:11,color:"var(--text2)",margin:"4px 0 0",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{sub}</p>}
           </div>
-        </div>
+        ))}
       </div>
 
-      <PointsLeaderboardSection/>
-      {/* Best / Worst highlight */}
-      {best&&worst&&best.email!==worst.email&&(
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
-          {[{m:best,label:"Top Performer",col:"#10b981",ico:""},{m:worst,label:"Needs Support",col:"#ef4444",ico:""}].map(({m,label,col,ico})=>(
-            <div key={m.id} style={{background:"var(--surface)",border:`1px solid ${col}33`,borderRadius:14,padding:"16px 18px",display:"flex",gap:14,alignItems:"center"}}>
-              <div style={{fontSize:28}}>{ico}</div>
-              <div style={{flex:1,minWidth:0}}>
-                <p style={{fontSize:11,color:col,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",margin:0}}>{label}</p>
-                <p style={{fontSize:15,fontWeight:800,margin:"2px 0 0",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{m.name}</p>
-                <p style={{fontSize:12,color:"var(--text3)",margin:"2px 0 0"}}>{ROLES[m.role]?.label||m.role}</p>
+      {/* Filters */}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:14}}>
+        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search a member…" style={{...inp,minWidth:180}}/>
+        <select value={roleF} onChange={e=>setRoleF(e.target.value)} style={inp}><option value="all">All roles</option>{roles.map(r=><option key={r} value={r}>{ROLES[r]?.label||r}</option>)}</select>
+        <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={inp}>
+          <option value="score">Sort: score</option><option value="overdue">Sort: most overdue</option>{pcfg.enabled&&<option value="points">Sort: points</option>}<option value="hours">Sort: fewest tracked hours</option>
+        </select>
+        <span style={{fontSize:12,color:"var(--text3)"}}>{shown.length} shown</span>
+      </div>
+
+      {/* One card per member, everything visible */}
+      <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
+        {shown.map(({m,rank,hrs,pts,recs})=>{
+          const p=m.perf, col=perfColor(p.score);
+          const tiles = [
+            ["Tasks", p.total, "var(--text)"],
+            ["Completion", p.total?p.completionRate+"%":"—", "#10b981"],
+            ["On time", p.total?p.onTimeRate+"%":"—", p.total&&p.onTimeRate<75?"#ef4444":"#3b82f6"],
+            ["Quality", p.total?p.avgQuality+"/100":"—", "#8b5cf6"],
+            ["Revisions", p.total?p.avgRevisions+" avg":"—", p.total&&p.avgRevisions>=1.5?"#f59e0b":"var(--text)"],
+            ["Overdue now", p.overdueCount||0, p.overdueCount>0?"#ef4444":"#6b7280"],
+            ["Tracked / day", hrs.days?fmtHrsMin(hrs.avg):"—", hrs.days&&hrs.avg<7&&!["account_manager","account_director","account_executive"].includes(m.role)?"#f59e0b":"var(--text)"],
+            ...(pts!=null?[["Points (month)", pts, pts<0?"#ef4444":"#10b981"]]:[]),
+            ...(p.maiScore!=null?[["Check-ins", p.maiScore+"%", p.maiScore<70?"#f59e0b":"#10b981"]]:[]),
+          ];
+          return (
+            <div key={m.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderLeft:`4px solid ${col}`,borderRadius:14,padding:"14px 16px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+                <span style={{fontSize:13,fontWeight:800,color:"var(--text3)",minWidth:18,textAlign:"center"}}>{rank}</span>
+                <Avatar name={m.name} role={m.role} size={38}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{fontSize:15,fontWeight:800,margin:0}}>{m.name}</p>
+                  <p style={{fontSize:12,color:"var(--text3)",margin:"2px 0 0"}}>{ROLES[m.role]?.label||m.role}</p>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <span style={{fontSize:26,fontWeight:900,color:col,lineHeight:1}}>{p.score}</span>
+                  <p style={{fontSize:10,color:col,margin:"2px 0 0",fontWeight:700}}>{perfLabel(p.score)}</p>
+                </div>
               </div>
-              <div style={{textAlign:"right",flexShrink:0}}>
-                <p style={{fontSize:26,fontWeight:900,color:col,margin:0,lineHeight:1}}>{m.perf.score}</p>
-                <p style={{fontSize:10,color:"var(--text3)",margin:0}}>score</p>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(104px,1fr))",gap:8,marginBottom:12}}>
+                {tiles.map(([l,v,c])=>(
+                  <div key={l} style={{background:"var(--surface2)",borderRadius:10,padding:"8px 10px"}}>
+                    <p style={{fontSize:15,fontWeight:800,color:c,margin:0}}>{v}</p>
+                    <p style={{fontSize:10,color:"var(--text3)",margin:"2px 0 0"}}>{l}</p>
+                  </div>
+                ))}
               </div>
+              <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:p.logs.length?10:0}}>
+                <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",margin:0}}>Recommendation</p>
+                {recs.map((r,i)=>(
+                  <div key={i} style={{display:"flex",gap:8,alignItems:"flex-start",fontSize:13,color:"var(--text2)",lineHeight:1.45}}>
+                    <span style={{width:8,height:8,borderRadius:"50%",background:toneCol[r.tone],flexShrink:0,marginTop:6}}/>{r.text}
+                  </div>
+                ))}
+              </div>
+              {p.logs.length>0&&(
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                  <span style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase"}}>Recent</span>
+                  {p.logs.slice(-3).reverse().map(l=>(
+                    <span key={l.id} style={{fontSize:11,padding:"3px 9px",borderRadius:99,background:"var(--surface2)",color:"var(--text2)"}}>{l.post_title} · <b style={{color:l.quality_score>=85?"#10b981":l.quality_score>=70?"#f59e0b":"#ef4444"}}>Q{l.quality_score}</b></span>
+                  ))}
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* Leaderboard */}
-      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:"18px 20px",marginBottom:20}}>
-        <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:14}}>Leaderboard</p>
-        <div style={{display:"flex",flexDirection:"column",gap:6}}>
-          {ranked.map((m,i)=>{
-            const p=m.perf;
-            const col=perfColor(p.score);
-            const isSelected=selectedMember?.id===m.id;
-            return (
-              <div key={m.id}>
-                <button onClick={()=>setSelectedMember(isSelected?null:m)} style={{
-                  width:"100%",display:"flex",alignItems:"center",gap:12,padding:"12px 14px",
-                  background:isSelected?"var(--accentbg)":"var(--surface2)",
-                  border:isSelected?"1px solid var(--accent)44":"1px solid transparent",
-                  borderRadius:10,cursor:"pointer",textAlign:"left",transition:"all 0.12s"
-                }}>
-                  <span style={{fontSize:14,fontWeight:800,color:"var(--text3)",minWidth:20,textAlign:"center"}}>{i+1}</span>
-                  <Avatar name={m.name} role={m.role} size={34}/>
-                  <div style={{flex:1,minWidth:0}}>
-                    <p style={{fontSize:13,fontWeight:700,margin:0}}>{m.name}</p>
-                    <p style={{fontSize:11,color:"var(--text3)",margin:"1px 0 0"}}>{ROLES[m.role]?.label||m.role} · {p.total} tasks</p>
-                  </div>
-                  {/* Mini score bars */}
-                  <div style={{display:"none",flexDirection:"column",gap:3,width:100,flexShrink:0}} className="perf-bars-desktop">
-                    <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                      <div style={{flex:1,height:4,borderRadius:99,background:"var(--border2)"}}>
-                        <div style={{height:"100%",width:p.completionRate+"%",borderRadius:99,background:"#10b981"}}/>
-                      </div>
-                      <span style={{fontSize:9,color:"var(--text3)",minWidth:24}}>{p.completionRate}%</span>
-                    </div>
-                    <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                      <div style={{flex:1,height:4,borderRadius:99,background:"var(--border2)"}}>
-                        <div style={{height:"100%",width:p.avgQuality+"%",borderRadius:99,background:"#8b5cf6"}}/>
-                      </div>
-                      <span style={{fontSize:9,color:"var(--text3)",minWidth:24}}>{p.avgQuality}</span>
-                    </div>
-                  </div>
-                  <div style={{textAlign:"right",flexShrink:0}}>
-                    <span style={{fontSize:18,fontWeight:900,color:col}}>{p.score}</span>
-                    <p style={{fontSize:10,color:col,margin:0,fontWeight:600}}>{perfLabel(p.score)}</p>
-                  </div>
-                </button>
-                {/* Expanded detail */}
-                {isSelected&&(
-                  <div style={{padding:"14px 16px",background:"var(--accentbg)",borderRadius:"0 0 10px 10px",border:"1px solid var(--accent)44",borderTop:"none",marginTop:-2}}>
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:14}}>
-                      {[["Completion",p.completionRate+"%","#10b981"],["On-Time",p.onTimeRate+"%","#3b82f6"],["Quality",p.avgQuality+"/100","#8b5cf6"],["Revisions",p.avgRevisions+" avg","#f59e0b"]].map(([l,v,c])=>(
-                        <div key={l} style={{textAlign:"center"}}>
-                          <p style={{fontSize:16,fontWeight:800,color:c,margin:0}}>{v}</p>
-                          <p style={{fontSize:11,color:"var(--text3)",margin:0}}>{l}</p>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                      {p.logs.slice(-3).reverse().map(l=>(
-                        <div key={l.id} style={{display:"flex",justifyContent:"space-between",padding:"6px 10px",background:"var(--surface)",borderRadius:7,fontSize:12}}>
-                          <span style={{color:"var(--text2)",fontWeight:500}}>{l.post_title}</span>
-                          <span style={{color:l.quality_score>=85?"#10b981":l.quality_score>=70?"#f59e0b":"#ef4444",fontWeight:700}}>Q:{l.quality_score}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+          );
+        })}
+        {!shown.length&&<div style={{padding:"40px",textAlign:"center",color:"var(--text3)",border:"1px dashed var(--border)",borderRadius:14}}>No members match.</div>}
       </div>
+
+      {/* Rewards & prize requests (admin tools) */}
+      <PointsLeaderboardSection/>
 
       {/* AI Insights */}
       {unreadInsights.length>0&&(
@@ -41704,7 +41733,6 @@ function TeamPerformancePage({currentUser, perfLogs, aiInsights, team, maiReport
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {unreadInsights.map(ins=>(
               <div key={ins.id} style={{padding:"12px 14px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:10,display:"flex",gap:12}}>
-                <div style={{fontSize:20,flexShrink:0}}>{ins.category==="bottleneck"?"":ins.category==="performance"?"":ins.category==="quality"?"":""}</div>
                 <div>
                   <p style={{fontSize:13,fontWeight:700,margin:"0 0 3px"}}>{ins.title}</p>
                   <p style={{fontSize:12,color:"var(--text2)",margin:"0 0 4px"}}>{ins.insight}</p>
