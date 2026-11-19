@@ -43615,7 +43615,7 @@ const POINTS_RULES_DEFAULT = [
   ["mai_missed",     "Mai check-in missed",                   -10],
   ["lead_won",       "Lead closed won",                        25],
   // From the time tracked on tasks: after 9 PM (Cairo) each working day, under 7 tracked hours = a deduction for that day.
-  ["short_day",      "Tracked task time under 7 hours (daily, after 9 PM)", -3],
+  ["short_day",      "Tracked task time under 7 hours (daily, after 9 PM)", -10],
   // Team leaders also earn/lose from how their team performs (each task delivered by someone they lead).
   ["team_on_time",   "Team leader: a team member's task on time",   2],
   ["team_clean",     "Team leader: a team member's task, no revisions", 1],
