@@ -43627,7 +43627,7 @@ function pointsConfig(appSettings) {
   if (typeof c === "string") { try { c = JSON.parse(c); } catch(e) { c = null; } }
   c = c && typeof c === "object" ? c : {};
   const rules = {}; POINTS_RULES_DEFAULT.forEach(([k,,v]) => { rules[k] = (c.rules && c.rules[k] != null && !isNaN(Number(c.rules[k]))) ? Number(c.rules[k]) : v; });
-  return { enabled: !!c.enabled, visibility: c.visibility || "private", reward_note: c.reward_note || "", rules, adjustments: Array.isArray(c.adjustments) ? c.adjustments : [], prizes: Array.isArray(c.prizes) ? c.prizes : [], redemptions: Array.isArray(c.redemptions) ? c.redemptions : [], start_month: c.start_month || "", members: Array.isArray(c.members) ? c.members : null };
+  return { enabled: !!c.enabled, visibility: c.visibility || "private", reward_note: c.reward_note || "", rules, daily_cap: (c.daily_cap != null && c.daily_cap !== "" && !isNaN(Number(c.daily_cap))) ? Math.max(0, Number(c.daily_cap)) : 20, adjustments: Array.isArray(c.adjustments) ? c.adjustments : [], prizes: Array.isArray(c.prizes) ? c.prizes : [], redemptions: Array.isArray(c.redemptions) ? c.redemptions : [], start_month: c.start_month || "", members: Array.isArray(c.members) ? c.members : null };
 }
 // month = "YYYY-MM". Returns {total, lines:[{date,label,pts}]}
 function calcMemberPoints(member, month, {perfLogs, posts, maiSessions, leads, cfg}) {
@@ -43712,6 +43712,12 @@ function calcMemberPoints(member, month, {perfLogs, posts, maiSessions, leads, c
         if (hrs < 7) add(d, "short_day", `Tracked ${fmtHrsMin(hrs)} on tasks (under 7h)`);
       }
     }
+  }
+  // Daily earning limit: however many tasks are delivered in a day, a person can only EARN this many points that day.
+  // Deductions are never capped. The trimmed amount shows as its own line so the history stays honest.
+  if (cfg.daily_cap > 0) {
+    const gained = {}; lines.forEach(l => { if (l.pts > 0 && l.date) gained[l.date] = (gained[l.date]||0) + l.pts; });
+    Object.entries(gained).forEach(([d,g]) => { if (g > cfg.daily_cap) lines.push({date: d, label: `Daily limit: max +${cfg.daily_cap} points a day`, pts: -(g - cfg.daily_cap)}); });
   }
   (cfg.adjustments||[]).forEach(a => { if (a.email === email && inM(a.date)) lines.push({date: a.date, label: `Manual: ${a.reason || "adjustment"}`, pts: Number(a.pts)||0, manual: true, id: a.id}); });
   lines.sort((a,b) => b.date.localeCompare(a.date));
@@ -43971,7 +43977,7 @@ function PointsLeaderboard({team, cfg, data, month, setMonth, canAdjust, onSaveS
 }
 function PointsSettings({appSettings, onSaveSettings}) {
   const cfg = pointsConfig(appSettings);
-  const [form, setForm] = useState(()=>({enabled:cfg.enabled, visibility:cfg.visibility, reward_note:cfg.reward_note, rules:{...cfg.rules}, prizes:cfg.prizes.map(p=>({...p})), start_month:cfg.start_month||new Date().toISOString().slice(0,7)}));
+  const [form, setForm] = useState(()=>({enabled:cfg.enabled, visibility:cfg.visibility, reward_note:cfg.reward_note, rules:{...cfg.rules}, daily_cap:cfg.daily_cap, prizes:cfg.prizes.map(p=>({...p})), start_month:cfg.start_month||new Date().toISOString().slice(0,7)}));
   const [members, setMembers] = useState(()=>cfg.members);
   const eligibleTeam = (pointsBridge.team||[]).filter(m=>(m.status||"active")==="active" && !POINTS_ROLES_EXCLUDED.includes(m.role)).sort((a,b)=>(a.name||"").localeCompare(b.name||""));
   const setPrize = (i, patch) => setForm(f=>({...f, prizes:f.prizes.map((p,j)=>j===i?{...p,...patch}:p)}));
@@ -44023,6 +44029,10 @@ function PointsSettings({appSettings, onSaveSettings}) {
             <input type="number" value={form.rules[k]} onChange={e=>setForm({...form,rules:{...form.rules,[k]:e.target.value===""?0:Number(e.target.value)}})} style={{...inp,width:80,textAlign:"right"}}/>
           </div>
         ))}
+        <div style={{display:"flex",alignItems:"center",gap:10,marginTop:6,paddingTop:10,borderTop:"1px solid var(--border)"}}>
+          <span style={{flex:1,fontSize:13}}><b>Daily earning limit</b><br/><span style={{fontSize:11,color:"var(--text3)"}}>The most points one person can earn in a single day, however many tasks they deliver. This is what makes a big month hard: with 22 working days, a limit of 20 means 400 needs almost every day at the limit and no deductions. 0 = no limit.</span></span>
+          <input type="number" min="0" value={form.daily_cap} onChange={e=>setForm({...form,daily_cap:e.target.value===""?0:Number(e.target.value)})} style={{...inp,width:80,textAlign:"right"}}/>
+        </div>
       </div>
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:8}}>
         <p style={{fontSize:13,fontWeight:800,display:"flex",alignItems:"center",gap:6}}><Ico d={Icons.award} size={15} stroke="var(--accent)"/>Prizes (redeemable for money or time off)</p>
