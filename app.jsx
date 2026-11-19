@@ -43985,7 +43985,8 @@ function PointsSettings({appSettings, onSaveSettings}) {
   const cfg = pointsConfig(appSettings);
   const [form, setForm] = useState(()=>({enabled:cfg.enabled, visibility:cfg.visibility, reward_note:cfg.reward_note, rules:{...cfg.rules}, prizes:cfg.prizes.map(p=>({...p})), start_month:cfg.start_month||new Date().toISOString().slice(0,7)}));
   const [members, setMembers] = useState(()=>cfg.members);
-  const [memberStarts, setMemberStarts] = useState(()=>({...(cfg.member_starts||{})}));   // email -> "YYYY-MM-DD": the day points start for that person
+  const [memberStarts, setMemberStarts] = useState(()=>({...(cfg.member_starts||{})}));
+  const defaultStart = () => form.start_month ? form.start_month + "-01" : "";   // where everyone without a personal date is counted from   // email -> "YYYY-MM-DD": the day points start for that person
   const eligibleTeam = (pointsBridge.team||[]).filter(m=>(m.status||"active")==="active" && !POINTS_ROLES_EXCLUDED.includes(m.role)).sort((a,b)=>(a.name||"").localeCompare(b.name||""));
   const setPrize = (i, patch) => setForm(f=>({...f, prizes:f.prizes.map((p,j)=>j===i?{...p,...patch}:p)}));
   const [saving, setSaving] = useState(false);
@@ -43994,7 +43995,7 @@ function PointsSettings({appSettings, onSaveSettings}) {
     let raw = appSettings?.points_system; if (typeof raw==="string") { try { raw = JSON.parse(raw); } catch(e) { raw = {}; } }
     // Each ticked person keeps the start date shown beside their name (empty = counts from the general start month).
     const starts = {};
-    if (members) members.forEach(e => { if (memberStarts[e]) starts[e] = memberStarts[e]; });
+    if (members) members.forEach(e => { if (memberStarts[e] && memberStarts[e] !== defaultStart()) starts[e] = memberStarts[e]; });
     await onSaveSettings({points_system:{...(raw||{}), ...form, members, member_starts: starts}});
     setSaving(false);
   };
@@ -44016,7 +44017,7 @@ function PointsSettings({appSettings, onSaveSettings}) {
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:6,paddingLeft:24}}>
             {eligibleTeam.map(m=>(
               <label key={m.id} style={{display:"flex",gap:8,fontSize:13,cursor:"pointer",alignItems:"center"}}>
-                <input type="checkbox" checked={members.includes(m.email)} onChange={()=>{ const on = members.includes(m.email); setMembers(ms=>on?ms.filter(x=>x!==m.email):[...ms,m.email]); setMemberStarts(st=>{ const n={...st}; if(on) delete n[m.email]; else n[m.email]=new Date().toISOString().slice(0,10); return n; }); }}/>{m.name}{members.includes(m.email)?<span style={{display:"inline-flex",alignItems:"center",gap:4,marginLeft:8,fontSize:10,color:"var(--text3)"}}>starts <input type="date" value={memberStarts[m.email]||""} onClick={e=>e.stopPropagation()} onChange={e=>setMemberStarts(st=>({...st,[m.email]:e.target.value}))} style={{...inp,padding:"2px 6px",fontSize:11}}/></span>:null}
+                <input type="checkbox" checked={members.includes(m.email)} onChange={()=>{ const on = members.includes(m.email); setMembers(ms=>on?ms.filter(x=>x!==m.email):[...ms,m.email]); setMemberStarts(st=>{ const n={...st}; if(on) delete n[m.email]; else n[m.email]=new Date().toISOString().slice(0,10); return n; }); }}/>{m.name}{members.includes(m.email)?<span style={{display:"inline-flex",alignItems:"center",gap:4,marginLeft:8,fontSize:10,color:"var(--text3)"}}>starts {(memberStarts[m.email]||defaultStart())?null:<span style={{fontSize:10}}>all points so far</span>}<input type="date" value={memberStarts[m.email]||defaultStart()} title={memberStarts[m.email]?"This person's own start date":"Counted from the general start month"} onClick={e=>e.stopPropagation()} onChange={e=>setMemberStarts(st=>({...st,[m.email]:e.target.value}))} style={{...inp,padding:"2px 6px",fontSize:11}}/></span>:null}
               </label>
             ))}
           </div>
