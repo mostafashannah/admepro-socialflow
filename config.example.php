@@ -141,3 +141,7 @@ define('RECRUITMENT_SMTP_PORT', 465);
 // Zernio (zernio.com) — posts to LinkedIn and other platforms through one API key. Server-side only, never in the app.
 define('ZERNIO_API_KEY', '');
 define('ZERNIO_WEBHOOK_SECRET', ''); // any long random string; use the same one in Zernio's webhook settings
+
+// Mai's reports as a link (no login). Optional:
+// define('MAI_FORM_BASE_URL', 'https://socialflow.admepro.com');   // where the link points (default shown)
+// define('MAI_FORM_MODE', false);                                  // set false to go back to the WhatsApp chat check-ins

@@ -258,6 +258,14 @@ function maiStartReportSession(PDO $pdo, array $am, $reportType) {
 
     if (!waPrefAllows($pdo, $am['email'], 'wa_am_reports')) return null;
 
+    // New flow: a WhatsApp message with a private link to a step-by-step form (see mai-form-lib.php).
+    // Falls back to the old chat only if the migration hasn't been run yet or MAI_FORM_MODE is set to false in config.php.
+    if (!(defined('MAI_FORM_MODE') && !MAI_FORM_MODE)) {
+        require_once __DIR__ . '/mai-form-lib.php';
+        $formResult = maiStartFormSession($pdo, $am, $reportType);
+        if ($formResult !== false) return $formResult;
+    }
+
     $checklist = maiChecklistForAm($am, $reportType);
     // Name her actual routine tasks for today, so Mai asks about each one.
     if (isset($checklist['routine_tasks'])) {
@@ -371,6 +379,15 @@ function maiFindActiveReportSession(PDO $pdo, $accountManagerId) {
 // conversation is done. Sends the reply itself; returns nothing (the
 // caller — wa-webhook.php — should NOT also send a reply).
 function maiContinueReportSession(PDO $pdo, array $session, $incomingText) {
+    // Link-form sessions are filled on the web page, not by chatting: point her back to the link.
+    if (($session['mode'] ?? 'chat') === 'form' && !empty($session['token'])) {
+        require_once __DIR__ . '/mai-form-lib.php';
+        $phoneStmt = $pdo->prepare("SELECT whatsapp_number FROM team_members WHERE id = :id");
+        $phoneStmt->execute([':id' => $session['account_manager_id']]);
+        $phone = $phoneStmt->fetchColumn();
+        if ($phone) sendWhatsAppReply($phone, "Thanks! Please fill today's report on this page instead, it's quick and one step at a time: " . maiFormLink($session['token']));
+        return;
+    }
     $transcript = json_decode($session['transcript'], true) ?: [];
     $transcript[] = ['role' => 'user', 'content' => $incomingText, 'at' => date('c')];
 
