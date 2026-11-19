@@ -43614,8 +43614,8 @@ const POINTS_RULES_DEFAULT = [
   ["mai_full",       "Mai check-in completed, all points",      5],
   ["mai_missed",     "Mai check-in missed",                   -10],
   ["lead_won",       "Lead closed won",                        25],
-  // From the time tracked on tasks: a month whose average tracked hours per working day is under 8 (one deduction per month).
-  ["short_hours",    "Average daily tracked hours under 8 (each month)", -10],
+  // From the time tracked on tasks: after 9 PM (Cairo) each working day, under 7 tracked hours = a deduction for that day.
+  ["short_day",      "Tracked task time under 7 hours (daily, after 9 PM)", -3],
   // Team leaders also earn/lose from how their team performs (each task delivered by someone they lead).
   ["team_on_time",   "Team leader: a team member's task on time",   2],
   ["team_clean",     "Team leader: a team member's task, no revisions", 1],
@@ -43680,17 +43680,38 @@ function calcMemberPoints(member, month, {perfLogs, posts, maiSessions, leads, c
     if (l.status !== "closed_won" || !(l.assigned_to === email || l.assigned_to === member.id)) return;
     const d = l.updated_at || l.updated_date || l.created_date; if (inM(d)) add(d, "lead_won", `Lead won: ${l.name || l.company || ""}`);
   });
-  // Task-timer hours: for each finished month, the average tracked hours per working day (a day with at least 1 minute tracked).
-  // Under 8h = one deduction for that month. Today is skipped (unfinished) and so is a month with fewer than 3 tracked days.
-  if (R.short_hours) {
-    const todayStr = new Date().toISOString().slice(0,10); const byDay = {};
+  // Task-timer hours, checked daily: once it is 9 PM in Cairo, every working day (not weekend / holiday / approved leave) on which the
+  // member tracked under 7 hours on tasks costs points. Only people who use the timer at all (at least one tracked day) are checked,
+  // and never for days before their first tracked day.
+  if (R.short_day) {
+    const cairo = (() => { try { const f = new Intl.DateTimeFormat("en-CA",{timeZone:"Africa/Cairo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",hourCycle:"h23"}).formatToParts(new Date()); const g = t => f.find(x=>x.type===t)?.value; return {date:`${g("year")}-${g("month")}-${g("day")}`, hour:Number(g("hour"))}; } catch(e) { const d=new Date(); return {date:d.toISOString().slice(0,10), hour:d.getUTCHours()+2}; } })();
+    const prevDay = ymd => { const d = new Date(ymd+"T00:00:00Z"); d.setUTCDate(d.getUTCDate()-1); return d.toISOString().slice(0,10); };
+    const lastClosed = cairo.hour >= 21 ? cairo.date : prevDay(cairo.date);
+    const secsByDay = {};
     (timerBridge.entries||[]).forEach(t => {
-      if (t.user_email !== email || !t.date) return; const d = String(t.date).slice(0,10); if (d >= todayStr || !inM(d)) return;
-      byDay[d] = (byDay[d]||0) + (Number(t.total_seconds)||0);
+      if (t.user_email !== email || !t.date) return; const d = String(t.date).slice(0,10);
+      let sec = Number(t.total_seconds)||0;
+      if (t.status==="active" && t.started_at) { const st = parseSqlUtc(t.started_at); if (st && !isNaN(st)) sec += Math.max(0,(Date.now()-st.getTime())/1000); }
+      secsByDay[d] = (secsByDay[d]||0) + sec;
     });
-    const byMonth = {};
-    Object.entries(byDay).forEach(([d,secs]) => { if (secs < 60) return; const m = d.slice(0,7); (byMonth[m] = byMonth[m] || {days:0,secs:0,last:d}); byMonth[m].days++; byMonth[m].secs += secs; if (d > byMonth[m].last) byMonth[m].last = d; });
-    Object.entries(byMonth).forEach(([m,v]) => { const avg = v.secs/3600/v.days; if (v.days >= 3 && avg < 8) add(v.last, "short_hours", `Daily average ${avg.toFixed(1)}h over ${v.days} working days in ${m} (under 8h)`); });
+    const trackedDays = Object.keys(secsByDay).filter(d => secsByDay[d] >= 60).sort();
+    if (trackedDays.length) {
+      const rules = pointsBridge.appSettings?.attendance_rules || {};
+      const weekend = rules.weekendDays ?? [5,6];
+      const holidays = new Set((rules.holidays||[]).map(h => typeof h === "string" ? h : h?.date).filter(Boolean));
+      const leaveDays = new Set();
+      (pointsBridge.leaves||[]).filter(r => r.status === "approved" && r.team_member_id === member.id).forEach(r => {
+        const c = new Date(String(r.start_date||"").slice(0,10)+"T00:00:00Z"), e = new Date(String(r.end_date||r.start_date||"").slice(0,10)+"T00:00:00Z");
+        if (isNaN(c) || isNaN(e)) return; for (let i=0; c<=e && i<400; i++, c.setUTCDate(c.getUTCDate()+1)) leaveDays.add(c.toISOString().slice(0,10));
+      });
+      const from = [trackedDays[0], cfg.start_month ? cfg.start_month+"-01" : ""].filter(Boolean).sort().pop();
+      for (let d = from, i = 0; d <= lastClosed && i < 400; d = (()=>{ const x=new Date(d+"T00:00:00Z"); x.setUTCDate(x.getUTCDate()+1); return x.toISOString().slice(0,10); })(), i++) {
+        if (!inM(d) || holidays.has(d) || leaveDays.has(d)) continue;
+        const dow = new Date(d+"T00:00:00Z").getUTCDay(); if (weekend.includes(dow === 0 ? 7 : dow)) continue;
+        const hrs = (secsByDay[d]||0)/3600;
+        if (hrs < 7) add(d, "short_day", `Tracked ${fmtHrsMin(hrs)} on tasks (under 7h)`);
+      }
+    }
   }
   (cfg.adjustments||[]).forEach(a => { if (a.email === email && inM(a.date)) lines.push({date: a.date, label: `Manual: ${a.reason || "adjustment"}`, pts: Number(a.pts)||0, manual: true, id: a.id}); });
   lines.sort((a,b) => b.date.localeCompare(a.date));
@@ -44029,7 +44050,7 @@ function PointsSettings({appSettings, onSaveSettings}) {
   );
 }
 
-const pointsBridge = {appSettings:null, leads:[], team:[], onSaveSettings:null, currentUser:null};
+const pointsBridge = {appSettings:null, leads:[], team:[], leaves:[], onSaveSettings:null, currentUser:null};
 const pointsData = () => ({perfLogs: perfBridge.logs, posts: perfBridge.posts, maiSessions: perfBridge.mai, leads: pointsBridge.leads});
 // My Performance: own points (+ public leaderboard). Renders nothing while points are OFF.
 function MyPointsSection() {
@@ -54521,7 +54542,7 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
   timerBridge.entries = data.timeEntries||[];
   roleBridge.role = currentUser?.role||"";
   perfBridge.logs = data.perfLogs||[]; perfBridge.mai = data.maiReportSessions||[]; perfBridge.posts = data.posts||[];
-  pointsBridge.appSettings = appSettings; pointsBridge.leads = data.leads||[]; pointsBridge.team = data.team||[]; pointsBridge.onSaveSettings = (x)=>saveAppSettings(x); pointsBridge.currentUser = currentUser;
+  pointsBridge.appSettings = appSettings; pointsBridge.leads = data.leads||[]; pointsBridge.team = data.team||[]; pointsBridge.leaves = data.leaveRequests||[]; pointsBridge.onSaveSettings = (x)=>saveAppSettings(x); pointsBridge.currentUser = currentUser;
   clientAssetsBridge.assets = data.assets; clientAssetsBridge.addAsset = addAsset; clientAssetsBridge.clients = data.clients||[];
 
   const updateAsset = async (id, patch) => {
