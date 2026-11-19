@@ -21581,6 +21581,8 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
 // Hours actually worked from a check_in/check_out pair (HH:MM[:SS] strings),
 // guarding against an overnight shift where check_out's clock time is
 // numerically earlier than check_in's.
+// "2h / 4h" normally; once a prize adds hours the stored "used" goes negative, so say it plainly: "0h / 4h + 4h bonus".
+const fmtPersonalLeave = (used, total) => { const u = Number(used||0), t = Number(total??4); return u < 0 ? `0h / ${t}h + ${-u}h bonus` : `${u}h / ${t}h`; };
 function workedHoursFor(checkIn, checkOut) {
   if(!checkIn || !checkOut) return null;
   const toMin = (t) => { const [h,m] = t.split(":").map(Number); return h*60+(m||0); };
@@ -23500,7 +23502,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
             </div>
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px"}}>
               <div style={{fontSize:11,color:"var(--text3)",fontWeight:600}}>Personal Leave Credit</div>
-              <div style={{fontSize:18,fontWeight:800,color:"var(--text)"}}>{Number(member.personal_leave_hours_used||0)}h / {Number(member.personal_leave_hours_total??4)}h</div>
+              <div style={{fontSize:18,fontWeight:800,color:"var(--text)"}}>{fmtPersonalLeave(member.personal_leave_hours_used, member.personal_leave_hours_total)}</div>
               <div style={{fontSize:11,color:"var(--text3)"}}>used / total (this month)</div>
             </div>
           </div>
@@ -23654,7 +23656,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
           <h3 style={{fontWeight:700,fontSize:14,marginBottom:8}}>Leave & WFH Credits</h3>
           {row("Vacation Days", `${Number(member.vacation_days_used||0)} used / ${Number(member.vacation_days_total??21)} total`)}
           {row("WFH Days (this month)", `${Number(member.wfh_days_used||0)} used / ${Number(member.wfh_days_total??2)} total`)}
-          {row("Personal Leave Hours (this month)", `${Number(member.personal_leave_hours_used||0)} used / ${Number(member.personal_leave_hours_total??4)} total`)}
+          {row("Personal Leave Hours (this month)", Number(member.personal_leave_hours_used||0) < 0 ? `0 used / ${Number(member.personal_leave_hours_total??4)} total + ${-Number(member.personal_leave_hours_used)}h bonus` : `${Number(member.personal_leave_hours_used||0)} used / ${Number(member.personal_leave_hours_total??4)} total`)}
         </div>
       </div>
 
@@ -36510,7 +36512,7 @@ function MyWorkTab({member, attendanceRecords, leaveRequests, onSubmit}) {
           </div>
           <div>
             <p style={{fontSize:11,color:"var(--text3)"}}>Personal Leave Hours (this month)</p>
-            <p style={{fontSize:14,fontWeight:700}}>{Number(member.personal_leave_hours_used||0)}h / {Number(member.personal_leave_hours_total??4)}h</p>
+            <p style={{fontSize:14,fontWeight:700}}>{fmtPersonalLeave(member.personal_leave_hours_used, member.personal_leave_hours_total)}</p>
           </div>
         </div>
         <div>
