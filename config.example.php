@@ -149,3 +149,6 @@ define('ZERNIO_WEBHOOK_SECRET', ''); // any long random string; use the same one
 // WhatsApp messages about publishing go to each client's account manager and every account director.
 // Add anyone else (comma separated emails) who should get all of them, e.g. an account manager covering several clients:
 // define('PUBLISH_ALERT_EXTRA_EMAILS', 'haneen@example.com');
+
+// How long auto-publish waits for Instagram to finish processing a reel before giving up (seconds, default 540 = 9 minutes).
+// define('IG_REEL_WAIT_SECONDS', 540);

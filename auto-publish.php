@@ -216,15 +216,26 @@ foreach ($due as $post) {
         $container_id = $resp['container_id'] ?? '';
         $ig_user_id   = $resp['ig_user_id']   ?? $page_id;
         $published = false;
-        for ($pi = 0; $pi < 30; $pi++) {
-            sleep(4);
+        // Instagram can take several minutes to process a reel. Wait up to IG_REEL_WAIT_SECONDS (default 9 minutes; set it in config.php
+        // to change). The run holds the lock meanwhile, so another run can't start and double-publish; the next tick simply skips.
+        $waitSecs = defined('IG_REEL_WAIT_SECONDS') ? max(60, (int)IG_REEL_WAIT_SECONDS) : 540;
+        $started = time();
+        while (true) {
+            sleep(5);
             [$code, $resp] = ig_poll_and_publish(META_GRAPH_VERSION, $ig_user_id, $access_token, $container_id);
             if ($code === 200) { $published = true; break; }
-            if ($code !== 202) break;
+            if ($code !== 202) break;                                   // Instagram reported an error: more waiting won't help
+            if (time() - $started >= $waitSecs) break;                  // still processing when the time ran out
         }
         if (!$published && $code !== 200) {
-            $code = 502;
-            $resp = ['error' => 'Reel processing timed out or failed during scheduled publish'];
+            if ($code === 202) {
+                $code = 502;
+                $resp = ['error' => 'Reel processing timed out: Instagram was still processing the video after ' . round((time() - $started) / 60) . ' minutes.'];
+            } else {
+                // Instagram answered with a real error about the video itself (format, length, size...). Keep its words.
+                $detail = $resp['detail']['status_code'] ?? ($resp['detail']['error']['message'] ?? ($resp['error'] ?? ''));
+                $resp = ['error' => 'Instagram rejected the reel video: ' . (is_string($detail) ? $detail : json_encode($detail)) . ' (check the video format and length, vertical 9:16, H.264 + AAC, under 90 seconds)'];
+            }
         }
     }
 

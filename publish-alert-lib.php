@@ -20,7 +20,8 @@ function paFriendly($platform, $err): string {
     if (preg_match('/limited to 280 characters.*?(\d{3})/i', $s, $m)) return "the X text is too long ({$m[1]} characters, the limit is 280). Add a short X caption.";
     if (preg_match('/"code":\s*190|session (has expired|has been invalidated)|error validating access token|token (has )?expired/i', $s)) return "the {$name} connection expired. Reconnect it in Integrations.";
     if (strpos($s, '1366046') !== false) return "{$name} could not read the image (too large or an unsupported format).";
-    if (stripos($s, 'Reel processing timed out') !== false) return "{$name} could not process the video in time. Try a smaller file.";
+    if (stripos($s, 'Reel processing timed out') !== false) return "{$name} was still processing the video when the wait ended. Try a smaller or shorter file.";
+    if (stripos($s, 'rejected the reel video') !== false) return "{$name} rejected the video file. Re-export it vertical 9:16, H.264 + AAC, under 90 seconds.";
     if (stripos($s, 'requires a video') !== false) return "{$name} needs a video file on this post.";
     if (stripos($s, 'privacy') !== false && $platform === 'tiktok') return "choose a default TikTok visibility in Integrations → TikTok.";
     return mb_substr(trim(preg_replace('/\s+/', ' ', strip_tags($s))), 0, 140);
