@@ -152,3 +152,6 @@ define('ZERNIO_WEBHOOK_SECRET', ''); // any long random string; use the same one
 
 // How long auto-publish waits for Instagram to finish processing a reel before giving up (seconds, default 540 = 9 minutes).
 // define('IG_REEL_WAIT_SECONDS', 540);
+
+// Big reels: how long (minutes) auto-publish keeps checking on Instagram's processing before it reports a failure. Default 90.
+// define('IG_REEL_MAX_WAIT_MINUTES', 90);

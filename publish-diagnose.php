@@ -17,7 +17,7 @@ echo "Server time: " . $now->format('Y-m-d H:i:s') . "\nAUTO_PUBLISH_ENABLED: " 
 
 // ── 1) Overdue scheduled posts ─────────────────────────────────
 echo "\n=== 1) Posts in 'scheduled' whose time has passed, and why they are still waiting ===\n";
-$rows = $pdo->query("SELECT p.id, p.title, p.client_id, p.client_name, p.platform, p.platforms, p.task_type, p.scheduled_date, p.scheduled_time, p.publish_attempts, p.publish_error, p.published_platforms, ci.auto_publish_enabled
+$rows = $pdo->query("SELECT p.*, ci.auto_publish_enabled
     FROM posts p LEFT JOIN client_intelligence ci ON ci.client_id = p.client_id WHERE p.stage = 'scheduled' ORDER BY p.scheduled_date, p.scheduled_time")->fetchAll(PDO::FETCH_ASSOC);
 $n = 0;
 foreach ($rows as $p) {
@@ -48,6 +48,8 @@ foreach ($rows as $p) {
         elseif ($ig['status'] !== 'active') $why[] = "the {$pl} connection is \"{$ig['status']}\" (reconnect it in Integrations)";
         else { $c = json_decode((string)$ig['credentials'], true) ?: []; if (empty($c['access_token']) || ($pl !== 'tiktok' && empty($c['page_id']))) $why[] = "the {$pl} connection has no token / page id"; }
     }
+    $pend = json_decode((string)($p['publish_pending'] ?? ''), true) ?: [];
+    if (!empty($pend['instagram']['container_id'])) { $mins = round((time() - (int)($pend['instagram']['started'] ?? time())) / 60); $why = array_filter($why, fn($w) => strpos($w, 'nothing wrong') === false); $why[] = "WAITING for Instagram to finish processing the reel (started {$mins} min ago). This is normal for big videos: it is checked again every run."; }
     if ($p['publish_error']) $why[] = 'last error: ' . mb_substr($p['publish_error'], 0, 160);
     if (!$why) $why[] = 'nothing wrong found, it should publish on the next run (is the cron running?)';
     echo "- [{$p['client_name']}] \"{$p['title']}\"  due {$d} {$t}  platforms: " . implode('+', $all) . "  done: " . ($done ? implode('+', $done) : 'none') . "\n    → " . implode("\n    → ", $why) . "\n";

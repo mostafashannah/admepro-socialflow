@@ -72,10 +72,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
 $dir = STORAGE_ROOT . '/' . $bucket . '/' . dirname($path);
 if (!is_dir($dir)) mkdir($dir, 0755, true);
 
-$body = file_get_contents('php://input');
-if (file_put_contents($dest, $body) === false) {
+// Stream the upload straight to disk. Reading the whole body into a PHP variable (file_get_contents) ran out of memory on big
+// videos before they were even saved; copying the stream uses a few KB of memory whatever the size.
+@set_time_limit(0);
+$in = fopen('php://input', 'rb'); $out = $in ? fopen($dest, 'wb') : false;
+$copied = ($in && $out) ? stream_copy_to_stream($in, $out) : false;
+if ($in) fclose($in); if ($out) fclose($out);
+$expected = isset($_SERVER['CONTENT_LENGTH']) ? (int)$_SERVER['CONTENT_LENGTH'] : null;
+if ($copied === false || ($expected !== null && $expected > 0 && $copied < $expected)) {
+    if (is_file($dest)) @unlink($dest);   // never leave a half-written video behind
     http_response_code(500);
-    echo json_encode(['error' => 'Failed to write file']);
+    echo json_encode(['error' => 'Failed to write file (the upload was cut off or the disk is full)']);
     exit;
 }
 

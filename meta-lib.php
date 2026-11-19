@@ -30,6 +30,7 @@ function meta_publish($platform, $page_id, $access_token, $message, $image_url, 
             // Facebook video/reel: use the /videos endpoint with file_url
             $endpoint  = "https://graph.facebook.com/{$v}/{$page_id}/videos";
             $post_data = ['file_url' => $image_url, 'description' => $message, 'access_token' => $access_token];
+            $videoTimeout = 300;   // big videos: Facebook can take minutes to fetch the file; a short timeout here would count as a failure and retry (a duplicate)
         } elseif ($image_url) {
             $endpoint  = "https://graph.facebook.com/{$v}/{$page_id}/photos";
             $post_data = ['url' => $image_url, 'caption' => $message, 'access_token' => $access_token];
@@ -45,7 +46,7 @@ function meta_publish($platform, $page_id, $access_token, $message, $image_url, 
                 $post_data['scheduled_publish_time']  = $ts;
             }
         }
-        return meta_curl($endpoint, $post_data);
+        return meta_curl($endpoint, $post_data, $videoTimeout ?? null);
     }
 
     if ($platform === 'instagram') {
@@ -95,7 +96,7 @@ function ig_create_container($v, $ig_user_id, $access_token, $media_url, $captio
     if ($media_type) $container_data['media_type'] = $media_type;
     if ($cover_url)  $container_data['cover_url']  = $cover_url;
     if ($is_carousel_item) $container_data['is_carousel_item'] = 'true';
-    return meta_curl($container_ep, $container_data);
+    return meta_curl($container_ep, $container_data, $media_type === 'REELS' ? 120 : null);
 }
 
 // Instagram carousel (2-10 images/videos in one post, published in the
@@ -270,7 +271,7 @@ function fb_fixed_photo($url) {
     return new CURLFile($tmp, 'image/jpeg', 'photo.jpg');
 }
 
-function meta_curl($endpoint, $post_data) {
+function meta_curl($endpoint, $post_data, $timeout = null) {
     $multipart = false;
     foreach ($post_data as $v) { if ($v instanceof CURLFile) { $multipart = true; break; } }
     $ch = curl_init($endpoint);
@@ -279,7 +280,7 @@ function meta_curl($endpoint, $post_data) {
         CURLOPT_POSTFIELDS     => $multipart ? $post_data : http_build_query($post_data),
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_SSL_VERIFYPEER => true,
-        CURLOPT_TIMEOUT        => $multipart ? 90 : 20,
+        CURLOPT_TIMEOUT        => $timeout ?: ($multipart ? 90 : 20),
     ]);
     $response  = curl_exec($ch);
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);

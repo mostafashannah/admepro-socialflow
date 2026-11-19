@@ -52,6 +52,10 @@ $pdo = new PDO(
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
 );
 
+// Needs migration-publish-pending.sql (posts.publish_pending). Without it reels fall back to waiting inside the run (up to IG_REEL_WAIT_SECONDS).
+$hasPending = true;
+try { $pdo->query("SELECT publish_pending FROM posts LIMIT 0"); } catch (Throwable $e) { $hasPending = false; }
+
 $now = new DateTime();
 // task_type 'grid_layout' (Calendar Plan's Full Grid Layout kind) is a
 // design-only deliverable, never actually published to a platform.
@@ -127,6 +131,13 @@ foreach ($due as $post) {
     // get request... Object does not exist". Keyed per-platform so each
     // platform's real id survives regardless of publish order.
     $platformPostIds = json_decode($post['platform_post_ids'] ?? '{}', true) ?: [];
+    // Reels Instagram is still processing from an earlier run: {instagram:{container_id, ig_user_id, started}}. We only CHECK on them here,
+    // we never create a second container for the same post.
+    $pending = $hasPending ? (json_decode($post['publish_pending'] ?? '{}', true) ?: []) : [];
+    $waiting = false;
+    $savePending = function () use ($pdo, $post, &$pending) {
+        $pdo->prepare("UPDATE posts SET publish_pending = :p WHERE id = :id")->execute([':p' => $pending ? json_encode($pending) : null, ':id' => $post['id']]);
+    };
 
     foreach ($targetPlatforms as $platform) {
 
@@ -179,7 +190,21 @@ foreach ($due as $post) {
         }
     }
 
-    if ($platform === 'twitter') {
+    if ($platform === 'instagram' && !empty($pending['instagram']['container_id'])) {
+        // A reel already sent to Instagram: just ask how it is going.
+        $pc = $pending['instagram'];
+        [$code, $resp] = ig_poll_and_publish(META_GRAPH_VERSION, $pc['ig_user_id'] ?? $page_id, $access_token, $pc['container_id']);
+        if ($code === 202) {
+            $maxMin = defined('IG_REEL_MAX_WAIT_MINUTES') ? max(5, (int)IG_REEL_MAX_WAIT_MINUTES) : 90;
+            if (time() - (int)($pc['started'] ?? time()) <= $maxMin * 60) { $waiting = true; continue; }   // still processing: not a failure, check again next run
+            unset($pending['instagram']); $savePending();
+            $code = 502; $resp = ['error' => 'Reel processing timed out: Instagram was still processing the video after ' . $maxMin . ' minutes.'];
+        } elseif ($code !== 200) {
+            unset($pending['instagram']); $savePending();
+            $detail = $resp['detail']['status_code'] ?? ($resp['detail']['error']['message'] ?? ($resp['error'] ?? ''));
+            $code = 502; $resp = ['error' => 'Instagram rejected the reel video: ' . (is_string($detail) ? $detail : json_encode($detail)) . ' (check the video format and length, vertical 9:16, H.264 + AAC, under 90 seconds)'];
+        } else { unset($pending['instagram']); $savePending(); }
+    } elseif ($platform === 'twitter') {
         require_once __DIR__ . '/zernio-lib.php';
         if ($access_token !== ZERNIO_TOKEN_MARKER) { $code = 400; $resp = ['error' => 'X must be connected through Zernio.']; }
         elseif (mb_strlen($message) > 280) { $code = 422; $resp = ['error' => 'X posts are limited to 280 characters (this one is ' . mb_strlen($message) . ').']; }
@@ -215,6 +240,12 @@ foreach ($due as $post) {
     if ($code === 202 && ($resp['status'] ?? '') === 'processing') {
         $container_id = $resp['container_id'] ?? '';
         $ig_user_id   = $resp['ig_user_id']   ?? $page_id;
+        if ($hasPending && $platform === 'instagram' && $container_id !== '') {
+            // No standing around: remember the container and let the next runs check on it. A video can take as long as Instagram needs.
+            $pending['instagram'] = ['container_id' => $container_id, 'ig_user_id' => $ig_user_id, 'started' => time()];
+            $savePending();
+            $waiting = true; continue;
+        }
         $published = false;
         // Instagram can take several minutes to process a reel. Wait up to IG_REEL_WAIT_SECONDS (default 9 minutes; set it in config.php
         // to change). The run holds the lock meanwhile, so another run can't start and double-publish; the next tick simply skips.
@@ -312,7 +343,7 @@ foreach ($due as $post) {
         // 3-try cutoff, and only for the platform(s) still failing.
         $upd = $pdo->prepare("UPDATE posts SET publish_attempts = :att, publish_error = :err, published_platforms = :pp, platform_post_ids = :ppi WHERE id = :id");
         $upd->execute([
-            ':att' => $attempts + 1, ':err' => json_encode($errorsByPlatform),
+            ':att' => $attempts + ($errorsByPlatform ? 1 : 0), ':err' => json_encode($errorsByPlatform),   // waiting for a reel is not a failed attempt
             ':pp' => json_encode(array_values(array_unique($alreadyDone))),
             ':ppi' => json_encode($platformPostIds), ':id' => $post['id'],
         ]);
