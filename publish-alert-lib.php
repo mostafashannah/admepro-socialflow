@@ -27,6 +27,15 @@ function paFriendly($platform, $err): string {
     return mb_substr(trim(preg_replace('/\s+/', ' ', strip_tags($s))), 0, 140);
 }
 
+/** Is there an active connection the auto-publisher could use for this platform and client? (same lookup auto-publish.php does) */
+function paHasIntegration(PDO $pdo, string $platform, $clientId): bool {
+    static $cache = [];
+    $k = $platform . '|' . $clientId; if (isset($cache[$k])) return $cache[$k];
+    $q = $pdo->prepare("SELECT 1 FROM integrations WHERE app_key = :p AND status = 'active' AND (client_id = :c OR client_id IS NULL OR client_id = '') LIMIT 1");
+    $q->execute([':p' => $platform, ':c' => (string)$clientId]);
+    return $cache[$k] = (bool)$q->fetchColumn();
+}
+
 /** [email => ['name','phone']] : the client's account manager, all account directors, plus the extra emails from config. */
 function paRecipients(PDO $pdo, $clientId): array {
     $out = [];
@@ -97,7 +106,12 @@ function paDailyDigest(PDO $pdo): void {
                 if (trim((string)$p['scheduled_date']) === '') $why[] = 'no scheduled date, so it never publishes by itself';
                 if (!$all) $why[] = 'no platform selected';
                 if ((int)$p['publish_attempts'] >= 3) { $e = json_decode((string)$p['publish_error'], true); $why[] = 'stopped after 3 failed attempts' . (is_array($e) && $e ? ' (' . implode('; ', array_map(fn($k, $v) => paPlatformName($k) . ': ' . paFriendly($k, $v), array_keys($e), $e)) . ')' : ''); }
-                elseif (in_array('twitter', $all, true) && !in_array('twitter', $done, true)) {
+                if (trim((string)$p['scheduled_date']) !== '') foreach ($all as $pl) {
+                    // A platform with no connected account can never go out, so the post would stay in Scheduled forever.
+                    if (!in_array($pl, $done, true) && in_array($pl, ['facebook', 'instagram', 'linkedin', 'tiktok', 'twitter'], true) && !paHasIntegration($pdo, $pl, $p['client_id'] ?? ''))
+                        $why[] = 'no ' . paPlatformName($pl) . ' account is connected, so it can never be sent there (connect it, or remove ' . paPlatformName($pl) . ' from the post)';
+                }
+                if ((int)$p['publish_attempts'] < 3 && in_array('twitter', $all, true) && !in_array('twitter', $done, true)) {
                     $x = trim((string)$p['x_caption']) !== '' ? trim($p['x_caption']) : trim(trim((string)$p['caption']) . "\n\n" . trim((string)$p['hashtags']));
                     if (mb_strlen($x) > 280) $why[] = 'the X text is ' . mb_strlen($x) . ' characters (limit 280): add a short X caption';
                 }
