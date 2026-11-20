@@ -15216,6 +15216,8 @@ function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[]
 }
 function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botSettings, onSaveBotSettings, onApproveDraft, onDismissDraft, hideBotPanel=false}) {
   const [selThread, setSelThread] = useState(null); // {channel, customer_id}
+  const {isMobile:inboxMobile} = useResponsive();
+  const [mobileChatOpen, setMobileChatOpen] = useState(false); // phone: show the list OR the chat, never both
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
   const [botPanelOpen, setBotPanelOpen] = useState(false);
@@ -15435,7 +15437,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
 
       <div style={{display:"flex",gap:16,minHeight:420}}>
         {/* Thread list */}
-        <div style={{width:260,flexShrink:0,border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+        {!(inboxMobile&&mobileChatOpen)&&<div style={{width:inboxMobile?"100%":260,flexShrink:0,border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden",display:"flex",flexDirection:"column"}}>
           <div style={{padding:"10px 12px",borderBottom:"1px solid var(--border)",background:"var(--surface2)"}}>
             <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:presentChannels.length>1?8:0}}>{shownThreads.length} conversation{shownThreads.length!==1?"s":""}</p>
             {presentChannels.length>1&&(
@@ -15461,7 +15463,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
             {shownThreads.map(t=>{
               const isSel = activeThread===t;
               return (
-                <div key={t.channel+"_"+t.customer_id} onClick={()=>setSelThread({channel:t.channel,customer_id:t.customer_id})}
+                <div key={t.channel+"_"+t.customer_id} onClick={()=>{setSelThread({channel:t.channel,customer_id:t.customer_id});setMobileChatOpen(true);}}
                   style={{padding:"10px 14px",borderBottom:"1px solid var(--border)",cursor:"pointer",background:isSel?"var(--accentbg)":"transparent"}}>
                   <div style={{display:"flex",alignItems:"center",gap:6}}>
                     <ChannelIcon channel={t.channel} size={14}/>
@@ -15473,14 +15475,15 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
               );
             })}
           </div>
-        </div>
+        </div>}
         {/* Thread detail */}
-        <div style={{flex:1,border:"1px solid var(--border)",borderRadius:"var(--r)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        {!(inboxMobile&&!mobileChatOpen)&&<div style={{flex:1,minWidth:0,border:"1px solid var(--border)",borderRadius:"var(--r)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
           {!activeThread&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text3)",fontSize:13}}>Select a conversation</div>}
           {activeThread&&(<>
             <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",gap:8}}>
+              {inboxMobile&&<button onClick={()=>setMobileChatOpen(false)} style={{background:"none",border:"1px solid var(--border)",borderRadius:99,padding:"4px 10px",fontSize:12,fontWeight:600,cursor:"pointer",color:"var(--text2)",flexShrink:0}}>← Back</button>}
               <ChannelIcon channel={activeThread.channel} size={16}/>
-              <p style={{fontWeight:700,fontSize:14}}>{activeThread.customer_name||activeThread.customer_id}</p>
+              <p style={{fontWeight:700,fontSize:14,minWidth:0,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{activeThread.customer_name||activeThread.customer_id}</p>
               <Badge label={(INBOX_CHANNEL_MAP[activeThread.channel]||{label:activeThread.channel}).label} color={(INBOX_CHANNEL_MAP[activeThread.channel]||{}).color||"#888"} xs/>
             </div>
             <div style={{flex:1,overflowY:"auto",padding:16,display:"flex",flexDirection:"column",gap:10}}>
@@ -15488,7 +15491,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
                 const isPendingDraft = m.sent_by==="bot" && m.draft_status==="pending_review";
                 const isEditing = editingDraftId===m.id;
                 return (
-                  <div key={m.id} style={{maxWidth:"70%",alignSelf:m.direction==="out"?"flex-end":"flex-start",padding:"8px 12px",borderRadius:12,
+                  <div key={m.id} style={{maxWidth:inboxMobile?"88%":"70%",alignSelf:m.direction==="out"?"flex-end":"flex-start",padding:"8px 12px",borderRadius:12,
                     background:m.direction==="out"?(m.sent_by==="bot"?(isPendingDraft?"#6366f114":"#6366f122"):"var(--accent)"):"var(--surface2)",
                     border:isPendingDraft?"1px dashed #6366f1":"none",
                     color:m.direction==="out"&&m.sent_by!=="bot"?"#fff":"var(--text)"}}>
@@ -15525,7 +15528,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
               <Btn onClick={handleSend} disabled={sending||!reply.trim()}>{sending?<Spinner size={14}/>:"Send"}</Btn>
             </div>
           </>)}
-        </div>
+        </div>}
       </div>
     </div>
   );
