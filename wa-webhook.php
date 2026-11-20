@@ -314,7 +314,11 @@ try {
                 catch (\Throwable $e) { error_log('[wa-webhook] agency reply-bot EXCEPTION: ' . $e->getMessage()); }
                 exit; // handled as an agency customer: do not fall through to Pro
             }
-        } catch (\Throwable $e) { error_log('[wa-webhook] agency inbox EXCEPTION: ' . $e->getMessage()); }
+        } catch (\Throwable $e) {
+            error_log('[wa-webhook] agency inbox EXCEPTION: ' . $e->getMessage());
+            // Visible in the app's Activity Log too, so a failing customer message is never silent.
+            try { $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), 'Agency WhatsApp message failed', 'whatsapp', :d, 'error', 'system')")->execute([':d' => 'from ' . $from . ': ' . mb_substr($e->getMessage(), 0, 300)]); } catch (\Throwable $e2) {}
+        }
         // No admepro client row, or nothing readable to store (e.g. a photo or an empty message): still run the lead check,
         // then stay silent. A customer must never receive Pro's internal "your number isn't linked" message.
         try { maybeCreateLeadFromMessage($pdo, 'whatsapp', $from, $contactName, $text, $from); }
