@@ -17534,6 +17534,7 @@ const OVERVIEW_TREND_METRICS = {
   },
 };
 function ClientPerformanceTrend({clientId}) {
+  const {isMobile} = useResponsive();
   const [snapshots,setSnapshots] = useState([]);
   const [loading,setLoading] = useState(true);
   const [metricMode,setMetricMode] = useState("reach");
@@ -17596,14 +17597,14 @@ function ClientPerformanceTrend({clientId}) {
 
   return (
     <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px",display:"flex",flexDirection:"column",gap:14}}>
-      <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",gap:10}}>
+      <div style={isMobile ? {display:"flex",flexDirection:"column",alignItems:"stretch",gap:10} : {display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",gap:10}}>
         <h4 style={{fontWeight:700,fontSize:14}}>30-Day Performance</h4>
         <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:2,borderRadius:99,border:"1px solid var(--border2)",justifySelf:"center"}}>
           {[["reach","Reach"],["followers","Followers"],["engagement","Engagement"]].map(([k,l])=>(
-            <button key={k} onClick={()=>setMetricMode(k)} style={{padding:"3px 12px",borderRadius:99,fontSize:11,fontWeight:700,border:"none",cursor:"pointer",background:metricMode===k?"var(--accent)":"transparent",color:metricMode===k?"#fff":"var(--text2)"}}>{l}</button>
+            <button key={k} onClick={()=>setMetricMode(k)} style={{padding:isMobile?"6px 4px":"3px 12px",flex:isMobile?1:undefined,borderRadius:99,fontSize:11,fontWeight:700,border:"none",cursor:"pointer",background:metricMode===k?"var(--accent)":"transparent",color:metricMode===k?"#fff":"var(--text2)"}}>{l}</button>
           ))}
         </div>
-        <div style={{display:"flex",gap:12,flexWrap:"wrap",justifySelf:"end"}}>
+        <div style={{display:"flex",gap:isMobile?"6px 14px":12,flexWrap:"wrap",justifySelf:"end"}}>
           {seriesList.map(s=>(
             <div key={s.platform} style={{display:"flex",alignItems:"center",gap:6}}>
               <span style={{width:9,height:9,borderRadius:"50%",background:s.color,flexShrink:0}}/>
@@ -17612,16 +17613,17 @@ function ClientPerformanceTrend({clientId}) {
           ))}
         </div>
       </div>
-      <MultiLineChart series={seriesList} height={280}/>
+      <MultiLineChart series={seriesList} height={isMobile?300:280} compact={isMobile}/>
     </div>
   );
 }
 
 // Multiple series (e.g. one per platform) on one chart, wide, with a visible
 // dot for every single day — not just a bare line.
-function MultiLineChart({series, height=260}) {
-  const w = 1400;
-  const padL = 52, padR = 10, padT = 12, padB = 26;
+function MultiLineChart({series, height=260, compact=false}) {
+  const w = compact ? 560 : 1400;   // phones: a narrower drawing, so the axis text is not shrunk to nothing
+  const fs = compact ? 15 : 11;
+  const padL = compact ? 46 : 52, padR = 10, padT = 12, padB = compact ? 28 : 26;
   const allVals = series.flatMap(s=>s.data.map(d=>d.value));
   const maxVal = Math.max(1, ...allVals);
   const fmtAxisVal = (v) => v>=1000 ? `${(v/1000).toLocaleString(undefined,{maximumFractionDigits:1})}k` : Math.round(v).toLocaleString();
@@ -17641,21 +17643,22 @@ function MultiLineChart({series, height=260}) {
   const handleMove = (e) => {
     if(!wrapRef.current || len<1) return;
     const rect = wrapRef.current.getBoundingClientRect();
-    const ratio = Math.min(1, Math.max(0, (e.clientX-rect.left)/rect.width));
+    const cx = e.touches && e.touches[0] ? e.touches[0].clientX : e.clientX;
+    const ratio = Math.min(1, Math.max(0, (cx-rect.left)/rect.width));
     setHoverIdx(Math.round(ratio*(len-1)));
   };
 
   const hoverXPct = hoverIdx!==null && len>1 ? (hoverIdx/(len-1))*100 : (hoverIdx===0 ? 0 : null);
 
   return (
-    <div ref={wrapRef} style={{position:"relative"}} onMouseMove={handleMove} onMouseLeave={()=>setHoverIdx(null)}>
-      <svg viewBox={`0 0 ${w} ${height}`} style={{width:"100%",height,display:"block"}}>
+    <div ref={wrapRef} style={{position:"relative"}} onMouseMove={handleMove} onMouseLeave={()=>setHoverIdx(null)} onTouchStart={handleMove} onTouchMove={handleMove}>
+      <svg viewBox={`0 0 ${w} ${height}`} style={{width:"100%",height:compact?"auto":height,display:"block"}}>
         {ticks.map(t=>{
           const y = padT + t*(height-padT-padB);
           return (
             <g key={t}>
               <line x1={padL} x2={w-padR} y1={y} y2={y} stroke="var(--border)" strokeWidth={1}/>
-              <text x={padL-8} y={y+4} fontSize={11} fill="var(--text3)" textAnchor="end">{fmtAxisVal(maxVal*(1-t))}</text>
+              <text x={padL-8} y={y+4} fontSize={fs} fill="var(--text3)" textAnchor="end">{fmtAxisVal(maxVal*(1-t))}</text>
             </g>
           );
         })}
@@ -17668,13 +17671,13 @@ function MultiLineChart({series, height=260}) {
             <g key={s.platform}>
               {pts.length>1&&<path d={pathFrom(pts)} fill="none" stroke={s.color} strokeWidth={2.5}/>}
               {pts.map((p,i)=>(
-                <circle key={i} cx={p[0]} cy={p[1]} r={hoverIdx===i?5:3} fill={s.color} stroke={hoverIdx===i?"var(--surface)":"none"} strokeWidth={hoverIdx===i?2:0}/>
+                <circle key={i} cx={p[0]} cy={p[1]} r={hoverIdx===i?(compact?6:5):(compact?2.5:3)} fill={s.color} stroke={hoverIdx===i?"var(--surface)":"none"} strokeWidth={hoverIdx===i?2:0}/>
               ))}
             </g>
           );
         })}
         {labelIdxs.map(i=>(
-          <text key={i} x={toPoints(firstData)[i]?.[0]} y={height-6} fontSize={11} fill="var(--text3)" textAnchor={i===0?"start":i===len-1?"end":"middle"}>
+          <text key={i} x={toPoints(firstData)[i]?.[0]} y={height-6} fontSize={fs} fill="var(--text3)" textAnchor={i===0?"start":i===len-1?"end":"middle"}>
             {firstData[i]?.date ? new Date(firstData[i].date).toLocaleDateString(undefined,{month:"short",day:"numeric"}) : ""}
           </text>
         ))}
