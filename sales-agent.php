@@ -159,6 +159,61 @@ case 'send': {
     $pdo->prepare("UPDATE sales_prospects SET status=IF(status IN ('new','approved'),'contacted',status), updated_at=? WHERE id=?")->execute([gNow(), $p['id']]);
     gOut(200, ['ok' => true, 'sent_today' => $today + 1]);
 }
+case 'welcome_list': {
+    require_once __DIR__ . '/sales-welcome-lib.php';
+    $st = $_GET['status'] ?? 'pending'; $w = '1=1'; $bind = [];
+    if (in_array($st, ['pending', 'approved', 'rejected', 'failed'], true)) { $w = 'status=?'; $bind[] = $st; }
+    $q = $pdo->prepare("SELECT * FROM sales_welcome WHERE $w ORDER BY id DESC LIMIT 200"); $q->execute($bind);
+    $counts = $pdo->query("SELECT status, COUNT(*) n FROM sales_welcome GROUP BY status")->fetchAll(PDO::FETCH_KEY_PAIR);
+    $t = $pdo->query("SELECT COUNT(*) sent, SUM(opened_at IS NOT NULL) opened, SUM(clicked_at IS NOT NULL) clicked, SUM(replied_at IS NOT NULL) replied FROM sales_welcome WHERE sent_at IS NOT NULL")->fetch(PDO::FETCH_ASSOC);
+    $byM = $pdo->query("SELECT market, COUNT(*) sent, SUM(opened_at IS NOT NULL) opened, SUM(clicked_at IS NOT NULL) clicked, SUM(replied_at IS NOT NULL) replied FROM sales_welcome WHERE sent_at IS NOT NULL GROUP BY market")->fetchAll(PDO::FETCH_ASSOC);
+    gOut(200, ['rows' => $q->fetchAll(PDO::FETCH_ASSOC), 'counts' => $counts, 'totals' => $t, 'by_market' => $byM, 'cap' => $capN]);
+}
+case 'welcome_preview': {
+    require_once __DIR__ . '/sales-welcome-lib.php';
+    if (!empty($b['id'])) { $q = $pdo->prepare("SELECT * FROM sales_welcome WHERE id=?"); $q->execute([(int)$b['id']]); $row = $q->fetch(PDO::FETCH_ASSOC); if (!$row) gOut(404, ['error' => 'Not found']); }
+    else $row = ['id' => 0, 'market' => ($b['market'] ?? 'egypt') === 'gulf' ? 'gulf' : 'egypt', 'to_name' => 'Sara Ahmed', 'company' => 'Example Co', 'to_email' => 'sara@example.com', 'subject' => '', 'personal_line' => 'We saw how Example Co is growing its online presence and thought we could help.'];
+    [$subject, $html] = swRender($pdo, $row, true);
+    gOut(200, ['subject' => $subject, 'html' => $html]);
+}
+case 'welcome_update': {
+    $id = (int)($b['id'] ?? 0); $q = $pdo->prepare("SELECT * FROM sales_welcome WHERE id=?"); $q->execute([$id]); $row = $q->fetch(PDO::FETCH_ASSOC); if (!$row) gOut(404, ['error' => 'Not found']);
+    if ($row['sent_at']) gOut(400, ['error' => 'Already sent — it can no longer be edited.']);
+    $mk = ($b['market'] ?? $row['market']) === 'gulf' ? 'gulf' : 'egypt';
+    $pdo->prepare("UPDATE sales_welcome SET subject=?, personal_line=?, market=?, status=? WHERE id=?")->execute([mb_substr(trim((string)($b['subject'] ?? $row['subject'])), 0, 250), mb_substr(trim((string)($b['personal_line'] ?? $row['personal_line'])), 0, 600), $mk,
+        in_array($b['status'] ?? '', ['pending', 'rejected'], true) ? $b['status'] : $row['status'], $id]);
+    gOut(200, ['ok' => true]);
+}
+case 'welcome_send': {
+    require_once __DIR__ . '/sales-welcome-lib.php';
+    $ids = array_values(array_filter(array_map('intval', (array)($b['ids'] ?? [$b['id'] ?? 0]))));
+    $sent = 0; $errs = [];
+    foreach (array_slice($ids, 0, 40) as $i) { [$ok, $err] = swSend($pdo, $i, $me['email'], $capN); if ($ok) { $sent++; usleep(400000); } else { $errs[] = $err; if (str_contains((string)$err, 'Daily limit')) break; } }
+    gOut($sent ? 200 : 400, ['ok' => $sent > 0, 'sent' => $sent, 'error' => $errs ? implode(' · ', array_unique($errs)) : null]);
+}
+case 'welcome_mark': {
+    $id = (int)($b['id'] ?? 0); $fb = mb_substr(trim((string)($b['feedback'] ?? '')), 0, 480);
+    $pdo->prepare("UPDATE sales_welcome SET replied_at = IF(?, COALESCE(replied_at, NOW()), NULL), feedback = ? WHERE id=?")->execute([!empty($b['replied']) ? 1 : 0, $fb !== '' ? $fb : null, $id]);
+    if (!empty($b['replied'])) $pdo->prepare("UPDATE sales_prospects SET status=IF(status IN ('new','approved','contacted'),'replied',status), updated_at=? WHERE id=(SELECT prospect_id FROM sales_welcome WHERE id=?)")->execute([gNow(), $id]);
+    gOut(200, ['ok' => true]);
+}
+case 'welcome_settings_get': { require_once __DIR__ . '/sales-welcome-lib.php'; gOut(200, ['settings' => swSettings($pdo), 'defaults' => swDefaults()]); }
+case 'welcome_settings_save': {
+    require_once __DIR__ . '/sales-welcome-lib.php';
+    $cur = swSettings($pdo); $in = (array)($b['settings'] ?? []);
+    $cl = fn($v, $n) => mb_substr(trim((string)$v), 0, $n);
+    foreach (['socials'] as $k) foreach ($cur[$k] as $f => $v) if (isset($in[$k][$f])) { $u = $cl($in[$k][$f], 300); $cur[$k][$f] = ($u === '' || preg_match('#^https?://#i', $u)) ? $u : $cur[$k][$f]; }
+    foreach (['gulf', 'egypt'] as $m) {
+        foreach (['subject' => 200, 'greeting' => 120, 'about' => 700, 'cta' => 500] as $f => $n) if (isset($in[$m][$f])) $cur[$m][$f] = $cl($in[$m][$f], $n);
+        if (isset($in[$m]['projects']) && is_array($in[$m]['projects'])) {
+            $pr = []; foreach (array_slice($in[$m]['projects'], 0, 3) as $p) { if (!is_array($p) || $cl($p['title'] ?? '', 120) === '') continue;
+                $url = $cl($p['url'] ?? '', 300); $pr[] = ['tag' => $cl($p['tag'] ?? '', 30), 'title' => $cl($p['title'], 120), 'text' => $cl($p['text'] ?? '', 400), 'url' => preg_match('#^https?://#i', $url) ? $url : ''];
+            } $cur[$m]['projects'] = $pr;
+        }
+    }
+    $pdo->prepare("INSERT INTO seo_settings (k, v) VALUES ('sales_welcome', ?) ON DUPLICATE KEY UPDATE v = VALUES(v)")->execute([json_encode($cur, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
+    gOut(200, ['ok' => true, 'settings' => $cur]);
+}
 case 'machine_get': { gOut(200, ['settings' => saMachineSettings($pdo)]); }
 case 'machine_save': {
     $cur = saMachineSettings($pdo);
@@ -185,6 +240,6 @@ case 'sends': { $st = $pdo->prepare("SELECT * FROM sales_sends WHERE prospect_id
 default: gOut(400, ['error' => 'Unknown action']);
 }
 } catch (PDOException $e) {
-    if (str_contains($e->getMessage(), "doesn't exist")) gOut(500, ['error' => 'Run migration-marketing.sql first', 'setup' => true]);
+    if (str_contains($e->getMessage(), "doesn't exist")) gOut(500, ['error' => 'Run migration-marketing.sql and migration-sales-welcome.sql first', 'setup' => true]);
     error_log('[sales-agent] ' . $e->getMessage()); gOut(500, ['error' => 'Database error']);
 }

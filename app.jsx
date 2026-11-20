@@ -35022,6 +35022,7 @@ function SalesAgentPage({setPage, embedded}) {
         </div>
         <div style={{fontSize:11,color:"var(--text3)"}}>Safe by default: nothing is emailed unless the prospect is approved AND auto-send is on. Follow-ups go out 3 and 7 days later; mark a prospect "Replied" to stop them.</div>
       </div>}
+      <WelcomeEmailsPanel/>
       <div style={{...gCard,display:"flex",flexDirection:"column",gap:10,background:"linear-gradient(135deg,var(--accent)0f,transparent 60%)"}}>
         <span style={gLabel}>Who should the agent look for?</span>
         <textarea value={brief} onChange={e=>setBrief(e.target.value)} rows={3} placeholder="Describe the ideal client: industry, area, size, and what makes them need us…" style={{...inputSt,resize:"vertical"}}/>
@@ -35043,6 +35044,105 @@ function SalesAgentPage({setPage, embedded}) {
       </div>
       {data&&data.rows.length===0&&<div style={{...gCard,textAlign:"center",color:"var(--text2)",fontSize:13,padding:30}}>Nothing here yet.</div>}
       {(data?.rows||[]).map(p=><SalesProspect key={p.id} p={p} open={open===p.id} onToggle={()=>setOpen(open===p.id?null:p.id)} onChange={load} config={data.config} setPage={setPage}/>)}
+    </div>);
+}
+
+function WelcomeEmailsPanel() {
+  const [open,setOpen]=useState(()=>{ try{ return localStorage.getItem("sf_welcome_open")==="1"; }catch(e){ return false; } });
+  const [st,setSt]=useState("pending"); const [d,setD]=useState(null); const [err,setErr]=useState(""); const [msg,setMsg]=useState("");
+  const [prev,setPrev]=useState(null); const [cfg,setCfg]=useState(null); const [showCfg,setShowCfg]=useState(false); const [busy,setBusy]=useState("");
+  const load=()=>sApi.get("welcome_list",{status:st}).then(x=>{setD(x);setErr("");}).catch(e=>setErr(e.message));
+  useEffect(()=>{ try{ localStorage.setItem("sf_welcome_open",open?"1":"0"); }catch(e){} if(open) load(); },[open,st]);
+  const edit=(id,patch)=>setD(x=>({...x,rows:x.rows.map(r=>r.id===id?{...r,...patch}:r)}));
+  const act=async(a,body,ok)=>{ setBusy(a+(body.id||"")); setMsg(""); try{ await sApi.post(a,body); if(ok) setMsg(ok); await load(); }catch(e){ setMsg(e.message); await load(); } setBusy(""); };
+  const save=r=>act("welcome_update",{id:r.id,subject:r.subject,personal_line:r.personal_line,market:r.market},"Saved");
+  const send=ids=>{ if(!confirm("Send "+ids.length+" welcome email"+(ids.length>1?"s":"")+" now?")) return; act("welcome_send",{ids},"Sent"); };
+  const preview=async r=>{ try{ const p=await sApi.post("welcome_preview",{id:r.id}); setPrev(p); }catch(e){ setMsg(e.message); } };
+  const previewTpl=async m=>{ try{ const p=await sApi.post("welcome_preview",{market:m}); setPrev(p); }catch(e){ setMsg(e.message); } };
+  const openCfg=async()=>{ setShowCfg(v=>!v); if(!cfg){ try{ const x=await sApi.get("welcome_settings_get"); setCfg(x.settings); }catch(e){ setMsg(e.message); } } };
+  const saveCfg=async()=>{ try{ const x=await sApi.post("welcome_settings_save",{settings:cfg}); setCfg(x.settings); setMsg("Template saved"); }catch(e){ setMsg(e.message); } };
+  const T=d?.totals||{}; const sent=+T.sent||0; const counts=d?.counts||{};
+  const pend=(d?.rows||[]).filter(r=>r.status==="pending");
+  const setC=(path,v)=>setCfg(c=>{ const n=JSON.parse(JSON.stringify(c)); let o=n; for(let i=0;i<path.length-1;i++) o=o[path[i]]; o[path[path.length-1]]=v; return n; });
+  const EP={tag:"",title:"",text:"",url:""};
+  const setProj=(m,i,f,v)=>setC([m,"projects"],[0,1,2].map(j=>{ const p=(cfg[m].projects||[])[j]||EP; return j===i?{...p,[f]:v}:p; }));
+  const SOC=["website","instagram","facebook","linkedin","tiktok","x","youtube","whatsapp"];
+  return (
+    <div style={{...gCard,display:"flex",flexDirection:"column",gap:10}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",cursor:"pointer"}} onClick={()=>setOpen(!open)}>
+        <b style={{fontSize:14}}>✉️ Welcome emails (Gulf + Egypt)</b>
+        {counts.pending>0&&<span style={{fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:999,background:"#f59e0b22",color:"#b45309"}}>{counts.pending} to review</span>}
+        <div style={{flex:1}}/><span style={{fontSize:12,color:"var(--text3)"}}>{open?"Hide":"Open"}</span>
+      </div>
+      {open&&<>
+        <div style={{fontSize:12,color:"var(--text2)"}}>Every day the agent drafts one welcome email per new lead that has an email address: the Gulf template for Gulf countries, the Egypt template for Egypt. Nothing is sent until you approve it here. Each email has a short intro of admepro, an AI project plus other projects, all our social links and the WhatsApp link.</div>
+        {err&&<div style={{fontSize:12,color:"#dc2626"}}>{err}</div>}
+        {msg&&<div style={{fontSize:12,color:/sent|saved|rejected/i.test(msg)?"#16a34a":"#dc2626"}}>{msg}</div>}
+        {d&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:8}}>
+          {[["Sent",sent,""],["Opened",T.opened||0,gPct(T.opened,sent)],["Clicked",T.clicked||0,gPct(T.clicked,sent)],["Replied",T.replied||0,gPct(T.replied,sent)]].map(([k,v,p])=><div key={k} style={{border:"1px solid var(--border)",borderRadius:10,padding:"8px 10px"}}><div style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>{k}</div><div style={{fontSize:18,fontWeight:800}}>{v} <span style={{fontSize:11,fontWeight:600,color:"var(--text3)"}}>{p}</span></div></div>)}
+          {(d.by_market||[]).map(m=><div key={m.market} style={{border:"1px solid var(--border)",borderRadius:10,padding:"8px 10px"}}><div style={{fontSize:11,color:"var(--text3)",fontWeight:700,textTransform:"capitalize"}}>{m.market}</div><div style={{fontSize:12}}>{m.sent} sent · {m.opened||0} opened · {m.clicked||0} clicked · {m.replied||0} replied</div></div>)}
+        </div>}
+        <div style={{fontSize:11,color:"var(--text3)"}}>Opens are an estimate: some mail apps (Apple Mail) load the tracking image automatically, so treat "clicked" and "replied" as the real feedback.</div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+          {["pending","approved","rejected","failed"].map(k=><button key={k} style={gPill(st===k)} onClick={()=>setSt(k)}>{k==="approved"?"Sent":k[0].toUpperCase()+k.slice(1)}{counts[k]?" "+counts[k]:""}</button>)}
+          <div style={{flex:1}}/>
+          {st==="pending"&&pend.length>0&&<button style={wBtn(true)} disabled={!!busy} onClick={()=>send(pend.map(r=>r.id))}>Approve & send all ({pend.length})</button>}
+          <button style={wBtn(false)} onClick={openCfg}>{showCfg?"Close templates":"Edit templates"}</button>
+        </div>
+        {showCfg&&cfg&&<div style={{border:"1px solid var(--border)",borderRadius:12,padding:12,display:"flex",flexDirection:"column",gap:10}}>
+          <span style={gLabel}>Links in every email</span>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:6}}>{SOC.map(k=><label key={k} style={{fontSize:11,color:"var(--text3)",display:"flex",flexDirection:"column",gap:2,textTransform:"capitalize"}}>{k}<input value={cfg.socials[k]||""} onChange={e=>setC(["socials",k],e.target.value)} placeholder="https://…" style={inputSt}/></label>)}</div>
+          {["gulf","egypt"].map(m=><div key={m} style={{border:"1px solid var(--border)",borderRadius:10,padding:10,display:"flex",flexDirection:"column",gap:6}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}><b style={{fontSize:13,textTransform:"capitalize"}}>{m} template</b><div style={{flex:1}}/><button style={wBtn(false)} onClick={()=>previewTpl(m)}>Preview</button></div>
+            <input value={cfg[m].subject} onChange={e=>setC([m,"subject"],e.target.value)} placeholder="Subject" style={inputSt}/>
+            <input value={cfg[m].greeting} onChange={e=>setC([m,"greeting"],e.target.value)} placeholder="Greeting" style={inputSt}/>
+            <textarea value={cfg[m].about} onChange={e=>setC([m,"about"],e.target.value)} rows={3} placeholder="About admepro" style={{...inputSt,resize:"vertical"}}/>
+            {[0,1,2].map(i=>{ const p=(cfg[m].projects||[])[i]||EP; return <div key={i} style={{display:"grid",gridTemplateColumns:"90px 1fr",gap:6}}>
+              <input value={p.tag||""} onChange={e=>setProj(m,i,"tag",e.target.value)} placeholder="Tag" style={inputSt}/>
+              <input value={p.title||""} onChange={e=>setProj(m,i,"title",e.target.value)} placeholder={"Project "+(i+1)+" title"} style={inputSt}/>
+              <input value={p.url||""} onChange={e=>setProj(m,i,"url",e.target.value)} placeholder="Link" style={inputSt}/>
+              <input value={p.text||""} onChange={e=>setProj(m,i,"text",e.target.value)} placeholder="One or two sentences" style={inputSt}/>
+            </div>; })}
+            <textarea value={cfg[m].cta} onChange={e=>setC([m,"cta"],e.target.value)} rows={2} placeholder="Closing line" style={{...inputSt,resize:"vertical"}}/>
+            <div style={{fontSize:11,color:"var(--text3)"}}>Use {"{name}"} and {"{company}"} to personalise.</div>
+          </div>)}
+          <div><button style={wBtn(true)} onClick={saveCfg}>Save templates</button></div>
+        </div>}
+        {d&&d.rows.length===0&&<div style={{textAlign:"center",color:"var(--text2)",fontSize:13,padding:20}}>Nothing here yet.</div>}
+        {(d?.rows||[]).map(r=><div key={r.id} style={{border:"1px solid var(--border)",borderRadius:12,padding:10,display:"flex",flexDirection:"column",gap:6}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <b style={{fontSize:13}}>{r.company||r.to_email}</b><span style={{fontSize:12,color:"var(--text3)"}}>{r.to_name?r.to_name+" · ":""}{r.to_email}</span>
+            <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:999,background:r.market==="gulf"?"#0ea5e922":"#f59e0b22",color:r.market==="gulf"?"#0369a1":"#b45309",textTransform:"capitalize"}}>{r.market}</span>
+            {r.sent_at&&<span style={{fontSize:11,color:"var(--text3)"}}>sent {String(r.sent_at).slice(0,16)}</span>}
+          </div>
+          {r.status==="pending"?<>
+            <input value={r.subject||""} onChange={e=>edit(r.id,{subject:e.target.value})} style={inputSt}/>
+            <textarea value={r.personal_line||""} onChange={e=>edit(r.id,{personal_line:e.target.value})} rows={2} placeholder="Personal line (optional)" style={{...inputSt,resize:"vertical"}}/>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              <select value={r.market} onChange={e=>edit(r.id,{market:e.target.value})} style={{...inputSt,width:110}}><option value="gulf">Gulf</option><option value="egypt">Egypt</option></select>
+              <button style={wBtn(false)} onClick={()=>preview(r)}>Preview</button>
+              <button style={wBtn(false)} disabled={!!busy} onClick={()=>save(r)}>Save</button>
+              <button style={wBtn(true)} disabled={!!busy} onClick={async()=>{ await save(r); send([r.id]); }}>Approve & send</button>
+              <button style={wBtn(false)} disabled={!!busy} onClick={()=>act("welcome_update",{id:r.id,status:"rejected"},"Rejected")}>Reject</button>
+            </div></>
+          :<>
+            <div style={{fontSize:12,color:"var(--text2)"}}>{r.subject}</div>
+            {r.status==="failed"&&<div style={{fontSize:12,color:"#dc2626"}}>{r.error}</div>}
+            {r.sent_at&&<div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",fontSize:12}}>
+              <span style={{color:r.opened_at?"#16a34a":"var(--text3)"}}>{r.opened_at?"👁 Opened"+(r.open_count>1?" ×"+r.open_count:""):"Not opened"}</span>
+              <span style={{color:r.clicked_at?"#16a34a":"var(--text3)"}}>{r.clicked_at?"🔗 Clicked"+(r.last_click?" ("+r.last_click+")":"")+(r.click_count>1?" ×"+r.click_count:""):"No click"}</span>
+              <label style={{display:"flex",gap:5,alignItems:"center",cursor:"pointer"}}><input type="checkbox" checked={!!r.replied_at} onChange={e=>act("welcome_mark",{id:r.id,replied:e.target.checked,feedback:r.feedback||""})}/> Replied</label>
+              <input value={r.feedback||""} onChange={e=>edit(r.id,{feedback:e.target.value})} onBlur={()=>act("welcome_mark",{id:r.id,replied:!!r.replied_at,feedback:r.feedback||""})} placeholder="Feedback note" style={{...inputSt,flex:"1 1 180px"}}/>
+              <button style={wBtn(false)} onClick={()=>preview(r)}>View</button>
+            </div>}
+          </>}
+        </div>)}
+      </>}
+      {prev&&<div onClick={()=>setPrev(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:12}}>
+        <div onClick={e=>e.stopPropagation()} style={{background:"var(--surface)",borderRadius:14,width:"min(680px,100%)",maxHeight:"92vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          <div style={{padding:"10px 14px",borderBottom:"1px solid var(--border)",display:"flex",gap:8,alignItems:"center"}}><b style={{fontSize:13,flex:1}}>{prev.subject}</b><button style={wBtn(false)} onClick={()=>setPrev(null)}>Close</button></div>
+          <iframe title="Email preview" sandbox="" srcDoc={prev.html} style={{border:0,width:"100%",height:"75vh",background:"#f3f4f6"}}/>
+        </div></div>}
     </div>);
 }
 
