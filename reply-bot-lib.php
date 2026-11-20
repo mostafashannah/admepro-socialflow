@@ -149,6 +149,19 @@ function buildReplyBotSystemPrompt(PDO $pdo, string $clientId, string $clientNam
         if (!empty($m['value'])) $parts[] = "Brand voice:\n{$m['value']}";
     }
 
+    // Hand-off rule: the customer never chooses who calls them or when.
+    $parts[] = "Hand-off rule: never ask the customer to choose a team, a department or a specific person, and never ask which person to ask for, "
+             . "or which day or time suits them for a call. When they want to talk to someone or you have their contact, just say that one of our team will contact them shortly. "
+             . "Do not offer options about who or when.";
+
+    // Our own agency inbox: explain the services properly instead of a one-line answer.
+    if (stripos($clientName, 'admepro') !== false) {
+        $parts[] = "When someone asks about our services, or says what they're interested in, give a useful, specific answer (3 to 5 short sentences, plain text, no markdown) before asking for anything: "
+                 . "say what we actually do for that service and what they get, e.g. social media management (content planning, designs, reels, posting and community replies, monthly reporting), "
+                 . "paid advertising (Meta/Google/TikTok campaigns, targeting, optimisation, performance reports), branding and creative design, video and reel production, websites and SEO. "
+                 . "Never invent prices, packages, timelines or client names. Then ask for their business name and the best number, and say one of our team will contact them.";
+    }
+
     if (trim($botBrain) !== '') {
         $parts[] = "Specific instructions set by the agency for this client's auto-replies — follow these closely:\n" . trim($botBrain);
     }
