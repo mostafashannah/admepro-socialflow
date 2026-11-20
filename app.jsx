@@ -34595,9 +34595,10 @@ function MarketingPage({setPage}) {
         ))}
       </div>
       <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",overflowX:"auto"}}>
-        {[["campaigns","Campaigns"],["contacts","Contacts"],["setup","Setup"]].map(([k,lb])=><button key={k} onClick={()=>setTab(k)} style={{padding:"9px 16px",fontSize:13,fontWeight:600,whiteSpace:"nowrap",borderBottom:`2px solid ${tab===k?"var(--accent)":"transparent"}`,color:tab===k?"var(--accent)":"var(--text2)"}}>{lb}</button>)}
+        {[["campaigns","Campaigns"],["welcome","Welcome emails"],["contacts","Contacts"],["setup","Setup"]].map(([k,lb])=><button key={k} onClick={()=>setTab(k)} style={{padding:"9px 16px",fontSize:13,fontWeight:600,whiteSpace:"nowrap",borderBottom:`2px solid ${tab===k?"var(--accent)":"transparent"}`,color:tab===k?"var(--accent)":"var(--text2)"}}>{lb}</button>)}
       </div>
       {tab==="campaigns"&&<MktCampaigns ov={ov} onChange={loadOv}/>}
+      {tab==="welcome"&&<WelcomeEmailsPanel alwaysOpen/>}
       {tab==="contacts"&&<MktContacts ov={ov} onChange={loadOv}/>}
       {tab==="setup"&&<MktSetup ov={ov}/>}
     </div>);
@@ -34882,7 +34883,7 @@ document.getElementById('nl').addEventListener('submit', async e => {
 /* ───────────── Sales agent ───────────── */
 // ONE page for the whole sales cycle: Overview → Prospecting → Campaigns → Audience → Leads → Setup.
 function GrowthPage({setPage, renderLeads, isTeam, canLeads}) {
-  const tabsAll = [["overview","Overview",isTeam],["prospecting","Prospecting",isTeam],["campaigns","Campaigns",isTeam],["audience","Audience",isTeam],["leads","Leads Center",canLeads],["setup","Setup",isTeam]].filter(t=>t[2]);
+  const tabsAll = [["overview","Overview",isTeam],["prospecting","Prospecting",isTeam],["campaigns","Campaigns",isTeam],["welcome","Welcome emails",isTeam],["audience","Audience",isTeam],["leads","Leads Center",canLeads],["setup","Setup",isTeam]].filter(t=>t[2]);
   const [tab,setTab] = useState(()=>{ let t="overview"; try{ t=localStorage.getItem("sf_growth_tab")||"overview"; }catch(e){} return tabsAll.some(x=>x[0]===t)?t:tabsAll[0][0]; });
   const go = (t) => { setTab(t); try{ localStorage.setItem("sf_growth_tab",t); }catch(e){} try{ window.dispatchEvent(new CustomEvent("sf-growth-tab",{detail:t})); }catch(e){} try{ window.scrollTo({top:0}); }catch(e){} };
   useEffect(()=>{ try{ const t=localStorage.getItem("sf_growth_tab"); if(t&&t!==tab&&tabsAll.some(x=>x[0]===t)) setTab(t); }catch(e){} },[]);
@@ -34908,6 +34909,7 @@ function GrowthPage({setPage, renderLeads, isTeam, canLeads}) {
       {tab==="overview"&&<GrowthOverview go={go} ov={ov} err={err}/>}
       {tab==="prospecting"&&<SalesAgentPage setPage={nav} embedded/>}
       {tab==="campaigns"&&<MktCampaigns ov={ov} onChange={loadOv}/>}
+      {tab==="welcome"&&<WelcomeEmailsPanel alwaysOpen/>}
       {tab==="audience"&&<MktContacts ov={ov} onChange={loadOv}/>}
       {tab==="leads"&&canLeads&&renderLeads&&renderLeads()}
       {tab==="setup"&&<MktSetup ov={ov}/>}
@@ -35022,7 +35024,6 @@ function SalesAgentPage({setPage, embedded}) {
         </div>
         <div style={{fontSize:11,color:"var(--text3)"}}>Safe by default: nothing is emailed unless the prospect is approved AND auto-send is on. Follow-ups go out 3 and 7 days later; mark a prospect "Replied" to stop them.</div>
       </div>}
-      <WelcomeEmailsPanel/>
       <div style={{...gCard,display:"flex",flexDirection:"column",gap:10,background:"linear-gradient(135deg,var(--accent)0f,transparent 60%)"}}>
         <span style={gLabel}>Who should the agent look for?</span>
         <textarea value={brief} onChange={e=>setBrief(e.target.value)} rows={3} placeholder="Describe the ideal client: industry, area, size, and what makes them need us…" style={{...inputSt,resize:"vertical"}}/>
@@ -35047,8 +35048,8 @@ function SalesAgentPage({setPage, embedded}) {
     </div>);
 }
 
-function WelcomeEmailsPanel() {
-  const [open,setOpen]=useState(()=>{ try{ return localStorage.getItem("sf_welcome_open")==="1"; }catch(e){ return false; } });
+function WelcomeEmailsPanel({alwaysOpen}) {
+  const [open,setOpen]=useState(()=>{ if(alwaysOpen) return true; try{ return localStorage.getItem("sf_welcome_open")==="1"; }catch(e){ return false; } });
   const [st,setSt]=useState("pending"); const [d,setD]=useState(null); const [err,setErr]=useState(""); const [msg,setMsg]=useState("");
   const [prev,setPrev]=useState(null); const [cfg,setCfg]=useState(null); const [showCfg,setShowCfg]=useState(false); const [busy,setBusy]=useState("");
   const load=()=>sApi.get("welcome_list",{status:st}).then(x=>{setD(x);setErr("");}).catch(e=>setErr(e.message));
