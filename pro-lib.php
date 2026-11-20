@@ -336,6 +336,70 @@ function proTools() {
     ];
 }
 
+// Reports tool — admin and account director only. ONE call returns the whole team's numbers for a period, so a question like
+// "give me a report about tasks last week" is answered in a single round instead of looping through search_tasks per person.
+function reportTools() {
+    return [[
+        'name' => 'team_task_report',
+        'description' => 'Get the team\'s task performance for a period in ONE call: for every active team member, how many tasks they delivered, how many on time / late, rejected, average revisions and quality, and how many of their tasks are overdue right now. ALWAYS use this for any report, summary or "how did the team do" question about tasks over a period (last week, this week, this month, yesterday...). Do NOT loop search_tasks per person for that. Then write the report in plain words from the numbers: totals first, then who did well, who is behind, and one recommendation each for anyone clearly struggling.',
+        'input_schema' => [
+            'type' => 'object',
+            'properties' => [
+                'period'      => ['type' => 'string', 'description' => 'today | yesterday | this_week | last_week | this_month | last_month | last_7_days | last_30_days. Weeks run Sunday to Saturday. Default last_week.'],
+                'from'        => ['type' => 'string', 'description' => 'Optional start date YYYY-MM-DD (use with "to") instead of period'],
+                'to'          => ['type' => 'string', 'description' => 'Optional end date YYYY-MM-DD'],
+                'member_name' => ['type' => 'string', 'description' => 'Optional: only this team member (partial name match)'],
+            ],
+            'required' => [],
+        ],
+    ]];
+}
+function proReportRange(string $period, ?string $from, ?string $to): array {
+    $today = new DateTime('today');
+    if ($from && preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) {
+        $b = ($to && preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) ? $to : $today->format('Y-m-d');
+        return [$from, $b, "$from to $b"];
+    }
+    $dow = (int)$today->format('w');   // 0 = Sunday: the agency's first working day
+    $weekStart = (clone $today)->modify("-{$dow} days");
+    switch ($period) {
+        case 'today':      $a = $b = clone $today; $l = 'today'; break;
+        case 'yesterday':  $a = $b = (clone $today)->modify('-1 day'); $l = 'yesterday'; break;
+        case 'this_week':  $a = $weekStart; $b = clone $today; $l = 'this week so far'; break;
+        case 'this_month': $a = new DateTime($today->format('Y-m-01')); $b = clone $today; $l = 'this month so far'; break;
+        case 'last_month': $a = new DateTime(date('Y-m-01', strtotime('first day of last month'))); $b = new DateTime(date('Y-m-t', strtotime('first day of last month'))); $l = 'last month'; break;
+        case 'last_7_days':  $a = (clone $today)->modify('-6 days'); $b = clone $today; $l = 'the last 7 days'; break;
+        case 'last_30_days': $a = (clone $today)->modify('-29 days'); $b = clone $today; $l = 'the last 30 days'; break;
+        default:           $a = (clone $weekStart)->modify('-7 days'); $b = (clone $weekStart)->modify('-1 day'); $l = 'last week (Sunday to Saturday)';
+    }
+    return [$a->format('Y-m-d'), $b->format('Y-m-d'), $l];
+}
+function runTeamTaskReport(PDO $pdo, array $input): array {
+    [$from, $to, $label] = proReportRange((string)($input['period'] ?? 'last_week'), $input['from'] ?? null, $input['to'] ?? null);
+    $members = $pdo->query("SELECT email, name, role FROM team_members WHERE status = 'active' AND role NOT IN ('admin','accountant','office_boy','client') ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+    if (!empty($input['member_name'])) { $q = mb_strtolower($input['member_name']); $members = array_values(array_filter($members, fn($m) => mb_strpos(mb_strtolower($m['name']), $q) !== false)); }
+    if (!$members) return ['ok' => false, 'error' => 'No matching active team member.'];
+    $st = $pdo->prepare("SELECT user_email, post_title, on_time, revision_count, rejected, quality_score FROM performance_logs WHERE completed_at >= :a AND completed_at < DATE_ADD(:b, INTERVAL 1 DAY) AND (stage_from IS NULL OR stage_from NOT LIKE 'returned\\_%')");
+    $st->execute([':a' => $from, ':b' => $to]);
+    $by = [];
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) $by[$r['user_email']][] = $r;
+    $od = $pdo->query("SELECT assigned_to, COUNT(*) n FROM posts WHERE due_date IS NOT NULL AND due_date <> '' AND LEFT(due_date,10) < CURDATE() AND stage NOT IN ('published','scheduled','approved','rejected','on_hold') AND (is_routine IS NULL OR is_routine = 0) GROUP BY assigned_to")->fetchAll(PDO::FETCH_KEY_PAIR);
+    $out = []; $tot = ['delivered' => 0, 'on_time' => 0, 'late' => 0, 'rejected' => 0, 'overdue_now' => 0];
+    foreach ($members as $m) {
+        $rows = $by[$m['email']] ?? []; $n = count($rows);
+        $onTime = count(array_filter($rows, fn($r) => $r['on_time'])); $rej = count(array_filter($rows, fn($r) => $r['rejected']));
+        $o = (int)($od[$m['email']] ?? 0);
+        $out[] = ['name' => $m['name'], 'role' => $m['role'], 'delivered' => $n, 'on_time' => $onTime, 'late' => $n - $onTime, 'rejected' => $rej,
+            'avg_revisions' => $n ? round(array_sum(array_map(fn($r) => (float)$r['revision_count'], $rows)) / $n, 1) : null,
+            'avg_quality' => $n ? round(array_sum(array_map(fn($r) => (float)$r['quality_score'], $rows)) / $n) : null,
+            'overdue_now' => $o, 'examples' => array_slice(array_column($rows, 'post_title'), 0, 3)];
+        $tot['delivered'] += $n; $tot['on_time'] += $onTime; $tot['late'] += $n - $onTime; $tot['rejected'] += $rej; $tot['overdue_now'] += $o;
+    }
+    usort($out, fn($a, $b) => $b['delivered'] <=> $a['delivered']);
+    return ['ok' => true, 'period' => $label, 'from' => $from, 'to' => $to, 'totals' => $tot, 'team' => $out,
+            'note' => 'Counts first deliveries only (tasks sent back for changes are not counted twice). Account managers deliver few tasks of their own; judge them by their check-ins, not by this table.'];
+}
+
 // Finance tools — admin/accountant only. Reads/writes the same `expenses`
 // table the Finance page in the app uses (type='in'|'out'), so anything Pro
 // adds here shows up in that page's ledger immediately, and vice versa.
@@ -1551,6 +1615,10 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
     if (in_array($name, ['request_time_off', 'decide_pending_request', 'get_my_hr_info', 'message_team_member', 'set_reminder', 'save_contact_report', 'list_contact_reports'], true)) {
         return runHrTool($pdo, $name, $input, $senderId, $senderName);
     }
+    if ($name === 'team_task_report') {
+        if (!in_array($senderRole, ['team:admin', 'team:account_director'], true)) return ['error' => 'Only the admin or the account director can ask for team reports.'];
+        return runTeamTaskReport($pdo, $input);
+    }
     if (in_array($name, ['find_client', 'get_finance_summary', 'search_transactions', 'add_transaction', 'edit_transaction', 'delete_transaction'], true)) {
         if ($name === 'delete_transaction' && $senderRole !== 'team:admin') {
             return ['error' => 'Only an admin can delete financial transactions.'];
@@ -2244,7 +2312,7 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
         $canRecruit = $isTeam && hasRecruitmentPermission($pdo, $senderRole);
 
         if ($isAdmin) {
-            $tools = array_merge(proTools(), hrTools(), financeTools(), recruitmentTools(), [[
+            $tools = array_merge(proTools(), hrTools(), financeTools(), recruitmentTools(), reportTools(), [[
                 'name' => 'create_task',
                 'description' => 'Create a new task in SocialFlow and assign it to a team member (admin only). Use when the admin asks to add/create/assign a task. Needs at least a title; resolve dates like "tomorrow" or "Sunday" to YYYY-MM-DD yourself (today is ' . date('Y-m-d l') . '). If the assignee is unclear, ask before calling. After it succeeds, confirm back in one short line: title, who, client, due.',
                 'input_schema' => [
@@ -2300,7 +2368,7 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                      . "whole agency — use them whenever the question needs current data instead of guessing. "
                      . "You can also create, edit (update_task) and delete (delete_task) tasks — never tell the admin you cannot edit a task.";
         } elseif ($isAM) {
-            $tools = array_merge(proTools(), hrTools());
+            $tools = array_merge(proTools(), hrTools(), $senderRole === 'team:account_director' ? reportTools() : []);
             $system .= "\n\nYou have tools to look up clients and tasks, but only for the clients you personally "
                      . "manage as account manager — results outside your own clients will not be shown.";
         } elseif ($isAccountant) {
@@ -2447,7 +2515,7 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
     $lastContactReportResult = null;
     $contactReportAttempted = false;
     $lastToolError = null; $apiFailStatus = null; $turnsUsed = 0;
-    for ($turn = 0; $turn < 8; $turn++) {
+    for ($turn = 0; $turn < 12; $turn++) {
         $turnsUsed++;
         $payload = ['model' => 'claude-sonnet-5-5', 'max_tokens' => 700, 'system' => $system, 'messages' => $messages];
         if ($tools) $payload['tools'] = $tools;
