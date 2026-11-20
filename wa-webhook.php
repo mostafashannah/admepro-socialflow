@@ -262,6 +262,10 @@ try {
 
     // ---- Pro assistant path (the dedicated Pro number) ----
     [$senderName, $senderRole, $contextBlock, $senderId] = identifySender($pdo, $from);
+    // One Activity Log row per message on this line: which number, what kind, who the system thinks the sender is. Phone numbers are
+    // cut to the last 4 digits. This is how to see (in the app / database) why a message did or did not reach the agency inbox.
+    try { $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), 'WhatsApp inbound', 'whatsapp', :d, 'success', 'system')")
+        ->execute([':d' => 'line=' . ($phoneNumberId === $proPhoneId ? 'pro' : $phoneNumberId) . ' from=…' . substr($from, -4) . ' type=' . $msgType . ' sender=' . ($senderName ? ($senderRole . ' / ' . $senderName) : 'unknown → agency inbox')]); } catch (\Throwable $e) { /* logging only */ }
 
     // If this account manager has an in-progress Mai check-in session today,
     // their reply continues THAT conversation, not the general Pro assistant —
