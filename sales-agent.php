@@ -162,10 +162,12 @@ case 'send': {
 case 'welcome_list': {
     require_once __DIR__ . '/sales-welcome-lib.php';
     $st = $_GET['status'] ?? 'pending'; $w = '1=1'; $bind = [];
+    $mk = in_array($_GET['market'] ?? '', ['gulf', 'egypt'], true) ? $_GET['market'] : '';
+    $mw = $mk !== '' ? "market=" . $pdo->quote($mk) : '1=1';
     if (in_array($st, ['pending', 'approved', 'rejected', 'failed'], true)) { $w = 'status=?'; $bind[] = $st; }
-    $q = $pdo->prepare("SELECT * FROM sales_welcome WHERE $w ORDER BY id DESC LIMIT 200"); $q->execute($bind);
-    $counts = $pdo->query("SELECT status, COUNT(*) n FROM sales_welcome GROUP BY status")->fetchAll(PDO::FETCH_KEY_PAIR);
-    $t = $pdo->query("SELECT COUNT(*) sent, SUM(opened_at IS NOT NULL) opened, SUM(clicked_at IS NOT NULL) clicked, SUM(replied_at IS NOT NULL) replied FROM sales_welcome WHERE sent_at IS NOT NULL")->fetch(PDO::FETCH_ASSOC);
+    $q = $pdo->prepare("SELECT * FROM sales_welcome WHERE $w AND $mw ORDER BY id DESC LIMIT 200"); $q->execute($bind);
+    $counts = $pdo->query("SELECT status, COUNT(*) n FROM sales_welcome WHERE $mw GROUP BY status")->fetchAll(PDO::FETCH_KEY_PAIR);
+    $t = $pdo->query("SELECT COUNT(*) sent, SUM(opened_at IS NOT NULL) opened, SUM(clicked_at IS NOT NULL) clicked, SUM(replied_at IS NOT NULL) replied FROM sales_welcome WHERE sent_at IS NOT NULL AND $mw")->fetch(PDO::FETCH_ASSOC);
     $byM = $pdo->query("SELECT market, COUNT(*) sent, SUM(opened_at IS NOT NULL) opened, SUM(clicked_at IS NOT NULL) clicked, SUM(replied_at IS NOT NULL) replied FROM sales_welcome WHERE sent_at IS NOT NULL GROUP BY market")->fetchAll(PDO::FETCH_ASSOC);
     gOut(200, ['rows' => $q->fetchAll(PDO::FETCH_ASSOC), 'counts' => $counts, 'totals' => $t, 'by_market' => $byM, 'cap' => $capN]);
 }

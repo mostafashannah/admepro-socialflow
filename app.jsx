@@ -34595,10 +34595,9 @@ function MarketingPage({setPage}) {
         ))}
       </div>
       <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",overflowX:"auto"}}>
-        {[["campaigns","Campaigns"],["welcome","Welcome emails"],["contacts","Contacts"],["setup","Setup"]].map(([k,lb])=><button key={k} onClick={()=>setTab(k)} style={{padding:"9px 16px",fontSize:13,fontWeight:600,whiteSpace:"nowrap",borderBottom:`2px solid ${tab===k?"var(--accent)":"transparent"}`,color:tab===k?"var(--accent)":"var(--text2)"}}>{lb}</button>)}
+        {[["campaigns","Campaigns"],["contacts","Contacts"],["setup","Setup"]].map(([k,lb])=><button key={k} onClick={()=>setTab(k)} style={{padding:"9px 16px",fontSize:13,fontWeight:600,whiteSpace:"nowrap",borderBottom:`2px solid ${tab===k?"var(--accent)":"transparent"}`,color:tab===k?"var(--accent)":"var(--text2)"}}>{lb}</button>)}
       </div>
       {tab==="campaigns"&&<MktCampaigns ov={ov} onChange={loadOv}/>}
-      {tab==="welcome"&&<WelcomeEmailsPanel alwaysOpen/>}
       {tab==="contacts"&&<MktContacts ov={ov} onChange={loadOv}/>}
       {tab==="setup"&&<MktSetup ov={ov}/>}
     </div>);
@@ -34618,6 +34617,8 @@ function MktCampaigns({ov,onChange}) {
         <button style={wBtn(true)} onClick={()=>setEdit({channel:"email",name:"",subject:"",preheader:"",blocks:[],audience:{consent:["opt_in","lead"]}})}>+ Email newsletter</button>
         <button style={wBtn(false)} onClick={()=>setEdit({channel:"whatsapp",name:"",wa_template:"",wa_lang:"en_US",wa_params:[],audience:{}})}>+ WhatsApp campaign</button>
       </div>
+      <WelcomeEmailsPanel market="gulf"/>
+      <WelcomeEmailsPanel market="egypt"/>
       {rows&&rows.length===0&&<div style={{...gCard,textAlign:"center",color:"var(--text2)",fontSize:13,padding:30}}>No campaigns yet. Start with a newsletter — Sara can write the first draft for you.</div>}
       {(rows||[]).map(r=>(
         <div key={r.id} style={{...gCard,display:"flex",gap:14,alignItems:"center",flexWrap:"wrap"}}>
@@ -34883,7 +34884,7 @@ document.getElementById('nl').addEventListener('submit', async e => {
 /* ───────────── Sales agent ───────────── */
 // ONE page for the whole sales cycle: Overview → Prospecting → Campaigns → Audience → Leads → Setup.
 function GrowthPage({setPage, renderLeads, isTeam, canLeads}) {
-  const tabsAll = [["overview","Overview",isTeam],["prospecting","Prospecting",isTeam],["campaigns","Campaigns",isTeam],["welcome","Welcome emails",isTeam],["audience","Audience",isTeam],["leads","Leads Center",canLeads],["setup","Setup",isTeam]].filter(t=>t[2]);
+  const tabsAll = [["overview","Overview",isTeam],["prospecting","Prospecting",isTeam],["campaigns","Campaigns",isTeam],["audience","Audience",isTeam],["leads","Leads Center",canLeads],["setup","Setup",isTeam]].filter(t=>t[2]);
   const [tab,setTab] = useState(()=>{ let t="overview"; try{ t=localStorage.getItem("sf_growth_tab")||"overview"; }catch(e){} return tabsAll.some(x=>x[0]===t)?t:tabsAll[0][0]; });
   const go = (t) => { setTab(t); try{ localStorage.setItem("sf_growth_tab",t); }catch(e){} try{ window.dispatchEvent(new CustomEvent("sf-growth-tab",{detail:t})); }catch(e){} try{ window.scrollTo({top:0}); }catch(e){} };
   useEffect(()=>{ try{ const t=localStorage.getItem("sf_growth_tab"); if(t&&t!==tab&&tabsAll.some(x=>x[0]===t)) setTab(t); }catch(e){} },[]);
@@ -34909,7 +34910,6 @@ function GrowthPage({setPage, renderLeads, isTeam, canLeads}) {
       {tab==="overview"&&<GrowthOverview go={go} ov={ov} err={err}/>}
       {tab==="prospecting"&&<SalesAgentPage setPage={nav} embedded/>}
       {tab==="campaigns"&&<MktCampaigns ov={ov} onChange={loadOv}/>}
-      {tab==="welcome"&&<WelcomeEmailsPanel alwaysOpen/>}
       {tab==="audience"&&<MktContacts ov={ov} onChange={loadOv}/>}
       {tab==="leads"&&canLeads&&renderLeads&&renderLeads()}
       {tab==="setup"&&<MktSetup ov={ov}/>}
@@ -35048,12 +35048,13 @@ function SalesAgentPage({setPage, embedded}) {
     </div>);
 }
 
-function WelcomeEmailsPanel({alwaysOpen}) {
-  const [open,setOpen]=useState(()=>{ if(alwaysOpen) return true; try{ return localStorage.getItem("sf_welcome_open")==="1"; }catch(e){ return false; } });
+function WelcomeEmailsPanel({market}) {
+  const WK="sf_welcome_open_"+(market||"all"); const MK=market?[market]:["gulf","egypt"];
+  const [open,setOpen]=useState(()=>{ try{ return localStorage.getItem(WK)==="1"; }catch(e){ return false; } });
   const [st,setSt]=useState("pending"); const [d,setD]=useState(null); const [err,setErr]=useState(""); const [msg,setMsg]=useState("");
   const [prev,setPrev]=useState(null); const [cfg,setCfg]=useState(null); const [showCfg,setShowCfg]=useState(false); const [busy,setBusy]=useState("");
-  const load=()=>sApi.get("welcome_list",{status:st}).then(x=>{setD(x);setErr("");}).catch(e=>setErr(e.message));
-  useEffect(()=>{ try{ localStorage.setItem("sf_welcome_open",open?"1":"0"); }catch(e){} if(open) load(); },[open,st]);
+  const load=()=>sApi.get("welcome_list",{status:st,market:market||""}).then(x=>{setD(x);setErr("");}).catch(e=>setErr(e.message));
+  useEffect(()=>{ try{ localStorage.setItem(WK,open?"1":"0"); }catch(e){} if(open) load(); },[open,st]);
   const edit=(id,patch)=>setD(x=>({...x,rows:x.rows.map(r=>r.id===id?{...r,...patch}:r)}));
   const act=async(a,body,ok)=>{ setBusy(a+(body.id||"")); setMsg(""); try{ await sApi.post(a,body); if(ok) setMsg(ok); await load(); }catch(e){ setMsg(e.message); await load(); } setBusy(""); };
   const save=r=>act("welcome_update",{id:r.id,subject:r.subject,personal_line:r.personal_line,market:r.market},"Saved");
@@ -35071,17 +35072,17 @@ function WelcomeEmailsPanel({alwaysOpen}) {
   return (
     <div style={{...gCard,display:"flex",flexDirection:"column",gap:10}}>
       <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",cursor:"pointer"}} onClick={()=>setOpen(!open)}>
-        <b style={{fontSize:14}}>✉️ Welcome emails (Gulf + Egypt)</b>
+        <b style={{fontSize:14}}>{market==="gulf"?"✉️ Gulf welcome email":market==="egypt"?"✉️ Egypt welcome email":"✉️ Welcome emails"}</b><span style={{fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:999,background:"var(--accent)1a",color:"var(--accent)"}}>Daily · automated</span>
         {counts.pending>0&&<span style={{fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:999,background:"#f59e0b22",color:"#b45309"}}>{counts.pending} to review</span>}
         <div style={{flex:1}}/><span style={{fontSize:12,color:"var(--text3)"}}>{open?"Hide":"Open"}</span>
       </div>
       {open&&<>
-        <div style={{fontSize:12,color:"var(--text2)"}}>Every day the agent drafts one welcome email per new lead that has an email address: the Gulf template for Gulf countries, the Egypt template for Egypt. Nothing is sent until you approve it here. Each email has a short intro of admepro, an AI project plus other projects, all our social links and the WhatsApp link.</div>
+        <div style={{fontSize:12,color:"var(--text2)"}}>Every day the Sales agent drafts this welcome email for each new lead that has an email address{market==="gulf"?" in a Gulf country":market==="egypt"?" in Egypt (or any other country)":""}. Nothing is sent until you approve it here. Each email has a short intro of admepro, an AI project plus other projects, all our social links and the WhatsApp link.</div>
         {err&&<div style={{fontSize:12,color:"#dc2626"}}>{err}</div>}
         {msg&&<div style={{fontSize:12,color:/sent|saved|rejected/i.test(msg)?"#16a34a":"#dc2626"}}>{msg}</div>}
         {d&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:8}}>
           {[["Sent",sent,""],["Opened",T.opened||0,gPct(T.opened,sent)],["Clicked",T.clicked||0,gPct(T.clicked,sent)],["Replied",T.replied||0,gPct(T.replied,sent)]].map(([k,v,p])=><div key={k} style={{border:"1px solid var(--border)",borderRadius:10,padding:"8px 10px"}}><div style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>{k}</div><div style={{fontSize:18,fontWeight:800}}>{v} <span style={{fontSize:11,fontWeight:600,color:"var(--text3)"}}>{p}</span></div></div>)}
-          {(d.by_market||[]).map(m=><div key={m.market} style={{border:"1px solid var(--border)",borderRadius:10,padding:"8px 10px"}}><div style={{fontSize:11,color:"var(--text3)",fontWeight:700,textTransform:"capitalize"}}>{m.market}</div><div style={{fontSize:12}}>{m.sent} sent · {m.opened||0} opened · {m.clicked||0} clicked · {m.replied||0} replied</div></div>)}
+          {!market&&(d.by_market||[]).map(m=><div key={m.market} style={{border:"1px solid var(--border)",borderRadius:10,padding:"8px 10px"}}><div style={{fontSize:11,color:"var(--text3)",fontWeight:700,textTransform:"capitalize"}}>{m.market}</div><div style={{fontSize:12}}>{m.sent} sent · {m.opened||0} opened · {m.clicked||0} clicked · {m.replied||0} replied</div></div>)}
         </div>}
         <div style={{fontSize:11,color:"var(--text3)"}}>Opens are an estimate: some mail apps (Apple Mail) load the tracking image automatically, so treat "clicked" and "replied" as the real feedback.</div>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
@@ -35093,7 +35094,7 @@ function WelcomeEmailsPanel({alwaysOpen}) {
         {showCfg&&cfg&&<div style={{border:"1px solid var(--border)",borderRadius:12,padding:12,display:"flex",flexDirection:"column",gap:10}}>
           <span style={gLabel}>Links in every email</span>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:6}}>{SOC.map(k=><label key={k} style={{fontSize:11,color:"var(--text3)",display:"flex",flexDirection:"column",gap:2,textTransform:"capitalize"}}>{k}<input value={cfg.socials[k]||""} onChange={e=>setC(["socials",k],e.target.value)} placeholder="https://…" style={inputSt}/></label>)}</div>
-          {["gulf","egypt"].map(m=><div key={m} style={{border:"1px solid var(--border)",borderRadius:10,padding:10,display:"flex",flexDirection:"column",gap:6}}>
+          {MK.map(m=><div key={m} style={{border:"1px solid var(--border)",borderRadius:10,padding:10,display:"flex",flexDirection:"column",gap:6}}>
             <div style={{display:"flex",alignItems:"center",gap:8}}><b style={{fontSize:13,textTransform:"capitalize"}}>{m} template</b><div style={{flex:1}}/><button style={wBtn(false)} onClick={()=>previewTpl(m)}>Preview</button></div>
             <input value={cfg[m].subject} onChange={e=>setC([m,"subject"],e.target.value)} placeholder="Subject" style={inputSt}/>
             <input value={cfg[m].greeting} onChange={e=>setC([m,"greeting"],e.target.value)} placeholder="Greeting" style={inputSt}/>
