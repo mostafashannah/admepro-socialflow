@@ -295,12 +295,29 @@ try {
     }
 
     if (!$senderName) {
-        // Not a known team member or client — this is an outside number messaging
-        // admepro directly. Check if it's a prospect interested in our services
-        // and capture it as a lead before replying as Pro.
+        // Not a known team member or client — an outside number messaging admepro directly (the number is shared with the
+        // public). It is an AGENCY CUSTOMER, never a Pro user: the message goes into the community inbox under the client
+        // "admepro", a lead is captured if it looks like a prospect, and admepro's reply bot answers (as a draft for a person
+        // to approve, or automatically, whichever the admepro reply-bot setting says). Pro's "your number isn't linked" reply
+        // is no longer sent to customers.
         require_once __DIR__ . '/reply-bot-lib.php';
+        try {
+            $agency = $pdo->query("SELECT id, name FROM clients WHERE LOWER(TRIM(name)) = 'admepro' ORDER BY created_at LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+            if ($agency && trim((string)$text) !== '') {
+                $insA = $pdo->prepare("INSERT INTO customer_messages (client_id, client_name, channel, customer_id, customer_name, direction, message_text, sent_by, thread_status) VALUES (:cid,:cname,'whatsapp',:custid,:custname,'in',:txt,'customer','needs_human')");
+                $insA->execute([':cid' => $agency['id'], ':cname' => $agency['name'], ':custid' => $from, ':custname' => $contactName, ':txt' => $text]);
+                try { maybeCreateLeadFromMessage($pdo, 'whatsapp', $from, $contactName, $text, $from); }
+                catch (\Throwable $e) { error_log('[wa-webhook] lead-capture EXCEPTION: ' . $e->getMessage()); }
+                try { maybeAutoReply($pdo, $agency['id'], $agency['name'], 'whatsapp', $from, $contactName); }
+                catch (\Throwable $e) { error_log('[wa-webhook] agency reply-bot EXCEPTION: ' . $e->getMessage()); }
+                exit; // handled as an agency customer: do not fall through to Pro
+            }
+        } catch (\Throwable $e) { error_log('[wa-webhook] agency inbox EXCEPTION: ' . $e->getMessage()); }
+        // No admepro client row, or nothing readable to store (e.g. a photo or an empty message): still run the lead check,
+        // then stay silent. A customer must never receive Pro's internal "your number isn't linked" message.
         try { maybeCreateLeadFromMessage($pdo, 'whatsapp', $from, $contactName, $text, $from); }
         catch (\Throwable $e) { error_log('[wa-webhook] lead-capture EXCEPTION: ' . $e->getMessage()); }
+        exit;
     }
     error_log("[wa-webhook] routing to Pro: senderName=" . var_export($senderName, true) . " senderRole=" . var_export($senderRole, true));
     $reply = askPro($pdo, $senderName, $senderRole, $contextBlock, $text, $senderId, $isVoiceNote ? $text : null, $from, $imageBase64, $imageMime, $voiceRecordingUrl ?? null, $documentBase64, $documentMime);
