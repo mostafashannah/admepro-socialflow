@@ -352,6 +352,19 @@ function reportTools() {
             ],
             'required' => [],
         ],
+    ], [
+        'name' => 'team_working_hours',
+        'description' => 'Get the hours each team member actually TRACKED on tasks (from the app\'s task timers) for a period, in ONE call: working days with a timer, total hours, average hours per tracked day, how many days were under the 7-hour target, and the number of working days in the period (Sunday to Thursday). ALWAYS use this for any question about working hours, utilization, capacity, "how many hours is X working", or whether the team is busy enough. You CAN see logged hours with this tool, never say you cannot. The target is 7 tracked hours per working day for designers, editors and writers; account managers, directors and executives are not judged by tracked hours. If the hours are low while tasks are overdue, point out that the timer may not be used, and say which people.',
+        'input_schema' => [
+            'type' => 'object',
+            'properties' => [
+                'period'      => ['type' => 'string', 'description' => 'today | yesterday | this_week | last_week | this_month | last_month | last_7_days | last_30_days. Weeks run Sunday to Saturday. Default last_week.'],
+                'from'        => ['type' => 'string', 'description' => 'Optional start date YYYY-MM-DD (use with "to") instead of period'],
+                'to'          => ['type' => 'string', 'description' => 'Optional end date YYYY-MM-DD'],
+                'member_name' => ['type' => 'string', 'description' => 'Optional: only this team member (partial name match)'],
+            ],
+            'required' => [],
+        ],
     ]];
 }
 function proReportRange(string $period, ?string $from, ?string $to): array {
@@ -393,11 +406,52 @@ function runTeamTaskReport(PDO $pdo, array $input): array {
             'avg_revisions' => $n ? round(array_sum(array_map(fn($r) => (float)$r['revision_count'], $rows)) / $n, 1) : null,
             'avg_quality' => $n ? round(array_sum(array_map(fn($r) => (float)$r['quality_score'], $rows)) / $n) : null,
             'overdue_now' => $o, 'examples' => array_slice(array_column($rows, 'post_title'), 0, 3)];
+        // The app's own formula for the task part of the score: completion 25% + on time 20% + quality 30% + revisions 25%; each overdue task then costs 8 points (max 40).
+        // Approximate: the app also subtracts live penalties for tasks currently late or sent back, which are not included here.
+        if ($n) {
+            $last = &$out[count($out) - 1];
+            $revScore = max(0, 100 - $last['avg_revisions'] * 18);
+            $base = round((($n - $rej) / $n * 100) * 0.25 + ($onTime / $n * 100) * 0.20 + $last['avg_quality'] * 0.30 + $revScore * 0.25);
+            $last['approx_score'] = max(0, min(100, (int)$base) - min(40, 8 * $o));
+            unset($last);
+        }
         $tot['delivered'] += $n; $tot['on_time'] += $onTime; $tot['late'] += $n - $onTime; $tot['rejected'] += $rej; $tot['overdue_now'] += $o;
     }
     usort($out, fn($a, $b) => $b['delivered'] <=> $a['delivered']);
     return ['ok' => true, 'period' => $label, 'from' => $from, 'to' => $to, 'totals' => $tot, 'team' => $out,
-            'note' => 'Counts first deliveries only (tasks sent back for changes are not counted twice). Account managers deliver few tasks of their own; judge them by their check-ins, not by this table.'];
+            'note' => 'Counts first deliveries only (tasks sent back for changes are not counted twice). approx_score follows the app formula without the live late/returned penalties, so the app may show a slightly lower number. Account managers deliver few tasks of their own; judge them by their check-ins, not by this table.'];
+}
+
+function runTeamWorkingHours(PDO $pdo, array $input): array {
+    [$from, $to, $label] = proReportRange((string)($input['period'] ?? 'last_week'), $input['from'] ?? null, $input['to'] ?? null);
+    $members = $pdo->query("SELECT email, name, role FROM team_members WHERE status = 'active' AND role NOT IN ('admin','accountant','office_boy','client') ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+    if (!empty($input['member_name'])) { $q = mb_strtolower($input['member_name']); $members = array_values(array_filter($members, fn($m) => mb_strpos(mb_strtolower($m['name']), $q) !== false)); }
+    if (!$members) return ['ok' => false, 'error' => 'No matching active team member.'];
+    $st = $pdo->prepare("SELECT user_email, LEFT(date,10) d, total_seconds, status, started_at FROM time_entries WHERE LEFT(date,10) >= :a AND LEFT(date,10) <= :b");
+    $st->execute([':a' => $from, ':b' => $to]);
+    $secs = [];
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $s = (float)$r['total_seconds'];
+        if ($r['status'] === 'active' && $r['started_at']) { $t = strtotime($r['started_at'] . ' UTC'); if ($t) $s += max(0, time() - $t); }
+        $secs[$r['user_email']][$r['d']] = ($secs[$r['user_email']][$r['d']] ?? 0) + $s;
+    }
+    // Working days = Sunday..Thursday (the agency's weekend is Friday and Saturday). Public holidays and leave are not subtracted.
+    $workdays = 0; for ($d = new DateTime($from), $e = new DateTime($to); $d <= $e; $d->modify('+1 day')) { if (!in_array((int)$d->format('w'), [5, 6], true)) $workdays++; }
+    $amRoles = ['account_manager', 'account_director', 'account_executive'];
+    $out = [];
+    foreach ($members as $m) {
+        $days = array_filter($secs[$m['email']] ?? [], fn($v) => $v >= 60);
+        $total = array_sum($days) / 3600; $n = count($days);
+        $row = ['name' => $m['name'], 'role' => $m['role'], 'tracked_days' => $n, 'total_hours' => round($total, 1), 'avg_hours_per_tracked_day' => $n ? round($total / $n, 1) : null,
+                'days_under_7h' => count(array_filter($days, fn($v) => $v < 7 * 3600)), 'judged_by_hours' => !in_array($m['role'], $amRoles, true)];
+        if ($n && (new DateTime($to))->diff(new DateTime($from))->days <= 14) { ksort($days); $row['by_day'] = array_map(fn($v) => round($v / 3600, 1), $days); }
+        $out[] = $row;
+    }
+    usort($out, fn($a, $b) => $b['total_hours'] <=> $a['total_hours']);
+    $judged = array_values(array_filter($out, fn($r) => $r['judged_by_hours'] && $r['tracked_days']));
+    return ['ok' => true, 'period' => $label, 'from' => $from, 'to' => $to, 'workdays_in_period' => $workdays, 'target_hours_per_day' => 7, 'team' => $out,
+            'team_avg_hours_per_tracked_day' => $judged ? round(array_sum(array_column($judged, 'avg_hours_per_tracked_day')) / count($judged), 1) : null,
+            'note' => 'Hours come from the app\'s task timers. A day with no timer at all is not counted as worked (it may be leave, a day off, or the timer was not used).'];
 }
 
 // Finance tools — admin/accountant only. Reads/writes the same `expenses`
@@ -1615,9 +1669,9 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
     if (in_array($name, ['request_time_off', 'decide_pending_request', 'get_my_hr_info', 'message_team_member', 'set_reminder', 'save_contact_report', 'list_contact_reports'], true)) {
         return runHrTool($pdo, $name, $input, $senderId, $senderName);
     }
-    if ($name === 'team_task_report') {
+    if ($name === 'team_task_report' || $name === 'team_working_hours') {
         if (!in_array($senderRole, ['team:admin', 'team:account_director'], true)) return ['error' => 'Only the admin or the account director can ask for team reports.'];
-        return runTeamTaskReport($pdo, $input);
+        return $name === 'team_working_hours' ? runTeamWorkingHours($pdo, $input) : runTeamTaskReport($pdo, $input);
     }
     if (in_array($name, ['find_client', 'get_finance_summary', 'search_transactions', 'add_transaction', 'edit_transaction', 'delete_transaction'], true)) {
         if ($name === 'delete_transaction' && $senderRole !== 'team:admin') {
@@ -2366,7 +2420,8 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
             ]]);
             $system .= "\n\nAs admin, you have full tools to look up any client and search any task across the "
                      . "whole agency — use them whenever the question needs current data instead of guessing. "
-                     . "You can also create, edit (update_task) and delete (delete_task) tasks — never tell the admin you cannot edit a task.";
+                     . "You can also create, edit (update_task) and delete (delete_task) tasks — never tell the admin you cannot edit a task. "
+                     . "You CAN see team performance and working hours: use team_task_report (deliveries, on time, quality, overdue, approx score) and team_working_hours (tracked timer hours) — never say you cannot see logged hours or performance.";
         } elseif ($isAM) {
             $tools = array_merge(proTools(), hrTools(), $senderRole === 'team:account_director' ? reportTools() : []);
             $system .= "\n\nYou have tools to look up clients and tasks, but only for the clients you personally "
