@@ -353,6 +353,10 @@ function reportTools() {
             'required' => [],
         ],
     ], [
+        'name' => 'business_snapshot',
+        'description' => 'ONE call that returns the current state of the whole agency, for decisions: team delivery and overdue tasks (last 7 days), tracked working hours, finance (this month vs last month: money in, out, balance), the leads pipeline (by stage, new this week, overdue follow-ups, pipeline value), account-manager check-in results (last 7 days), publishing problems (stuck scheduled posts, dead or expiring social connections), and recruitment (applications by status). Use it FIRST whenever the admin asks what to do, asks for a decision, a recommendation, a priority, a comparison between options, or "how is the agency doing / what should I focus on". Then drill into one area with the specific tools only if a number needs more detail.',
+        'input_schema' => ['type' => 'object', 'properties' => new stdClass(), 'required' => []],
+    ], [
         'name' => 'team_working_hours',
         'description' => 'Get the hours each team member actually TRACKED on tasks (from the app\'s task timers) for a period, in ONE call: working days with a timer, total hours, average hours per tracked day, how many days were under the 7-hour target, and the number of working days in the period (Sunday to Thursday). ALWAYS use this for any question about working hours, utilization, capacity, "how many hours is X working", or whether the team is busy enough. You CAN see logged hours with this tool, never say you cannot. The target is 7 tracked hours per working day for designers, editors and writers; account managers, directors and executives are not judged by tracked hours. If the hours are low while tasks are overdue, point out that the timer may not be used, and say which people.',
         'input_schema' => [
@@ -422,6 +426,52 @@ function runTeamTaskReport(PDO $pdo, array $input): array {
             'note' => 'Counts first deliveries only (tasks sent back for changes are not counted twice). approx_score follows the app formula without the live late/returned penalties, so the app may show a slightly lower number. Account managers deliver few tasks of their own; judge them by their check-ins, not by this table.'];
 }
 
+function runBusinessSnapshot(PDO $pdo, ?string $senderName, ?string $fromPhone): array {
+    $safe = function (callable $f) { try { return $f(); } catch (Throwable $e) { return ['unavailable' => 'this part could not be read']; } };
+    $q = fn(string $sql) => $pdo->query($sql);
+    $out = ['as_of' => date('Y-m-d H:i'), 'currency' => 'EGP', 'agency_weekend' => 'Friday and Saturday'];
+
+    $out['team_last_7_days'] = $safe(function () use ($pdo) {
+        $r = runTeamTaskReport($pdo, ['period' => 'last_7_days']);
+        return ['from' => $r['from'], 'to' => $r['to'], 'totals' => $r['totals'], 'people' => array_map(fn($m) => ['name' => $m['name'], 'role' => $m['role'], 'delivered' => $m['delivered'], 'late' => $m['late'], 'overdue_now' => $m['overdue_now'], 'approx_score' => $m['approx_score'] ?? null], $r['team'])];
+    });
+    $out['working_hours_last_7_days'] = $safe(function () use ($pdo) {
+        $r = runTeamWorkingHours($pdo, ['period' => 'last_7_days']);
+        return ['target_hours_per_day' => 7, 'team_avg_hours_per_tracked_day' => $r['team_avg_hours_per_tracked_day'], 'workdays_in_period' => $r['workdays_in_period'],
+                'people' => array_values(array_map(fn($m) => ['name' => $m['name'], 'tracked_days' => $m['tracked_days'], 'avg_hours_per_tracked_day' => $m['avg_hours_per_tracked_day'], 'days_under_7h' => $m['days_under_7h']], array_filter($r['team'], fn($m) => $m['judged_by_hours'])))];
+    });
+    $out['finance'] = $safe(function () use ($pdo, $senderName, $fromPhone) {
+        $thisM = runFinanceTool($pdo, 'get_finance_summary', ['start_date' => date('Y-m-01')], $senderName, $fromPhone);
+        $lastM = runFinanceTool($pdo, 'get_finance_summary', ['start_date' => date('Y-m-01', strtotime('first day of last month')), 'end_date' => date('Y-m-t', strtotime('first day of last month'))], $senderName, $fromPhone);
+        $all = runFinanceTool($pdo, 'get_finance_summary', [], $senderName, $fromPhone);
+        $cut = fn($r) => ['money_in' => $r['total_in'], 'money_out' => $r['total_out'], 'net' => $r['balance'], 'top_expense_categories' => array_slice(array_values(array_filter($r['by_category'], fn($c) => $c['type'] === 'out')), 0, 5)];
+        return ['this_month_so_far' => $cut($thisM), 'last_month' => $cut($lastM), 'balance_all_time' => $all['balance']];
+    });
+    $out['leads'] = $safe(function () use ($pdo, $q) {
+        $own = "(category IS NULL OR category = '' OR category = 'lead') AND (client_name IS NULL OR client_name = '' OR LOWER(client_name) = 'admepro') AND phone IS NOT NULL AND phone <> ''";
+        $by = $q("SELECT status, COUNT(*) n, COALESCE(SUM(value),0) v FROM leads WHERE $own GROUP BY status")->fetchAll(PDO::FETCH_ASSOC);
+        $new7 = (int)$q("SELECT COUNT(*) FROM leads WHERE $own AND created_at >= NOW() - INTERVAL 7 DAY")->fetchColumn();
+        $overdue = (int)$q("SELECT COUNT(*) FROM leads WHERE $own AND status NOT IN ('closed_won','closed_lost','dead') AND followup_date IS NOT NULL AND followup_date <> '' AND LEFT(followup_date,10) < CURDATE()")->fetchColumn();
+        $bySrc = $q("SELECT source, COUNT(*) n FROM leads WHERE $own AND created_at >= NOW() - INTERVAL 30 DAY GROUP BY source ORDER BY n DESC")->fetchAll(PDO::FETCH_ASSOC);
+        return ['by_stage' => $by, 'new_last_7_days' => $new7, 'overdue_followups' => $overdue, 'new_last_30_days_by_source' => $bySrc];
+    });
+    $out['am_checkins_last_7_days'] = $safe(function () use ($q) {
+        return $q("SELECT account_manager_name AS person, status, COUNT(*) n FROM mai_report_sessions WHERE report_date >= CURDATE() - INTERVAL 7 DAY GROUP BY account_manager_name, status")->fetchAll(PDO::FETCH_ASSOC);
+    });
+    $out['publishing'] = $safe(function () use ($q) {
+        $stuck = (int)$q("SELECT COUNT(*) FROM posts WHERE stage = 'scheduled' AND (task_type IS NULL OR task_type <> 'grid_layout') AND (scheduled_date IS NULL OR scheduled_date = '' OR scheduled_date < CURDATE())")->fetchColumn();
+        $gaveUp = (int)$q("SELECT COUNT(*) FROM posts WHERE stage = 'scheduled' AND publish_attempts >= 3")->fetchColumn();
+        $pub7 = (int)$q("SELECT COUNT(*) FROM posts WHERE stage = 'published' AND published_at >= NOW() - INTERVAL 7 DAY")->fetchColumn();
+        $conn = [];
+        try { $conn = $q("SELECT i.client_name, i.app_key, th.state FROM token_health th JOIN integrations i ON i.id = th.integration_id WHERE th.state IN ('dead','expiring','no_token')")->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) {}
+        return ['published_last_7_days' => $pub7, 'scheduled_posts_past_due_or_without_date' => $stuck, 'posts_the_auto_publisher_gave_up_on' => $gaveUp, 'social_connections_dead_or_expiring' => $conn];
+    });
+    $out['recruitment'] = $safe(function () use ($q) {
+        return ['applications_by_status' => $q("SELECT status, COUNT(*) n FROM job_applications GROUP BY status")->fetchAll(PDO::FETCH_ASSOC)];
+    });
+    $out['clients'] = $safe(function () use ($q) { return ['active_clients' => (int)$q("SELECT COUNT(*) FROM clients WHERE status = 'active'")->fetchColumn()]; });
+    return $out;
+}
 function runTeamWorkingHours(PDO $pdo, array $input): array {
     [$from, $to, $label] = proReportRange((string)($input['period'] ?? 'last_week'), $input['from'] ?? null, $input['to'] ?? null);
     $members = $pdo->query("SELECT email, name, role FROM team_members WHERE status = 'active' AND role NOT IN ('admin','accountant','office_boy','client') ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
@@ -1669,6 +1719,10 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
     if (in_array($name, ['request_time_off', 'decide_pending_request', 'get_my_hr_info', 'message_team_member', 'set_reminder', 'save_contact_report', 'list_contact_reports'], true)) {
         return runHrTool($pdo, $name, $input, $senderId, $senderName);
     }
+    if ($name === 'business_snapshot') {
+        if ($senderRole !== 'team:admin') return ['error' => 'The full business snapshot (it includes finance) is for the admin only.'];
+        return runBusinessSnapshot($pdo, $senderName, $fromPhone);
+    }
     if ($name === 'team_task_report' || $name === 'team_working_hours') {
         if (!in_array($senderRole, ['team:admin', 'team:account_director'], true)) return ['error' => 'Only the admin or the account director can ask for team reports.'];
         return $name === 'team_working_hours' ? runTeamWorkingHours($pdo, $input) : runTeamTaskReport($pdo, $input);
@@ -2421,9 +2475,14 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
             $system .= "\n\nAs admin, you have full tools to look up any client and search any task across the "
                      . "whole agency — use them whenever the question needs current data instead of guessing. "
                      . "You can also create, edit (update_task) and delete (delete_task) tasks — never tell the admin you cannot edit a task. "
+                     . "DECISION MODE: when the admin asks what to do, which option to choose, who to prioritise, whether to hire, spend or cut, or how the agency is doing, "
+                     . "call business_snapshot FIRST (one call), then at most one or two specific tools if a number needs detail. Then answer like a decisive advisor who has read all the data: "
+                     . "(1) the DECISION in one clear sentence, picking ONE option and not listing choices; (2) WHY: three or four facts with real numbers from the data; "
+                     . "(3) the RISK or what would change your mind; (4) NEXT STEPS: who does what, by when. Use only numbers the tools returned and say plainly when a number is missing or unreliable "
+                     . "(for example hours low because timers are not used). Do not change any data to carry out a decision until the admin says yes. Replies in this mode may be longer than usual, but stay tight and WhatsApp-friendly. "
                      . "You CAN see team performance and working hours: use team_task_report (deliveries, on time, quality, overdue, approx score) and team_working_hours (tracked timer hours) — never say you cannot see logged hours or performance.";
         } elseif ($isAM) {
-            $tools = array_merge(proTools(), hrTools(), $senderRole === 'team:account_director' ? reportTools() : []);
+            $tools = array_merge(proTools(), hrTools(), $senderRole === 'team:account_director' ? array_values(array_filter(reportTools(), fn($t) => $t['name'] !== 'business_snapshot')) : []);
             $system .= "\n\nYou have tools to look up clients and tasks, but only for the clients you personally "
                      . "manage as account manager — results outside your own clients will not be shown.";
         } elseif ($isAccountant) {
@@ -2572,7 +2631,7 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
     $lastToolError = null; $apiFailStatus = null; $turnsUsed = 0;
     for ($turn = 0; $turn < 12; $turn++) {
         $turnsUsed++;
-        $payload = ['model' => 'claude-sonnet-5-5', 'max_tokens' => 700, 'system' => $system, 'messages' => $messages];
+        $payload = ['model' => 'claude-sonnet-5-5', 'max_tokens' => $isAdmin ? 1200 : 700, 'system' => $system, 'messages' => $messages];
         if ($tools) $payload['tools'] = $tools;
 
         [$status, $data, $raw] = callClaude($payload);
