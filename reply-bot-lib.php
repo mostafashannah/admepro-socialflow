@@ -438,6 +438,20 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
                         ':details' => "channel={$channel} customer={$customerId} ({$customerName}), phone={$phone}",
                     ]);
             } catch (\Throwable $e2) { /* best-effort */ }
+            // A job seeker or a service provider is not a sales lead, but the person who handles them still needs to know:
+            // notify whoever is set for this category (Clients → admepro → Leads → notification numbers), ONCE per sender per 30 days.
+            if ($clientId && in_array($classification['category'], ['hiring', 'service_provider'], true)) {
+                try {
+                    $notifyKey = "contact-notified:{$classification['category']}:{$channel}:{$customerId}";
+                    $seenN = $pdo->prepare("SELECT 1 FROM activity_logs WHERE action = 'Contact notified' AND details LIKE :k AND created_at >= NOW() - INTERVAL 30 DAY LIMIT 1");
+                    $seenN->execute([':k' => "%{$notifyKey}%"]);
+                    if (!$seenN->fetchColumn()) {
+                        notifyLeadCategorySubscriber($pdo, $clientId, $classification['category'], $customerName ?: 'Unknown (' . $channel . ')', $phone, $channel, (string)($classification['brief'] ?? $combinedText), $clientName ?: 'admepro');
+                        $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), 'Contact notified', 'leads', :d, 'success', 'system')")
+                            ->execute([':d' => $notifyKey . " ({$customerName}, {$phone})"]);
+                    }
+                } catch (\Throwable $e3) { error_log('[reply-bot] contact notify: ' . $e3->getMessage()); }
+            }
             return;
         }
         $category = $classification['category'] ?? 'lead';
