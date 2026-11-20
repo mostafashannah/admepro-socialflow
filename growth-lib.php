@@ -91,6 +91,12 @@ function gMergeTags($s, array $c) {
     $first = trim(explode(' ', trim((string)($c['name'] ?? '')))[0] ?? '');
     return strtr((string)$s, ['{{name}}' => $first ?: 'there', '{{first_name}}' => $first ?: 'there', '{{company}}' => (string)($c['company'] ?? '')]);
 }
+/** Links shown in the footer of EVERY email built on the newsletter template. Override in config.php with define('MARKETING_LINKS', ['Website' => 'https://…', …]). */
+function gBrandLinks(): array {
+    if (defined('MARKETING_LINKS') && is_array(MARKETING_LINKS)) return MARKETING_LINKS;
+    return ['Website' => 'https://admepro.com', 'Instagram' => 'https://www.instagram.com/admeproagency', 'Facebook' => 'https://facebook.com/admepro',
+        'LinkedIn' => 'https://www.linkedin.com/company/5040327/', 'WhatsApp' => 'https://wa.me/201000531842?text=Hi%20admepro%2C%20I%27m%20interested%20in%20your%20services'];
+}
 /** Blocks → newsletter HTML in the Admepro style. $trackId (mkt_sends.id) adds open/click tracking + unsubscribe link. */
 function gRenderEmail(array $camp, array $contact = [], $sendId = null) {
     $blocks = is_array($camp['blocks'] ?? null) ? $camp['blocks'] : (json_decode((string)($camp['blocks'] ?? '[]'), true) ?: []);
@@ -117,6 +123,8 @@ function gRenderEmail(array $camp, array $contact = [], $sendId = null) {
             . (!empty($b['text']) ? '<div style="margin-top:6px;font-size:14px;line-height:1.6;color:#4b5563">' . nl2br(gH(gMergeTags($b['text'], $contact))) . '</div>' : '')
             . '<div style="margin-top:12px"><a href="' . $link($b['url']) . '" style="color:#d90b2c;font-weight:700;font-size:14px;text-decoration:none">' . gH($b['button'] ?? 'Read more') . ' →</a></div></div></td></tr></table>';
     }
+    $brand = ''; foreach (gBrandLinks() as $lab => $u) $brand .= '<a href="' . $link($u) . '" style="display:inline-block;margin:0 9px 6px;font-size:13px;font-weight:600;color:#374151;text-decoration:underline">' . gH($lab) . '</a>';
+    $brand = $brand !== '' ? '<div style="margin:0 0 10px">' . $brand . '</div>' : '';
     $pre = gH(gMergeTags($camp['preheader'] ?? '', $contact));
     $unsub = $sendId ? gBase() . '/marketing-unsub.php?' . http_build_query(['id' => $sendId, 's' => gSign('u' . $sendId)]) : '#';
     $pixel = $sendId ? '<img src="' . gH(gBase() . '/marketing-track.php?' . http_build_query(['o' => $sendId, 's' => gSign('o' . $sendId)])) . '" width="1" height="1" alt="" style="display:block;border:0"/>' : '';
@@ -128,7 +136,7 @@ function gRenderEmail(array $camp, array $contact = [], $sendId = null) {
 <tr><td style="padding:24px 32px 4px"><table cellpadding="0" cellspacing="0"><tr><td><img src="' . gH(gBase() . '/icon-192.png') . '" alt="" width="34" height="34" style="display:block;border-radius:8px"/></td><td style="padding-left:10px;font-size:20px;font-weight:800;color:#111827;letter-spacing:-0.3px">admepro</td></tr></table></td></tr>
 <tr><td style="padding:10px 32px 20px;text-align:' . ($rtl ? 'right' : 'left') . '">' . $body . '</td></tr>
 <tr><td style="padding:18px 32px 26px;border-top:1px solid #f3f4f6;font-size:12px;line-height:1.6;color:#9ca3af;text-align:center">
-admepro · 145 El Banafsig 3, New Cairo, Cairo, Egypt<br/>You receive this because you are in touch with admepro. <a href="' . gH($unsub) . '" style="color:#6b7280">Unsubscribe</a>
+' . $brand . 'admepro · 145 El Banafsig 3, New Cairo, Cairo, Egypt<br/>You receive this because you are in touch with admepro. <a href="' . gH($unsub) . '" style="color:#6b7280">Unsubscribe</a>
 </td></tr></table></td></tr></table>' . $pixel . '</body></html>';
 }
 

@@ -34604,8 +34604,8 @@ function MarketingPage({setPage}) {
 }
 
 function MktCampaigns({ov,onChange}) {
-  const [rows,setRows]=useState(null); const [edit,setEdit]=useState(null); const [err,setErr]=useState("");
-  const load=()=>mApi.get("campaigns").then(d=>{setRows(d.rows);setErr("");}).catch(e=>setErr(e.message));
+  const [rows,setRows]=useState(null); const [edit,setEdit]=useState(null); const [err,setErr]=useState(""); const [wc,setWc]=useState({});
+  const load=()=>{ mApi.get("campaigns").then(d=>{setRows(d.rows);setErr("");}).catch(e=>setErr(e.message)); sApi.get("welcome_campaigns").then(d=>{ const m={}; (d.rows||[]).forEach(r=>{ m[r.audience?.market]=r; }); setWc(m); }).catch(()=>{}); };
   useEffect(()=>{load();},[]);
   useEffect(()=>{ if(!rows||!rows.some(r=>r.status==="sending")) return; const t=setInterval(load,15000); return ()=>clearInterval(t); },[rows]);
   const act=async(a,id)=>{ try{ const d=await mApi.post(a,{id}); if(a==="duplicate"&&d.id){ await load(); } else load(); onChange&&onChange(); }catch(e){ alert(e.message); } };
@@ -34617,10 +34617,10 @@ function MktCampaigns({ov,onChange}) {
         <button style={wBtn(true)} onClick={()=>setEdit({channel:"email",name:"",subject:"",preheader:"",blocks:[],audience:{consent:["opt_in","lead"]}})}>+ Email newsletter</button>
         <button style={wBtn(false)} onClick={()=>setEdit({channel:"whatsapp",name:"",wa_template:"",wa_lang:"en_US",wa_params:[],audience:{}})}>+ WhatsApp campaign</button>
       </div>
-      <WelcomeEmailsPanel market="gulf"/>
-      <WelcomeEmailsPanel market="egypt"/>
+      <WelcomeEmailsPanel market="gulf" campaign={wc.gulf} onEdit={c=>setEdit({...c,welcome:true})}/>
+      <WelcomeEmailsPanel market="egypt" campaign={wc.egypt} onEdit={c=>setEdit({...c,welcome:true})}/>
       {rows&&rows.length===0&&<div style={{...gCard,textAlign:"center",color:"var(--text2)",fontSize:13,padding:30}}>No campaigns yet. Start with a newsletter — Sara can write the first draft for you.</div>}
-      {(rows||[]).map(r=>(
+      {(rows||[]).filter(r=>r.audience?.auto!=="welcome").map(r=>(
         <div key={r.id} style={{...gCard,display:"flex",gap:14,alignItems:"center",flexWrap:"wrap"}}>
           <div style={{width:38,height:38,borderRadius:10,background:r.channel==="whatsapp"?"#25d36622":"var(--accent)1a",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>{r.channel==="whatsapp"?"💬":"✉️"}</div>
           <div style={{flex:"1 1 220px",minWidth:0}}>
@@ -34759,15 +34759,15 @@ function MktEditor({init,ov,onClose}) {
             {!tpl&&<button style={{...wBtn(false),alignSelf:"flex-start"}} onClick={()=>s("wa_params",[...f.wa_params,""])}>+ Variable</button>}
             {(tpl?.image_header||f.wa_header_image)&&<><span style={gLabel}>Header image URL</span><input value={f.wa_header_image||""} onChange={e=>s("wa_header_image",e.target.value)} placeholder="https://…jpg" style={inputSt}/></>}
           </div>}
-          <MktAudience channel={f.channel} aud={f.audience} setAud={a=>s("audience",a)} ov={ov}/>
+          {init.welcome?<div style={{...gCard,fontSize:12,color:"var(--text2)",background:"var(--accent)0d"}}>⚡ Automated welcome email. It is never sent as a bulk campaign: each new lead gets it after you approve it in Marketing → Campaigns. Use {"{{first_name}}"} and {"{{company}}"} to personalise. The social links and WhatsApp link in the footer come from the newsletter template.</div>:<MktAudience channel={f.channel} aud={f.audience} setAud={a=>s("audience",a)} ov={ov}/>}
           <div style={{...gCard,display:"flex",flexDirection:"column",gap:10}}>
-            <b style={{fontSize:14}}>Test & send</b>
+            <b style={{fontSize:14}}>{init.welcome?"Test":"Test & send"}</b>
             <div style={{display:"flex",gap:6}}><input value={testTo} onChange={e=>setTestTo(e.target.value)} placeholder={isEmail?"Test email (default: yours)":"Test phone, e.g. +2010…"} style={{...inputSt,flex:1}}/><button style={wBtn(false)} onClick={test}>Send test</button></div>
-            <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+            {!init.welcome&&<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
               <input type="datetime-local" value={when} onChange={e=>setWhen(e.target.value)} style={{...inputSt,flex:"1 1 180px"}}/>
               <button style={wBtn(true)} onClick={schedule}>{when?"Schedule":"Send now"}</button>
-            </div>
-            <div style={{fontSize:11,color:"var(--text3)"}}>Leave the date empty to send right away. Sends go out in batches every minute; unsubscribed people are always skipped.</div>
+            </div>}
+            {!init.welcome&&<div style={{fontSize:11,color:"var(--text3)"}}>Leave the date empty to send right away. Sends go out in batches every minute; unsubscribed people are always skipped.</div>}
           </div>
         </div>
         {isEmail&&<div style={{...gCard,padding:0,overflow:"hidden",position:"sticky",top:12}}>
@@ -35048,11 +35048,11 @@ function SalesAgentPage({setPage, embedded}) {
     </div>);
 }
 
-function WelcomeEmailsPanel({market}) {
-  const WK="sf_welcome_open_"+(market||"all"); const MK=market?[market]:["gulf","egypt"];
+function WelcomeEmailsPanel({market,campaign,onEdit}) {
+  const WK="sf_welcome_open_"+(market||"all");
   const [open,setOpen]=useState(()=>{ try{ return localStorage.getItem(WK)==="1"; }catch(e){ return false; } });
   const [st,setSt]=useState("pending"); const [d,setD]=useState(null); const [err,setErr]=useState(""); const [msg,setMsg]=useState("");
-  const [prev,setPrev]=useState(null); const [cfg,setCfg]=useState(null); const [showCfg,setShowCfg]=useState(false); const [busy,setBusy]=useState("");
+  const [prev,setPrev]=useState(null); const [busy,setBusy]=useState("");
   const load=()=>sApi.get("welcome_list",{status:st,market:market||""}).then(x=>{setD(x);setErr("");}).catch(e=>setErr(e.message));
   useEffect(()=>{ try{ localStorage.setItem(WK,open?"1":"0"); }catch(e){} if(open) load(); },[open,st]);
   const edit=(id,patch)=>setD(x=>({...x,rows:x.rows.map(r=>r.id===id?{...r,...patch}:r)}));
@@ -35060,15 +35060,8 @@ function WelcomeEmailsPanel({market}) {
   const save=r=>act("welcome_update",{id:r.id,subject:r.subject,personal_line:r.personal_line,market:r.market},"Saved");
   const send=ids=>{ if(!confirm("Send "+ids.length+" welcome email"+(ids.length>1?"s":"")+" now?")) return; act("welcome_send",{ids},"Sent"); };
   const preview=async r=>{ try{ const p=await sApi.post("welcome_preview",{id:r.id}); setPrev(p); }catch(e){ setMsg(e.message); } };
-  const previewTpl=async m=>{ try{ const p=await sApi.post("welcome_preview",{market:m}); setPrev(p); }catch(e){ setMsg(e.message); } };
-  const openCfg=async()=>{ setShowCfg(v=>!v); if(!cfg){ try{ const x=await sApi.get("welcome_settings_get"); setCfg(x.settings); }catch(e){ setMsg(e.message); } } };
-  const saveCfg=async()=>{ try{ const x=await sApi.post("welcome_settings_save",{settings:cfg}); setCfg(x.settings); setMsg("Template saved"); }catch(e){ setMsg(e.message); } };
   const T=d?.totals||{}; const sent=+T.sent||0; const counts=d?.counts||{};
   const pend=(d?.rows||[]).filter(r=>r.status==="pending");
-  const setC=(path,v)=>setCfg(c=>{ const n=JSON.parse(JSON.stringify(c)); let o=n; for(let i=0;i<path.length-1;i++) o=o[path[i]]; o[path[path.length-1]]=v; return n; });
-  const EP={tag:"",title:"",text:"",url:""};
-  const setProj=(m,i,f,v)=>setC([m,"projects"],[0,1,2].map(j=>{ const p=(cfg[m].projects||[])[j]||EP; return j===i?{...p,[f]:v}:p; }));
-  const SOC=["website","instagram","facebook","linkedin","tiktok","x","youtube","whatsapp"];
   return (
     <div style={{...gCard,display:"flex",flexDirection:"column",gap:10}}>
       <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",cursor:"pointer"}} onClick={()=>setOpen(!open)}>
@@ -35077,39 +35070,20 @@ function WelcomeEmailsPanel({market}) {
         <div style={{flex:1}}/><span style={{fontSize:12,color:"var(--text3)"}}>{open?"Hide":"Open"}</span>
       </div>
       {open&&<>
-        <div style={{fontSize:12,color:"var(--text2)"}}>Every day the Sales agent drafts this welcome email for each new lead that has an email address{market==="gulf"?" in a Gulf country":market==="egypt"?" in Egypt (or any other country)":""}. Nothing is sent until you approve it here. Each email has a short intro of admepro, an AI project plus other projects, all our social links and the WhatsApp link.</div>
+        <div style={{fontSize:12,color:"var(--text2)"}}>Every day the Sales agent drafts this welcome email for each new lead that has an email address{market==="gulf"?" in a Gulf country":market==="egypt"?" in Egypt (or any other country)":""}. Nothing is sent until you approve it here. The email itself is a normal newsletter: click "Open email in editor" to change its blocks, subject and preview, and send yourself a test.</div>
         {err&&<div style={{fontSize:12,color:"#dc2626"}}>{err}</div>}
         {msg&&<div style={{fontSize:12,color:/sent|saved|rejected/i.test(msg)?"#16a34a":"#dc2626"}}>{msg}</div>}
         {d&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:8}}>
           {[["Sent",sent,""],["Opened",T.opened||0,gPct(T.opened,sent)],["Clicked",T.clicked||0,gPct(T.clicked,sent)],["Replied",T.replied||0,gPct(T.replied,sent)]].map(([k,v,p])=><div key={k} style={{border:"1px solid var(--border)",borderRadius:10,padding:"8px 10px"}}><div style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>{k}</div><div style={{fontSize:18,fontWeight:800}}>{v} <span style={{fontSize:11,fontWeight:600,color:"var(--text3)"}}>{p}</span></div></div>)}
           {!market&&(d.by_market||[]).map(m=><div key={m.market} style={{border:"1px solid var(--border)",borderRadius:10,padding:"8px 10px"}}><div style={{fontSize:11,color:"var(--text3)",fontWeight:700,textTransform:"capitalize"}}>{m.market}</div><div style={{fontSize:12}}>{m.sent} sent · {m.opened||0} opened · {m.clicked||0} clicked · {m.replied||0} replied</div></div>)}
         </div>}
-        <div style={{fontSize:11,color:"var(--text3)"}}>Opens are an estimate: some mail apps (Apple Mail) load the tracking image automatically, so treat "clicked" and "replied" as the real feedback.</div>
+        <div style={{fontSize:11,color:"var(--text3)"}}>Opens are an estimate: some mail apps (Apple Mail) load the tracking image automatically, so treat "clicked" and "replied" as the real feedback. The campaign statistics are in the same numbers as every newsletter.</div>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
           {["pending","approved","rejected","failed"].map(k=><button key={k} style={gPill(st===k)} onClick={()=>setSt(k)}>{k==="approved"?"Sent":k[0].toUpperCase()+k.slice(1)}{counts[k]?" "+counts[k]:""}</button>)}
           <div style={{flex:1}}/>
           {st==="pending"&&pend.length>0&&<button style={wBtn(true)} disabled={!!busy} onClick={()=>send(pend.map(r=>r.id))}>Approve & send all ({pend.length})</button>}
-          <button style={wBtn(false)} onClick={openCfg}>{showCfg?"Close templates":"Edit templates"}</button>
+          {campaign&&onEdit&&<button style={wBtn(false)} onClick={()=>onEdit(campaign)}>Open email in editor</button>}
         </div>
-        {showCfg&&cfg&&<div style={{border:"1px solid var(--border)",borderRadius:12,padding:12,display:"flex",flexDirection:"column",gap:10}}>
-          <span style={gLabel}>Links in every email</span>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:6}}>{SOC.map(k=><label key={k} style={{fontSize:11,color:"var(--text3)",display:"flex",flexDirection:"column",gap:2,textTransform:"capitalize"}}>{k}<input value={cfg.socials[k]||""} onChange={e=>setC(["socials",k],e.target.value)} placeholder="https://…" style={inputSt}/></label>)}</div>
-          {MK.map(m=><div key={m} style={{border:"1px solid var(--border)",borderRadius:10,padding:10,display:"flex",flexDirection:"column",gap:6}}>
-            <div style={{display:"flex",alignItems:"center",gap:8}}><b style={{fontSize:13,textTransform:"capitalize"}}>{m} template</b><div style={{flex:1}}/><button style={wBtn(false)} onClick={()=>previewTpl(m)}>Preview</button></div>
-            <input value={cfg[m].subject} onChange={e=>setC([m,"subject"],e.target.value)} placeholder="Subject" style={inputSt}/>
-            <input value={cfg[m].greeting} onChange={e=>setC([m,"greeting"],e.target.value)} placeholder="Greeting" style={inputSt}/>
-            <textarea value={cfg[m].about} onChange={e=>setC([m,"about"],e.target.value)} rows={3} placeholder="About admepro" style={{...inputSt,resize:"vertical"}}/>
-            {[0,1,2].map(i=>{ const p=(cfg[m].projects||[])[i]||EP; return <div key={i} style={{display:"grid",gridTemplateColumns:"90px 1fr",gap:6}}>
-              <input value={p.tag||""} onChange={e=>setProj(m,i,"tag",e.target.value)} placeholder="Tag" style={inputSt}/>
-              <input value={p.title||""} onChange={e=>setProj(m,i,"title",e.target.value)} placeholder={"Project "+(i+1)+" title"} style={inputSt}/>
-              <input value={p.url||""} onChange={e=>setProj(m,i,"url",e.target.value)} placeholder="Link" style={inputSt}/>
-              <input value={p.text||""} onChange={e=>setProj(m,i,"text",e.target.value)} placeholder="One or two sentences" style={inputSt}/>
-            </div>; })}
-            <textarea value={cfg[m].cta} onChange={e=>setC([m,"cta"],e.target.value)} rows={2} placeholder="Closing line" style={{...inputSt,resize:"vertical"}}/>
-            <div style={{fontSize:11,color:"var(--text3)"}}>Use {"{name}"} and {"{company}"} to personalise.</div>
-          </div>)}
-          <div><button style={wBtn(true)} onClick={saveCfg}>Save templates</button></div>
-        </div>}
         {d&&d.rows.length===0&&<div style={{textAlign:"center",color:"var(--text2)",fontSize:13,padding:20}}>Nothing here yet.</div>}
         {(d?.rows||[]).map(r=><div key={r.id} style={{border:"1px solid var(--border)",borderRadius:12,padding:10,display:"flex",flexDirection:"column",gap:6}}>
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>

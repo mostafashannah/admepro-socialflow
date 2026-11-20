@@ -1,40 +1,16 @@
 <?php
 if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(404); exit; }
 // ================================================================
-// Welcome emails (Gulf + Egypt). Each day the sales agent finds leads; for every lead with an email this library drafts ONE welcome
-// email (status 'pending'). The team reviews it in Growth → Sales agent → Welcome emails; only an approved email is sent.
-// Every email carries: a short agency intro, one AI project + other projects, ALL social links and the WhatsApp link.
-// Opens and clicks are tracked (sales-track.php); replies/feedback are marked by the team.
+// Welcome emails (Gulf + Egypt), built on the newsletter system.
+//   - Each market has ONE real newsletter campaign (Marketing → Campaigns) edited in the normal newsletter editor (blocks, preview, test send).
+//     It is never bulk-sent: its audience carries {"auto":"welcome","market":"gulf|egypt"}.
+//   - Every day the Sales agent finds leads; for each lead with an email this library drafts a pending row in sales_welcome (the review queue).
+//   - The team approves a row; it is then rendered with the campaign's blocks and sent through the newsletter pipeline (mkt_sends), so
+//     open / click / unsubscribe tracking and the campaign statistics work exactly like a newsletter.
 // ================================================================
 require_once __DIR__ . '/sales-lib.php';
 
-const SW_GULF = ['uae', 'united arab emirates', 'dubai', 'abu dhabi', 'sharjah', 'saudi', 'saudi arabia', 'ksa', 'riyadh', 'jeddah', 'kuwait', 'qatar', 'doha', 'bahrain', 'manama', 'oman', 'muscat', 'gcc', 'gulf'];
-
-function swDefaults(): array {
-    $about = 'admepro is a creative and digital marketing agency based in Cairo. We build brands and run their social media, content and video production, websites and paid ads, so you get one team for everything your brand shows online.';
-    $projects = [
-        ['tag' => 'AI project', 'title' => 'SocialFlow — our AI content platform', 'text' => 'We built our own platform where an AI assistant plans, writes, designs, schedules and reports your social content, and answers your customers on WhatsApp and Instagram. You see everything in one place.', 'url' => 'https://admepro.com'],
-        ['tag' => 'Service', 'title' => 'Social media management', 'text' => 'Content planning, designs, reels, daily posting and community replies, with a monthly performance report.', 'url' => 'https://admepro.com'],
-        ['tag' => 'Service', 'title' => 'Brand and video production', 'text' => 'Brand identity, reels and campaign videos shot and edited by our in-house team.', 'url' => 'https://admepro.com'],
-    ];
-    return [
-        'socials' => ['website' => 'https://admepro.com', 'instagram' => 'https://www.instagram.com/admeproagency', 'facebook' => 'https://facebook.com/admepro',
-            'linkedin' => 'https://www.linkedin.com/company/5040327/', 'tiktok' => '', 'x' => '', 'youtube' => '', 'whatsapp' => 'https://wa.me/201000531842?text=Hi%20admepro%2C%20I%27m%20interested%20in%20your%20services'],
-        'gulf' => ['subject' => 'Welcome to admepro — a creative team for {company}', 'greeting' => 'Dear {name},', 'about' => $about, 'projects' => $projects,
-            'cta' => 'If it would help {company}, one of our team will be glad to share ideas for your brand. Reply to this email or message us on WhatsApp.'],
-        'egypt' => ['subject' => 'Hi {name}, meet admepro — marketing for {company}', 'greeting' => 'Hi {name},', 'about' => $about, 'projects' => $projects,
-            'cta' => 'If you would like ideas for {company}, just reply here or message us on WhatsApp and one of our team will contact you.'],
-    ];
-}
-
-function swSettings(PDO $pdo): array {
-    $d = swDefaults();
-    try { $v = $pdo->query("SELECT v FROM seo_settings WHERE k='sales_welcome'")->fetchColumn(); $j = $v ? json_decode($v, true) : null; } catch (Throwable $e) { $j = null; }
-    if (!is_array($j)) return $d;
-    foreach (['gulf', 'egypt'] as $m) { $d[$m] = array_merge($d[$m], is_array($j[$m] ?? null) ? $j[$m] : []); if (!is_array($d[$m]['projects'])) $d[$m]['projects'] = swDefaults()[$m]['projects']; }
-    $d['socials'] = array_merge($d['socials'], is_array($j['socials'] ?? null) ? $j['socials'] : []);
-    return $d;
-}
+const SW_GULF = ['uae', 'united arab emirates', 'dubai', 'abu dhabi', 'sharjah', 'saudi', 'ksa', 'riyadh', 'jeddah', 'kuwait', 'qatar', 'doha', 'bahrain', 'manama', 'oman', 'muscat', 'gcc', 'gulf'];
 
 function swMarket($country): string {
     $c = strtolower(trim((string)$country));
@@ -42,52 +18,50 @@ function swMarket($country): string {
     return 'egypt';
 }
 
-function swFill($s, array $v): string { return strtr((string)$s, ['{name}' => $v['name'], '{company}' => $v['company']]); }
-
-/** A tracked link: counts the click, then redirects to $url. */
-function swLink($id, $url, $label): string {
-    if (!preg_match('#^https?://#i', (string)$url)) return '';
-    return gBase() . '/sales-track.php?' . http_build_query(['c' => (int)$id, 'u' => $url, 'l' => $label, 's' => gSign('wc' . (int)$id . $url)]);
+/** Starting content of the two campaigns. Edited afterwards in the newsletter editor; this is only used the first time. */
+function swDefaultCampaign(string $market): array {
+    $about = 'admepro is a creative and digital marketing agency based in Cairo. We build brands and run their social media, content and video production, websites and paid ads, so you get one team for everything your brand shows online.';
+    $blocks = [
+        ['type' => 'text', 'text' => $market === 'gulf' ? 'Dear {{first_name}},' : 'Hi {{first_name}},'],
+        ['type' => 'text', 'text' => $about],
+        ['type' => 'card', 'title' => 'AI project: SocialFlow, our AI content platform', 'text' => 'We built our own platform where an AI assistant plans, writes, designs, schedules and reports your social content, and answers your customers on WhatsApp and Instagram. You see everything in one place.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'image' => ''],
+        ['type' => 'card', 'title' => 'Social media management', 'text' => 'Content planning, designs, reels, daily posting and community replies, with a monthly performance report.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'image' => ''],
+        ['type' => 'card', 'title' => 'Brand and video production', 'text' => 'Brand identity, reels and campaign videos shot and edited by our in-house team.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'image' => ''],
+        ['type' => 'text', 'text' => $market === 'gulf'
+            ? 'If it would help {{company}}, one of our team will be glad to share ideas for your brand. Reply to this email or message us on WhatsApp.'
+            : 'If you would like ideas for {{company}}, just reply here or message us on WhatsApp and one of our team will contact you.'],
+        ['type' => 'button', 'text' => 'Chat with us on WhatsApp', 'url' => 'https://wa.me/201000531842?text=Hi%20admepro%2C%20I%27m%20interested%20in%20your%20services'],
+    ];
+    return ['name' => $market === 'gulf' ? 'Gulf welcome email' : 'Egypt welcome email',
+        'subject' => $market === 'gulf' ? 'Welcome to admepro, a creative team for {{company}}' : 'Hi {{first_name}}, meet admepro: marketing for {{company}}',
+        'preheader' => 'Branding, social media, video and an AI platform under one roof.', 'blocks' => $blocks];
 }
 
-/** Subject + HTML for a stored welcome row. $to_name may be empty. Pass $forPreview = true to skip tracking pixel. */
-function swRender(PDO $pdo, array $row, bool $forPreview = false): array {
-    $S = swSettings($pdo); $m = $row['market'] === 'gulf' ? 'gulf' : 'egypt'; $T = $S[$m];
-    $first = trim(explode(' ', trim((string)($row['to_name'] ?? '')))[0] ?? '');
-    $v = ['name' => $first !== '' ? $first : 'there', 'company' => trim((string)$row['company']) !== '' ? $row['company'] : 'your brand'];
-    $id = (int)$row['id'];
-    $subject = trim((string)$row['subject']) !== '' ? $row['subject'] : swFill($T['subject'], $v);
-    $e = fn($s) => gH($s);
-    $btn = fn($url, $label, $bg) => '<a href="' . $e(swLink($id, $url, $label)) . '" style="display:inline-block;margin:4px 6px 4px 0;padding:10px 18px;background:' . $bg . ';color:#fff;text-decoration:none;font-weight:700;font-size:13px;border-radius:999px">' . $e($label) . '</a>';
+function swCampRow(array $r): array { $r['blocks'] = json_decode((string)$r['blocks'], true) ?: []; $r['audience'] = json_decode((string)$r['audience'], true) ?: []; $r['wa_params'] = json_decode((string)$r['wa_params'], true) ?: []; return $r; }
 
-    $projects = '';
-    foreach (array_slice((array)$T['projects'], 0, 3) as $p) {
-        if (trim((string)($p['title'] ?? '')) === '') continue;
-        $projects .= '<tr><td style="padding:12px 14px;border:1px solid #e5e7eb;border-radius:10px"><div style="font-size:11px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.04em">' . $e($p['tag'] ?? '') . '</div>'
-            . '<div style="font-size:15px;font-weight:700;color:#111;margin:3px 0">' . $e($p['title']) . '</div><div style="font-size:13px;color:#374151;line-height:1.55">' . $e($p['text'] ?? '') . '</div>'
-            . (!empty($p['url']) ? '<div style="margin-top:6px"><a href="' . $e(swLink($id, $p['url'], 'Project: ' . $p['title'])) . '" style="font-size:12px;color:#2563eb">Learn more →</a></div>' : '') . '</td></tr><tr><td style="height:8px"></td></tr>';
+/** The welcome campaign of a market (created on first use). Returns the decoded campaign row. */
+function swCampaign(PDO $pdo, string $market): array {
+    $market = $market === 'gulf' ? 'gulf' : 'egypt';
+    $q = $pdo->prepare("SELECT * FROM mkt_campaigns WHERE audience LIKE ? AND audience LIKE ? ORDER BY id LIMIT 1"); $q->execute(['%"auto":"welcome"%', '%"market":"' . $market . '"%']);
+    $r = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$r) {
+        $d = swDefaultCampaign($market);
+        $pdo->prepare("INSERT INTO mkt_campaigns (channel, name, subject, preheader, blocks, wa_params, audience, status, created_by, created_at) VALUES ('email',?,?,?,?,'[]',?,'draft','sales-agent',?)")
+            ->execute([$d['name'], $d['subject'], $d['preheader'], json_encode($d['blocks'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                json_encode(['auto' => 'welcome', 'market' => $market, 'consent' => ['opt_in', 'lead']]), gNow()]);
+        $q = $pdo->prepare("SELECT * FROM mkt_campaigns WHERE id=?"); $q->execute([(int)$pdo->lastInsertId()]); $r = $q->fetch(PDO::FETCH_ASSOC);
     }
-    $soc = ''; $labels = ['website' => 'Website', 'instagram' => 'Instagram', 'facebook' => 'Facebook', 'linkedin' => 'LinkedIn', 'tiktok' => 'TikTok', 'x' => 'X', 'youtube' => 'YouTube'];
-    foreach ($labels as $k => $lab) if (!empty($S['socials'][$k])) $soc .= '<a href="' . $e(swLink($id, $S['socials'][$k], $lab)) . '" style="color:#374151;font-size:13px;text-decoration:underline;margin-right:14px">' . $lab . '</a>';
-    $to = gEmail($row['to_email']) ?: '';
-    $optOut = gBase() . '/sales-optout.php?' . http_build_query(['e' => $to, 's' => gSign('so' . $to)]);
-    $personal = trim((string)($row['personal_line'] ?? ''));
-    $html = '<div style="background:#f3f4f6;padding:18px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;font-family:Arial,sans-serif;color:#111"><tr><td style="padding:22px 26px">'
-        . '<div style="font-size:20px;font-weight:800;letter-spacing:-.3px">admepro</div><div style="height:3px;width:42px;background:#7c3aed;margin:8px 0 18px"></div>'
-        . '<p style="font-size:14px;line-height:1.65;margin:0 0 12px">' . $e(swFill($T['greeting'], $v)) . '</p>'
-        . ($personal !== '' ? '<p style="font-size:14px;line-height:1.65;margin:0 0 12px">' . $e($personal) . '</p>' : '')
-        . '<p style="font-size:14px;line-height:1.65;margin:0 0 16px">' . $e(swFill($T['about'], $v)) . '</p>'
-        . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">' . $projects . '</table>'
-        . '<p style="font-size:14px;line-height:1.65;margin:10px 0 14px">' . $e(swFill($T['cta'], $v)) . '</p>'
-        . '<div>' . $btn($S['socials']['whatsapp'] ?? '', 'Chat with us on WhatsApp', '#16a34a') . '</div>'
-        . '<div style="margin-top:18px;padding-top:14px;border-top:1px solid #e5e7eb"><div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Follow us</div>' . $soc . '</div>'
-        . '<p style="margin:18px 0 0;font-size:11px;color:#9ca3af">Not interested? <a href="' . $e($optOut) . '" style="color:#9ca3af">Let us know with one click</a> and we won\'t email again.</p>'
-        . '</td></tr></table>'
-        . ($forPreview || !$id ? '' : '<img src="' . $e(gBase() . '/sales-track.php?' . http_build_query(['o' => $id, 's' => gSign('wo' . $id)])) . '" width="1" height="1" alt="" style="display:none">') . '</div>';
-    return [$subject, $html];
+    return swCampRow($r);
 }
 
-/** One sentence tying the email to this company (from why_fit / signals). Falls back to '' — the email works without it. */
+/** The blocks with the lead's one personal sentence added after the greeting. */
+function swBlocks(array $camp, ?string $personal): array {
+    $blocks = $camp['blocks']; $personal = trim((string)$personal);
+    if ($personal !== '') array_splice($blocks, min(1, count($blocks)), 0, [['type' => 'text', 'text' => $personal]]);
+    return $blocks;
+}
+
+/** One sentence tying the email to this company (from why_fit / signals). Falls back to '': the email works without it. */
 function swPersonalLine(array $p): string {
     $prompt = "Write ONE sentence (max 28 words), plain text, no emojis, for a first email from the agency admepro to {$p['company']} ({$p['industry']}, {$p['country']}). It should show we looked at their business, using only these facts: "
         . trim(($p['why_fit'] ?? '') . ' ' . implode('; ', (array)($p['signals'] ?? []))) . "\nNo flattery, no claims about results, no questions. Return only the sentence.";
@@ -95,22 +69,30 @@ function swPersonalLine(array $p): string {
     return $ok ? mb_substr(trim(trim((string)$text), "\"' \n"), 0, 300) : '';
 }
 
-/** Create the pending welcome email for a prospect (once per prospect + email). Returns the new id or null. */
+/** Create the pending welcome row for a prospect (once per prospect + email). Returns the new id or null. */
 function swCreateDraft(PDO $pdo, array $p, bool $withAi = true): ?int {
     $c = null; foreach ((array)$p['contacts'] as $x) if (!empty($x['email'])) { $c = $x; break; }
     if (!$c) return null; $to = gEmail($c['email']); if (!$to) return null;
     $u = $pdo->prepare("SELECT unsub_email FROM mkt_contacts WHERE email=?"); $u->execute([$to]); if ((int)$u->fetchColumn() === 1) return null;
     $ex = $pdo->prepare("SELECT id FROM sales_welcome WHERE prospect_id=? AND to_email=?"); $ex->execute([$p['id'], $to]); if ($ex->fetchColumn()) return null;
-    $m = swMarket($p['country'] ?? ''); $S = swSettings($pdo);
-    $first = trim(explode(' ', trim((string)($c['name'] ?? '')))[0] ?? '');
-    $subject = swFill($S[$m]['subject'], ['name' => $first !== '' ? $first : 'there', 'company' => $p['company']]);
+    $m = swMarket($p['country'] ?? ''); $camp = swCampaign($pdo, $m);
+    $subject = gMergeTags($camp['subject'], ['name' => $c['name'] ?? '', 'company' => $p['company']]);
     $line = $withAi ? swPersonalLine($p) : '';
     $pdo->prepare("INSERT INTO sales_welcome (prospect_id, to_email, to_name, company, market, subject, personal_line, status, created_at) VALUES (?,?,?,?,?,?,?,'pending',?)")
         ->execute([$p['id'], $to, $c['name'] ?? null, mb_substr((string)$p['company'], 0, 200), $m, mb_substr($subject, 0, 250), $line, gNow()]);
     return (int)$pdo->lastInsertId();
 }
 
-/** Send an approved welcome email. Honors opt-out and the shared daily cap. Returns [ok, error|null]. */
+/** Subject + HTML of a stored welcome row, built from its campaign (the same renderer the newsletter uses). */
+function swRenderRow(PDO $pdo, array $row, $sendId = null): array {
+    $camp = swCampaign($pdo, $row['market']);
+    $contact = ['name' => $row['to_name'] ?? '', 'company' => $row['company'] ?? ''];
+    $camp['blocks'] = swBlocks($camp, $row['personal_line'] ?? '');
+    $subject = trim((string)$row['subject']) !== '' ? $row['subject'] : gMergeTags($camp['subject'], $contact);
+    return [$subject, gRenderEmail($camp, $contact, $sendId)];
+}
+
+/** Send an approved welcome email through the newsletter pipeline (mkt_sends). Honors opt-out and the shared daily cap. Returns [ok, error|null]. */
 function swSend(PDO $pdo, int $id, string $by, int $cap): array {
     $st = $pdo->prepare("SELECT * FROM sales_welcome WHERE id=?"); $st->execute([$id]); $row = $st->fetch(PDO::FETCH_ASSOC);
     if (!$row) return [false, 'Not found'];
@@ -118,10 +100,18 @@ function swSend(PDO $pdo, int $id, string $by, int $cap): array {
     $to = gEmail($row['to_email']); if (!$to) return [false, 'Bad email address'];
     $u = $pdo->prepare("SELECT unsub_email FROM mkt_contacts WHERE email=?"); $u->execute([$to]); if ((int)$u->fetchColumn() === 1) return [false, 'This person asked not to be contacted.'];
     $today = (int)$pdo->query("SELECT (SELECT COUNT(*) FROM sales_sends WHERE sent_at >= CURDATE()) + (SELECT COUNT(*) FROM sales_welcome WHERE sent_at >= CURDATE())")->fetchColumn();
-    if ($today >= $cap) return [false, "Daily limit reached ($cap). Continue tomorrow — this protects the sending domain."];
-    [$subject, $html] = swRender($pdo, $row);
-    $optOut = gBase() . '/sales-optout.php?' . http_build_query(['e' => $to, 's' => gSign('so' . $to)]);
-    [$ok, $pid, $err] = gSendEmail(defined('SALES_FROM') ? SALES_FROM : 'Admepro <sales@admepro.com>', $to, $subject, $html, defined('SALES_REPLY_TO') ? SALES_REPLY_TO : null, $optOut);
+    if ($today >= $cap) return [false, "Daily limit reached ($cap). Continue tomorrow: this protects the sending domain."];
+    $camp = swCampaign($pdo, $row['market']);
+    $cid = gUpsertContact($pdo, ['email' => $to, 'name' => $row['to_name'], 'company' => $row['company'], 'source' => 'sales_agent', 'tags' => 'prospect', 'consent' => 'lead', 'consent_note' => 'B2B prospect']);
+    if (!$cid) return [false, 'Could not save the contact'];
+    $pdo->prepare("INSERT IGNORE INTO mkt_sends (campaign_id, contact_id, to_addr, status) VALUES (?,?,?,'queued')")->execute([$camp['id'], $cid, $to]);
+    $q = $pdo->prepare("SELECT id, status FROM mkt_sends WHERE campaign_id=? AND contact_id=?"); $q->execute([$camp['id'], $cid]); $send = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$send) return [false, 'Could not queue the email'];
+    if ($send['status'] === 'sent') return [false, 'This person already received this email'];
+    [$subject, $html] = swRenderRow($pdo, $row, (int)$send['id']);
+    $unsub = gBase() . '/marketing-unsub.php?' . http_build_query(['id' => $send['id'], 's' => gSign('u' . $send['id'])]);
+    [$ok, $pid, $err] = gSendEmail(defined('SALES_FROM') ? SALES_FROM : 'Admepro <sales@admepro.com>', $to, $subject, $html, defined('SALES_REPLY_TO') ? SALES_REPLY_TO : null, $unsub);
+    $pdo->prepare("UPDATE mkt_sends SET status=?, provider_id=?, error=?, sent_at=NOW() WHERE id=?")->execute([$ok ? 'sent' : 'failed', $pid, $ok ? null : mb_substr((string)$err, 0, 490), $send['id']]);
     if (!$ok) { $pdo->prepare("UPDATE sales_welcome SET status='failed', error=? WHERE id=?")->execute([mb_substr((string)$err, 0, 390), $id]); return [false, 'Send failed: ' . $err]; }
     $pdo->prepare("UPDATE sales_welcome SET status='approved', provider_id=?, reviewed_by=?, reviewed_at=?, sent_at=?, error=NULL WHERE id=?")->execute([$pid, $by, gNow(), gNow(), $id]);
     $pdo->prepare("UPDATE sales_prospects SET status=IF(status IN ('new','approved'),'contacted',status), updated_at=? WHERE id=?")->execute([gNow(), $row['prospect_id']]);

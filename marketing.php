@@ -130,6 +130,7 @@ case 'campaign_save': {
 }
 case 'campaign_delete': {
     $id = (int)($b['id'] ?? 0);
+    $ck = $pdo->prepare("SELECT audience FROM mkt_campaigns WHERE id=?"); $ck->execute([$id]); if (str_contains((string)$ck->fetchColumn(), '"auto":"welcome"')) gOut(400, ['error' => 'The welcome emails cannot be deleted. Edit them instead.']);
     $pdo->prepare("DELETE FROM mkt_campaigns WHERE id=? AND status IN ('draft','cancelled','scheduled')")->execute([$id]);
     $pdo->prepare("DELETE FROM mkt_sends WHERE campaign_id=? AND status='queued'")->execute([$id]);
     gOut(200, ['ok' => true]);
@@ -149,6 +150,7 @@ case 'test': {
 case 'schedule': {
     $id = (int)($b['id'] ?? 0); $at = trim($b['at'] ?? '') ?: gNow();
     $st = $pdo->prepare("SELECT * FROM mkt_campaigns WHERE id=?"); $st->execute([$id]); $c = $st->fetch(PDO::FETCH_ASSOC);
+    if ($c && str_contains((string)$c['audience'], '"auto":"welcome"')) gOut(400, ['error' => 'This welcome email is sent automatically to each new lead after you approve it in the Sales agent queue. It cannot be sent as a bulk campaign.']);
     if (!$c || !in_array($c['status'], ['draft', 'scheduled'], true)) gOut(400, ['error' => 'Campaign not found or already sent']);
     if ($c['channel'] === 'email' && (trim($c['subject']) === '' || !json_decode($c['blocks'], true))) gOut(400, ['error' => 'Add a subject and some content first']);
     if ($c['channel'] === 'whatsapp' && !$c['wa_template']) gOut(400, ['error' => 'Choose an approved WhatsApp template']);
