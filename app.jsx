@@ -14692,7 +14692,14 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
   // straight on that exact report instead, or coming back from a project
   // opened from this client's own Projects tab, which should land back on
   // Projects instead of resetting to Overview.
-  const [tab,setTab] = useState(initialTab || (deepLinkContactReportId!==undefined && deepLinkContactReportId!==null ? "brain" : "overview"));
+  // Survives a refresh: remember the tab per client (an explicit initialTab / deep link still wins).
+  const [tab,setTab_] = useState(()=>{
+    if(initialTab) return initialTab;
+    if(deepLinkContactReportId!==undefined && deepLinkContactReportId!==null) return "brain";
+    try{ const o=JSON.parse(localStorage.getItem("sf_client_tab")||"null"); if(o&&o.id===client?.id&&o.tab) return o.tab; }catch(e){}
+    return "overview";
+  });
+  const setTab = (t) => { setTab_(t); try{ localStorage.setItem("sf_client_tab",JSON.stringify({id:client?.id,tab:t})); }catch(e){} };
   const [showEdit,setShowEdit] = useState(false);
   const [confirmDelete,setConfirmDelete] = useState(false);
   const [showAddMenu,setShowAddMenu] = useState(false);
@@ -29908,7 +29915,8 @@ function LeadRotationSettingsModal({appSettings, onSave, team, onClose}) {
 function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead, onUpdateLead, onAddActivity, onConvertLead, onDeleteLead, appSettings, onSaveSettings}) {
   const [showRotationSettings, setShowRotationSettings] = useState(false);
   const [showImport, setShowImport] = useState(false);
-  const [view, setView] = useState(()=>["account_manager","account_director","account_executive"].includes(currentUser?.role)?"today":"kanban");
+  const [view, setView_] = useState(()=>{ try{ const v=localStorage.getItem("sf_leads_view"); if(v) return v; }catch(e){} return ["account_manager","account_director","account_executive"].includes(currentUser?.role)?"today":"kanban"; });
+  const setView = (v) => { setView_(v); try{ localStorage.setItem("sf_leads_view",typeof v==="function"?v(view):v); }catch(e){} };
   const isAdmin = currentUser?.role==="admin";
   // Account managers only ever see leads assigned to them — not the whole
   // team's pipeline. Admins (and everyone else with page access, e.g.
