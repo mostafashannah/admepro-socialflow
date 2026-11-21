@@ -144,8 +144,9 @@ case 'test': {
         gOut($ok ? 200 : 400, $ok ? ['ok' => true] : ['error' => $err]);
     }
     $html = gRenderEmail(['blocks' => $b['blocks'] ?? [], 'preheader' => $b['preheader'] ?? ''], ['name' => $me['name'] ?? '', 'company' => '']);
-    [$ok, , $err] = gSendEmail(defined('MARKETING_FROM') ? MARKETING_FROM : 'admepro <news@admepro.com>', $to, '[TEST] ' . ($b['subject'] ?? ''), $html);
-    gOut($ok ? 200 : 400, $ok ? ['ok' => true, 'to' => $to] : ['error' => $err]);
+    $fromAddr = defined('MARKETING_FROM') ? MARKETING_FROM : 'admepro <news@admepro.com>';
+    [$ok, $pid, $err] = gSendEmail($fromAddr, $to, '[TEST] ' . ($b['subject'] ?? ''), $html);
+    gOut($ok ? 200 : 400, $ok ? ['ok' => true, 'to' => $to, 'from' => $fromAddr, 'id' => $pid] : ['error' => $err]);
 }
 case 'schedule': {
     $id = (int)($b['id'] ?? 0); $at = trim($b['at'] ?? '') ?: gNow();

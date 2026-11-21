@@ -34734,7 +34734,7 @@ function MktEditor({init,ov,onClose}) {
   const setBlock=(i,patch)=>s("blocks",f.blocks.map((b,j)=>j===i?{...b,...patch}:b));
   const move=(i,d)=>{ const a=[...f.blocks]; const j=i+d; if(j<0||j>=a.length) return; [a[i],a[j]]=[a[j],a[i]]; s("blocks",a); };
   const write=async()=>{ setWriting(true); setMsg(""); try{ const d=await mApi.post("write",{brief,lang,items:siteItems.filter(x=>picked.includes(x.url)),auto_pick:autoPick&&picked.length===0}); setF(p=>({...p,subject:d.subject||p.subject,preheader:d.preheader||p.preheader,blocks:d.blocks||p.blocks,name:p.name||d.subject||""})); if(lang==="ar") setF(p=>({...p,audience:{...p.audience,lang:"ar"}})); }catch(e){ setMsg(e.message); } finally{ setWriting(false); } };
-  const test=async()=>{ setMsg(""); try{ const d=await mApi.post("test",{...f,to:testTo}); setMsg("Test sent"+(d.to?" to "+d.to:"")); }catch(e){ setMsg(e.message); } };
+  const test=async()=>{ setMsg(""); try{ const d=await mApi.post("test",{...f,to:testTo}); setMsg("Test sent"+(d.to?" to "+d.to:"")+(d.from?" from "+d.from.replace(/.*</,"").replace(">",""):"")+". If it does not arrive, check Spam/Junk, then ask me to check the delivery log."); }catch(e){ setMsg(e.message); } };
   const schedule=async()=>{ const id=await save(); if(!id) return; const n=when?new Date(when).toLocaleString():"now";
     try{ const d=await mApi.post("audience_count",{channel:f.channel,audience:f.audience}); if(!confirm(`Send to ${d.count} people ${when?"on "+n:"now"}?`)) return;
       await mApi.post("schedule",{id,at:when?when.replace("T"," ")+":00":""}); onClose(); }catch(e){ setMsg(e.message); } };
