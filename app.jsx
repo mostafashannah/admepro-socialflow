@@ -15221,6 +15221,15 @@ function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[]
     </div>
   );
 }
+// Customer photos arrive as text: "[photo_url: https://….jpg]" (older messages), or "📷 Photo" plus the link. Pull the image links out so the chat shows pictures, not links.
+function splitInboxImages(text){
+  const imgs=[]; let t=String(text||"");
+  t=t.replace(/\[photo_url:\s*([^\]\s]+)\s*\]/g,(m,u)=>{ imgs.push(u); return ""; });
+  t=t.replace(/https?:\/\/\S+?\.(?:jpe?g|png|gif|webp)(?:\?\S*)?(?=\s|$)/gi,u=>{ imgs.push(u); return ""; });
+  t=t.replace(/^\s*Here's a photo — take a look and help with whatever it's for\.\s*/i,"").replace(/^\s*📷 Photo:?\s*/,imgs.length?"":"📷 Photo ").trim();
+  return {text:t,images:imgs.filter((u,i,a)=>a.indexOf(u)===i)};
+}
+const inboxPreview=t=>{ const p=splitInboxImages(t); return p.images.length?("📷 "+(p.text||"Photo")):p.text; };
 function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botSettings, onSaveBotSettings, onApproveDraft, onDismissDraft, hideBotPanel=false}) {
   const [selThread, setSelThread] = useState(null); // {channel, customer_id}
   const {isMobile:inboxMobile} = useResponsive();
@@ -15477,7 +15486,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
                     <p style={{fontWeight:700,fontSize:13,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.customer_name||t.customer_id}</p>
                     {t.last.direction==="in"&&<span style={{width:7,height:7,borderRadius:"50%",background:"var(--accent)",flexShrink:0}}/>}
                   </div>
-                  <p style={{fontSize:11,color:"var(--text3)",marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.last.message_text}</p>
+                  <p style={{fontSize:11,color:"var(--text3)",marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{inboxPreview(t.last.message_text)}</p>
                 </div>
               );
             })}
@@ -15497,6 +15506,9 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
               {activeThread.messages.map(m=>{
                 const isPendingDraft = m.sent_by==="bot" && m.draft_status==="pending_review";
                 const isEditing = editingDraftId===m.id;
+                const ph = splitInboxImages(m.message_text);
+                const imgs = [...(m.attachment_url?[m.attachment_url]:[]),...ph.images].filter((u,i,a)=>a.indexOf(u)===i);
+                const shownText = (m.attachment_url&&m.message_text==="[Image]") ? "" : ph.text;
                 return (
                   <div key={m.id} style={{maxWidth:inboxMobile?"88%":"70%",alignSelf:m.direction==="out"?"flex-end":"flex-start",padding:"8px 12px",borderRadius:12,
                     background:m.direction==="out"?(m.sent_by==="bot"?(isPendingDraft?"#6366f114":"#6366f122"):"var(--accent)"):"var(--surface2)",
@@ -15507,10 +15519,10 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
                       <textarea value={editingDraftText} onChange={e=>setEditingDraftText(e.target.value)}
                         style={{...inputSt,width:"100%",minHeight:60,fontSize:13,fontFamily:"inherit"}}/>
                     ):(<>
-                      {m.attachment_url&&<a href={m.attachment_url} target="_blank" rel="noreferrer" style={{display:"block",marginBottom:m.message_text&&m.message_text!=="[Image]"?6:0}}>
-                        <img src={m.attachment_url} alt="Attachment" style={{maxWidth:"100%",maxHeight:220,borderRadius:8,display:"block"}}/>
-                      </a>}
-                      {(!m.attachment_url||m.message_text!=="[Image]")&&<p style={{fontSize:13,lineHeight:1.5}}>{m.message_text}</p>}
+                      {imgs.map(u=><a key={u} href={u} target="_blank" rel="noreferrer" style={{display:"block",marginBottom:shownText?6:0}}>
+                        <img src={u} alt="Photo" loading="lazy" style={{maxWidth:"100%",maxHeight:300,borderRadius:8,display:"block"}} onError={e=>{ e.currentTarget.style.display="none"; }}/>
+                      </a>)}
+                      {shownText&&<p style={{fontSize:13,lineHeight:1.5}}>{shownText}</p>}
                     </>)}
                     <p style={{fontSize:9,marginTop:4,opacity:0.7}}>{m.sent_by==="bot"?"Pro · ":""}{new Date(m.created_at).toLocaleString()}</p>
                     {isPendingDraft&&(
