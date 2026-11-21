@@ -34667,20 +34667,20 @@ const W_INTRO={
   short:"admepro is an AI-powered creative and digital marketing agency in Cairo. We run brands' social media, content (including AI content), video, websites and ads, so you get one team for everything your brand shows online.",
   full:"admepro is an AI-powered creative and digital marketing agency based in Cairo. Our in-house team covers brand identity, social media management, content and video production, websites and e-commerce, and paid advertising. We also create AI content (images, videos and campaign ideas) and use AI automation, so campaigns are planned, produced, published and reported faster, in one place."};
 const W_SERVICES=[
-  {k:"social",title:"Social media management",text:"Content planning, designs, reels, daily posting and community replies, with a monthly performance report."},
-  {k:"brand",title:"Branding and identity",text:"Logo, visual identity and brand guidelines that make your brand recognisable everywhere."},
-  {k:"video",title:"Video and reels production",text:"Brand films, reels and campaign videos shot and edited by our in-house team."},
-  {k:"web",title:"Websites and e-commerce",text:"Fast, modern websites and online stores built to turn visitors into customers."},
-  {k:"ads",title:"Paid advertising",text:"Meta, Google and TikTok campaigns with clear targeting, optimisation and reporting."},
-  {k:"aicontent",title:"AI content creation",text:"AI-powered images, videos, copy and campaign ideas, produced fast and polished by our creative team so your content stays on brand."},
-  {k:"ai",title:"AI automation and chatbots",text:"AI assistants that answer customers, capture leads and automate repetitive marketing work."}];
+  {k:"social",icon:"📱",title:"Social media management",text:"Content planning, designs, reels, daily posting and community replies, with a monthly performance report."},
+  {k:"brand",icon:"🎨",title:"Branding and identity",text:"Logo, visual identity and brand guidelines that make your brand recognisable everywhere."},
+  {k:"video",icon:"🎬",title:"Video and reels production",text:"Brand films, reels and campaign videos shot and edited by our in-house team."},
+  {k:"web",icon:"💻",title:"Websites and e-commerce",text:"Fast, modern websites and online stores built to turn visitors into customers."},
+  {k:"ads",icon:"📣",title:"Paid advertising",text:"Meta, Google and TikTok campaigns with clear targeting, optimisation and reporting."},
+  {k:"aicontent",icon:"✨",title:"AI content creation",text:"AI-powered images, videos, copy and campaign ideas, produced fast and polished by our creative team so your content stays on brand."},
+  {k:"ai",icon:"🤖",title:"AI automation and chatbots",text:"AI assistants that answer customers, capture leads and automate repetitive marketing work."}];
 const W_GROUPS=[["all","All"],["gcc","GCC"],["retail","Retail"],["ai","AI"],["real_estate","Real estate"],["food","Food & hospitality"],["auto","Automotive"]];
 const W_RANK={banner:0,intro:1,services:2,ai:3,hubs:4,portfolio:5};
 const W_HUBS=[
-  {k:"real_estate",title:"Real Estate Marketing",text:"We build the full system: brand, content, and performance ads."},
-  {k:"retail",title:"E-Commerce & Retail Growth",text:"Full-funnel marketing for online stores and retail brands."},
-  {k:"gcc",title:"GCC & KSA Markets",text:"Full-service campaigns for brands expanding into Saudi Arabia and the Gulf."},
-  {k:"ai",title:"AI Content Projects",text:"AI video generation, AI content production, and AI campaign strategies."}];
+  {k:"real_estate",icon:"🏢",title:"Real Estate Marketing",text:"We build the full system: brand, content, and performance ads."},
+  {k:"retail",icon:"🛍️",title:"E-Commerce & Retail Growth",text:"Full-funnel marketing for online stores and retail brands."},
+  {k:"gcc",icon:"🌍",title:"GCC & KSA Markets",text:"Full-service campaigns for brands expanding into Saudi Arabia and the Gulf."},
+  {k:"ai",icon:"✨",title:"AI Content Projects",text:"AI video generation, AI content production, and AI campaign strategies."}];
 function MktEditor({init,ov,onClose}) {
   const [f,setF]=useState(()=>({...init,blocks:init.blocks||[],wa_params:init.wa_params||[],audience:init.audience||{}}));
   const [saving,setSaving]=useState(false); const [msg,setMsg]=useState("");
@@ -34689,7 +34689,7 @@ function MktEditor({init,ov,onClose}) {
   const [site,setSite]=useState(null); const [picked,setPicked]=useState([]); const [siteBusy,setSiteBusy]=useState(false); const [autoPick,setAutoPick]=useState(true);
   const siteItems=[...(site?.projects||[]),...(site?.posts||[])];
   const [svcPick,setSvcPick]=useState(["social","brand","video"]); const [wCat,setWCat]=useState("all"); const [wPick,setWPick]=useState([]);
-  const [bannerUrl,setBannerUrl]=useState(""); const banner=f.blocks.find(b=>b.section==="banner"&&b.url);
+  const [svcImg,setSvcImg]=useState({}); const [bannerUrl,setBannerUrl]=useState(""); const banner=f.blocks.find(b=>b.section==="banner"&&b.url);
   const [hubPick,setHubPick]=useState(["real_estate","retail","gcc","ai"]); const [hubUrl,setHubUrl]=useState({}); const [aiPick,setAiPick]=useState([]); const [aiQ,setAiQ]=useState("");
   useEffect(()=>{ if(site?.hubs) setHubUrl(p=>({...site.hubs,...Object.fromEntries(Object.entries(p).filter(([,v])=>v))})); },[site]);
   const wItems=siteItems.filter(it=>wCat==="all"||(it.groups||[]).includes(wCat));
@@ -34787,8 +34787,16 @@ function MktEditor({init,ov,onClose}) {
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
                 <span style={gLabel}>2 · Services</span>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{W_SERVICES.map(sv=><button key={sv.k} style={gPill(svcPick.includes(sv.k))} onClick={()=>setSvcPick(p=>p.includes(sv.k)?p.filter(x=>x!==sv.k):[...p,sv.k])}>{sv.title}</button>)}</div>
+                {svcPick.length>0&&siteItems.some(it=>it.image)&&<div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  <span style={{fontSize:11,color:"var(--text3)"}}>Optional: show a real project image on each service card (otherwise it shows its icon).</span>
+                  {W_SERVICES.filter(sv=>svcPick.includes(sv.k)).map(sv=><div key={sv.k} style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <span style={{fontSize:12,fontWeight:600,flex:"0 0 190px"}}>{sv.icon} {sv.title}</span>
+                    {svcImg[sv.k]&&<img src={svcImg[sv.k]} alt="" style={{width:44,height:28,objectFit:"cover",borderRadius:5}}/>}
+                    <select value={svcImg[sv.k]||""} onChange={e=>setSvcImg(p=>({...p,[sv.k]:e.target.value}))} style={{...inputSt,flex:1,minWidth:0}}><option value="">Icon only</option>{siteItems.filter(it=>it.image).map(it=><option key={it.url} value={it.image}>{it.title}</option>)}</select>
+                  </div>)}
+                </div>}
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  <button style={wBtn(true)} disabled={svcPick.length===0} onClick={()=>{ addSection("services",W_SERVICES.filter(sv=>svcPick.includes(sv.k)).map(sv=>({type:"card",title:sv.title,text:sv.text,image:"",url:"https://admepro.com",button:"Learn more"}))); }}>{hasSection("services")?"Replace services":"Add services"} ({svcPick.length})</button>
+                  <button style={wBtn(true)} disabled={svcPick.length===0} onClick={()=>{ addSection("services",W_SERVICES.filter(sv=>svcPick.includes(sv.k)).map(sv=>({type:"card",title:sv.title,text:sv.text,icon:sv.icon,image:svcImg[sv.k]||"",url:"https://admepro.com",button:"Learn more"}))); }}>{hasSection("services")?"Replace services":"Add services"} ({svcPick.length})</button>
                   {hasSection("services")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("services",[])}>Remove services</button>}
                 </div>
               </div>
@@ -34816,7 +34824,7 @@ function MktEditor({init,ov,onClose}) {
                   <input value={hubUrl[h.k]||""} onChange={e=>setHubUrl(p=>({...p,[h.k]:e.target.value}))} placeholder="https://admepro.com/…" style={{...inputSt,flex:"1 1 200px"}}/>
                 </div>)}
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  <button style={wBtn(true)} disabled={!W_HUBS.some(h=>hubPick.includes(h.k)&&/^https?:\/\//i.test(hubUrl[h.k]||""))} onClick={()=>addSection("hubs",[{type:"heading",text:"Our work"},...W_HUBS.filter(h=>hubPick.includes(h.k)&&/^https?:\/\//i.test(hubUrl[h.k]||"")).map(h=>({type:"card",title:h.title,text:h.text,image:"",url:hubUrl[h.k].trim(),button:"See our work"}))])}>{hasSection("hubs")?"Replace category links":"Add category links"}</button>
+                  <button style={wBtn(true)} disabled={!W_HUBS.some(h=>hubPick.includes(h.k)&&/^https?:\/\//i.test(hubUrl[h.k]||""))} onClick={()=>addSection("hubs",[{type:"heading",text:"Our work"},...W_HUBS.filter(h=>hubPick.includes(h.k)&&/^https?:\/\//i.test(hubUrl[h.k]||"")).map(h=>({type:"card",title:h.title,text:h.text,icon:h.icon,image:(site?.hub_images?.[h.k])||(siteItems.find(it=>it.image&&(it.groups||[]).includes(h.k))||{}).image||"",url:hubUrl[h.k].trim(),button:"See our work"}))])}>{hasSection("hubs")?"Replace category links":"Add category links"}</button>
                   {hasSection("hubs")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("hubs",[])}>Remove category links</button>}
                 </div>
               </div>
@@ -34857,7 +34865,7 @@ function MktEditor({init,ov,onClose}) {
                   {b.type==="heading"&&<input value={b.text||""} onChange={e=>setBlock(i,{text:e.target.value})} style={{...inputSt,fontWeight:700}}/>}
                   {b.type==="text"&&<textarea value={b.text||""} onChange={e=>setBlock(i,{text:e.target.value})} rows={4} style={{...inputSt,resize:"vertical"}}/>}
                   {b.type==="image"&&<><input value={b.url||""} onChange={e=>setBlock(i,{url:e.target.value})} placeholder="Image URL (https://…)" style={inputSt}/><input value={b.link||""} onChange={e=>setBlock(i,{link:e.target.value})} placeholder="Link when clicked (optional)" style={inputSt}/></>}
-                  {b.type==="card"&&<><input value={b.title||""} onChange={e=>setBlock(i,{title:e.target.value})} placeholder="Title" style={{...inputSt,fontWeight:700}}/><textarea value={b.text||""} onChange={e=>setBlock(i,{text:e.target.value})} rows={2} placeholder="One line that makes them click" style={{...inputSt,resize:"vertical"}}/><input value={b.image||""} onChange={e=>setBlock(i,{image:e.target.value})} placeholder="Image URL" style={inputSt}/><div style={{display:"flex",gap:6}}><input value={b.button||""} onChange={e=>setBlock(i,{button:e.target.value})} placeholder="Button text" style={{...inputSt,flex:1}}/><input value={b.url||""} onChange={e=>setBlock(i,{url:e.target.value})} placeholder="https://…" style={{...inputSt,flex:2}}/></div></>}
+                  {b.type==="card"&&<><input value={b.title||""} onChange={e=>setBlock(i,{title:e.target.value})} placeholder="Title" style={{...inputSt,fontWeight:700}}/><textarea value={b.text||""} onChange={e=>setBlock(i,{text:e.target.value})} rows={2} placeholder="One line that makes them click" style={{...inputSt,resize:"vertical"}}/><div style={{display:"flex",gap:6}}><input value={b.image||""} onChange={e=>setBlock(i,{image:e.target.value})} placeholder="Image URL" style={{...inputSt,flex:3}}/><input value={b.icon||""} onChange={e=>setBlock(i,{icon:e.target.value})} placeholder="Icon (emoji) if no image" style={{...inputSt,flex:2}}/></div><div style={{display:"flex",gap:6}}><input value={b.button||""} onChange={e=>setBlock(i,{button:e.target.value})} placeholder="Button text" style={{...inputSt,flex:1}}/><input value={b.url||""} onChange={e=>setBlock(i,{url:e.target.value})} placeholder="https://…" style={{...inputSt,flex:2}}/></div></>}
                   {b.type==="button"&&<div style={{display:"flex",gap:6}}><input value={b.text||""} onChange={e=>setBlock(i,{text:e.target.value})} placeholder="Button text" style={{...inputSt,flex:1}}/><input value={b.url||""} onChange={e=>setBlock(i,{url:e.target.value})} placeholder="https://…" style={{...inputSt,flex:2}}/></div>}
                 </div>))}
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{BLOCK_TYPES.map(([k,lb])=><button key={k} style={wBtn(false)} onClick={()=>s("blocks",[...f.blocks,{type:k,text:"",url:k==="button"?"https://admepro.com":""}])}>+ {lb}</button>)}</div>

@@ -131,7 +131,8 @@ function gRenderEmail(array $camp, array $contact = [], $sendId = null) {
         elseif ($t === 'button' && !empty($b['url'])) $body .= '<table cellpadding="0" cellspacing="0" style="margin:10px 0 20px"><tr><td style="background:#d90b2c;border-radius:10px"><a href="' . $link($b['url']) . '" style="display:inline-block;padding:13px 26px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none">' . gH($txt ?: 'Learn more') . '</a></td></tr></table>';
         elseif ($t === 'divider') $body .= '<hr style="border:none;border-top:1px solid #e5e7eb;margin:22px 0"/>';
         elseif ($t === 'card' && !empty($b['url'])) $body .= '<table width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 18px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden"><tr><td>'
-            . (!empty($b['image']) ? '<a href="' . $link($b['url']) . '"><img src="' . gH($b['image']) . '" alt="' . gH($b['title'] ?? '') . '" style="display:block;width:100%;height:auto;border:0"/></a>' : '')
+            . (!empty($b['image']) ? '<a href="' . $link($b['url']) . '"><img src="' . gH($b['image']) . '" alt="' . gH($b['title'] ?? '') . '" style="display:block;width:100%;height:auto;max-height:260px;object-fit:cover;border:0"/></a>'
+                : (trim((string)($b['icon'] ?? '')) !== '' ? '<a href="' . $link($b['url']) . '" style="text-decoration:none"><div style="background:#fdecee;padding:26px 16px;text-align:center;font-size:44px;line-height:1">' . gH($b['icon']) . '</div></a>' : ''))
             . '<div style="padding:14px 16px"><div style="font-size:17px;font-weight:800;color:#111827;line-height:1.35">' . gH(gMergeTags($b['title'] ?? '', $contact)) . '</div>'
             . (!empty($b['text']) ? '<div style="margin-top:6px;font-size:14px;line-height:1.6;color:#4b5563">' . nl2br(gH(gMergeTags($b['text'], $contact))) . '</div>' : '')
             . '<div style="margin-top:12px"><a href="' . $link($b['url']) . '" style="color:#d90b2c;font-weight:700;font-size:14px;text-decoration:none">' . gH($b['button'] ?? 'Read more') . ' →</a></div></div></td></tr></table>';
@@ -397,6 +398,18 @@ function gSiteContent($force = false) {
         $hubs[$k] = $best ? $best[2] : '';
     }
     $out['hubs'] = $hubs;
+    // The preview image each hub page declares itself (og:image), so category cards can show a real visual.
+    $hubImg = [];
+    foreach ($hubs as $k => $u) {
+        if (!$u) { $hubImg[$k] = ''; continue; }
+        $c = curl_init($u); curl_setopt_array($c, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 12, CURLOPT_FOLLOWLOCATION => true, CURLOPT_USERAGENT => 'Mozilla/5.0 (compatible; admepro-newsletter)']);
+        $h = substr((string)curl_exec($c), 0, 60000); curl_close($c); $im = '';
+        if (preg_match('#<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)#i', $h, $m) || preg_match('#<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']#i', $h, $m)) {
+            $im = html_entity_decode($m[1]); if (!preg_match('#^https?://#', $im)) $im = rtrim(strpos($im, '//') === 0 ? 'https:' . $im : $site . '/' . ltrim($im, '/'));
+        }
+        $hubImg[$k] = $im;
+    }
+    $out['hub_images'] = $hubImg;
     @file_put_contents($cache, json_encode($out, JSON_UNESCAPED_UNICODE));
     return $out;
 }

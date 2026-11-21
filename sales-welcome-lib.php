@@ -25,8 +25,8 @@ function swDefaultCampaign(string $market): array {
         ['type' => 'image', 'url' => '', 'alt' => 'admepro', 'link' => 'https://admepro.com', 'section' => 'banner'], // banner slot: choose the image in the builder (an empty banner is simply not shown)
         ['type' => 'text', 'text' => $market === 'gulf' ? 'Dear {{first_name}},' : 'Hi {{first_name}},'],
         ['type' => 'text', 'text' => $about, 'section' => 'intro'],
-        ['type' => 'card', 'title' => 'Social media management', 'text' => 'Content planning, designs, reels, daily posting and community replies, with a monthly performance report.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'image' => '', 'section' => 'services'],
-        ['type' => 'card', 'title' => 'Brand and video production', 'text' => 'Brand identity, reels and campaign videos shot and edited by our in-house team.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'image' => '', 'section' => 'services'],
+        ['type' => 'card', 'title' => 'Social media management', 'text' => 'Content planning, designs, reels, daily posting and community replies, with a monthly performance report.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'icon' => '📱', 'image' => '', 'section' => 'services'],
+        ['type' => 'card', 'title' => 'Brand and video production', 'text' => 'Brand identity, reels and campaign videos shot and edited by our in-house team.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'icon' => '🎬', 'image' => '', 'section' => 'services'],
         ['type' => 'text', 'text' => $market === 'gulf'
             ? 'If it would help {{company}}, one of our team will be glad to share ideas for your brand. Reply to this email or message us on WhatsApp.'
             : 'If you would like ideas for {{company}}, just reply here or message us on WhatsApp and one of our team will contact you.'],
