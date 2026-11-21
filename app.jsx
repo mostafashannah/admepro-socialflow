@@ -34672,6 +34672,7 @@ const W_SERVICES=[
   {k:"video",title:"Video and reels production",text:"Brand films, reels and campaign videos shot and edited by our in-house team."},
   {k:"web",title:"Websites and e-commerce",text:"Fast, modern websites and online stores built to turn visitors into customers."},
   {k:"ads",title:"Paid advertising",text:"Meta, Google and TikTok campaigns with clear targeting, optimisation and reporting."},
+  {k:"aicontent",title:"AI content creation",text:"AI-powered images, videos, copy and campaign ideas, produced fast and polished by our creative team so your content stays on brand."},
   {k:"ai",title:"AI automation and chatbots",text:"AI assistants that answer customers, capture leads and automate repetitive marketing work."}];
 const W_GROUPS=[["all","All"],["gcc","GCC"],["retail","Retail"],["ai","AI"],["real_estate","Real estate"],["food","Food & hospitality"],["auto","Automotive"]];
 const W_RANK={intro:1,services:2,ai:3,portfolio:4};
