@@ -244,8 +244,17 @@ function gRenderEmail(array $camp, array $contact = [], $sendId = null) {
 </td></tr></table></td></tr></table>' . $pixel . '</body></html>';
 }
 
+/** A plain-text version of an HTML email (readable fallback; mail providers trust HTML-only messages less). */
+function gPlainText(string $html): string {
+    $t = preg_replace('#<(style|script|head)[^>]*>.*?</\1>#is', '', $html);
+    $t = preg_replace('#<\s*(br|/p|/div|/h[1-6]|/tr|/table)\s*/?>#i', "\n", $t);
+    $t = html_entity_decode(strip_tags($t), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $t = preg_replace("/[ \t\x{00A0}]+/u", ' ', $t); $t = preg_replace("/ *\n */", "\n", $t); $t = preg_replace("/\n{3,}/", "\n\n", $t);
+    return trim($t);
+}
+
 function gSendEmail($from, $to, $subject, $html, $replyTo = null, $unsubUrl = null) {
-    $payload = ['from' => $from, 'to' => [$to], 'subject' => $subject, 'html' => $html];
+    $payload = ['from' => $from, 'to' => [$to], 'subject' => $subject, 'html' => $html, 'text' => gPlainText($html)];
     if ($replyTo) $payload['reply_to'] = $replyTo;
     if ($unsubUrl) $payload['headers'] = ['List-Unsubscribe' => '<' . $unsubUrl . '>', 'List-Unsubscribe-Post' => 'List-Unsubscribe=One-Click'];
     $ch = curl_init('https://api.resend.com/emails');
