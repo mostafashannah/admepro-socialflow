@@ -308,14 +308,23 @@ try {
         try {
             $agency = $pdo->query("SELECT id, name FROM clients WHERE LOWER(TRIM(name)) = 'admepro' ORDER BY created_at LIMIT 1")->fetch(PDO::FETCH_ASSOC);
             if ($agency && trim((string)$text) !== '') {
+                // A customer's photo or file: show it as a clean "Photo" entry (the text built above is Pro's internal prompt with a hidden marker,
+                // which is for team receipts, not for customers) and leave it for the team: the bot must not answer a picture it cannot see.
+                $isMedia = ($msgType === 'image' || $msgType === 'document');
+                if ($isMedia) {
+                    $capC = trim((string)($message[$msgType]['caption'] ?? ''));
+                    $text = ($msgType === 'image' ? '📷 Photo' : '📎 File') . ($capC !== '' ? ': ' . $capC : '') . (!empty($receiptUrl) ? "\n" . $receiptUrl : '');
+                }
                 $insA = $pdo->prepare("INSERT INTO customer_messages (client_id, client_name, channel, customer_id, customer_name, direction, message_text, sent_by, thread_status) VALUES (:cid,:cname,'whatsapp',:custid,:custname,'in',:txt,'customer','needs_human')");
                 $insA->execute([':cid' => $agency['id'], ':cname' => $agency['name'], ':custid' => $from, ':custname' => $contactName, ':txt' => $text]);
                 // Same call Instagram/Messenger use for admepro's own inbox: with the client, so the lead check reads the WHOLE conversation
                 // (a number or the real interest often comes a message later) and the lead is tagged to admepro. The sender's WhatsApp number is the phone.
                 try { maybeCreateLeadFromMessage($pdo, 'whatsapp', $from, $contactName, $text, $from, $agency['id'], $agency['name']); }
                 catch (\Throwable $e) { error_log('[wa-webhook] lead-capture EXCEPTION: ' . $e->getMessage()); }
-                try { maybeAutoReply($pdo, $agency['id'], $agency['name'], 'whatsapp', $from, $contactName); }
-                catch (\Throwable $e) { error_log('[wa-webhook] agency reply-bot EXCEPTION: ' . $e->getMessage()); }
+                if (!$isMedia) {
+                    try { maybeAutoReply($pdo, $agency['id'], $agency['name'], 'whatsapp', $from, $contactName); }
+                    catch (\Throwable $e) { error_log('[wa-webhook] agency reply-bot EXCEPTION: ' . $e->getMessage()); }
+                }
                 exit; // handled as an agency customer: do not fall through to Pro
             }
         } catch (\Throwable $e) {

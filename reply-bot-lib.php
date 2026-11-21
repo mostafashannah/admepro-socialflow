@@ -150,6 +150,7 @@ function buildReplyBotSystemPrompt(PDO $pdo, string $clientId, string $clientNam
     }
 
     // Hand-off rule: the customer never chooses who calls them or when.
+    $parts[] = "Reply in the same language and dialect as the customer's latest message (Arabic stays Arabic, Egyptian stays Egyptian). Keep the reply short: at most about 70 words, and always finish your last sentence.";
     $parts[] = "Hand-off rule: never ask the customer to choose a team, a department or a specific person, and never ask which person to ask for, "
              . "or which day or time suits them for a call. When they want to talk to someone or you have their contact, just say that one of our team will contact them shortly. "
              . "Do not offer options about who or when.";
@@ -203,7 +204,7 @@ function generateBotReply(PDO $pdo, string $clientId, string $clientName, string
     $captionLine = $postCaption ? "Caption of the post/reel this comment is on:\n\"{$postCaption}\"\n\n" : '';
     $payload = [
         'model' => 'claude-sonnet-5-5',
-        'max_tokens' => 400,
+        'max_tokens' => 1000,
         'system' => $system,
         'messages' => [['role' => 'user', 'content' => "{$nameLine}{$captionLine}Conversation so far:\n{$convo}\n\n{$label}"]],
     ];
@@ -218,6 +219,8 @@ function generateBotReply(PDO $pdo, string $clientId, string $clientName, string
         if (($block['type'] ?? '') === 'text') $text .= $block['text'];
     }
     $text = trim($text);
+    // If the model was cut off by the length limit, never send half a sentence: keep everything up to the last finished sentence.
+    if (($data['stop_reason'] ?? '') === 'max_tokens' && $text !== '' && preg_match('/^(.*[.!?؟。\n])[^.!?؟。\n]*$/su', $text, $mm) && mb_strlen($mm[1]) > mb_strlen($text) * 0.4) $text = trim($mm[1]);
     if ($text === '' || $text === 'NEEDS_HUMAN') {
         logBotActivity($pdo, $clientName, 'success', $text === 'NEEDS_HUMAN' ? 'Escalated to a human — no auto-reply sent' : 'Empty reply, nothing sent');
         return null;
@@ -694,7 +697,24 @@ function maybeCaptureClientContact(PDO $pdo, string $channel, string $customerId
 // reply and either sends it immediately (mode=auto) or stores it as a pending draft
 // for a team member to review (mode=approve). $externalId is the comment_id for
 // comment channels (fb_comment/ig_comment) — null for DM channels.
+/** Customers often send several messages in a row and each one calls this. Wait briefly so the burst lands, then let exactly ONE run answer all of it. */
 function maybeAutoReply(PDO $pdo, string $clientId, string $clientName, string $channel, string $customerId, ?string $customerName, ?string $externalId = null, ?string $postCaption = null) {
+    $isComment = in_array($channel, ['fb_comment', 'ig_comment', 'li_comment'], true);
+    $s = $isComment ? null : getReplyBotSettings($pdo, $clientId);
+    if ($isComment || !$s || !empty($s['external_bot']) || empty($s['enabled'])) { maybeAutoReplyOnce($pdo, $clientId, $clientName, $channel, $customerId, $customerName, $externalId, $postCaption); return; }
+    sleep(4);
+    $lockName = 'sfbot_' . substr(md5($clientId . '|' . $channel . '|' . $customerId), 0, 24);
+    $got = 0; try { $got = (int)$pdo->query("SELECT GET_LOCK(" . $pdo->quote($lockName) . ", 25)")->fetchColumn(); } catch (Throwable $e) { $got = 1; /* no lock support: carry on, the check below still prevents most doubles */ }
+    if (!$got) { error_log("reply-bot SKIP [{$clientName}/{$channel}/{$customerId}]: another reply for this customer is running"); return; }
+    try {
+        $q = $pdo->prepare("SELECT MAX(CASE WHEN direction = 'in' THEN created_at END) i, MAX(CASE WHEN direction = 'out' THEN created_at END) o FROM customer_messages WHERE client_id = :cid AND channel = :ch AND customer_id = :custid");
+        $q->execute([':cid' => $clientId, ':ch' => $channel, ':custid' => $customerId]); $t = $q->fetch(PDO::FETCH_ASSOC) ?: [];
+        if (!empty($t['o']) && !empty($t['i']) && strtotime((string)$t['o']) >= strtotime((string)$t['i'])) { error_log("reply-bot SKIP [{$clientName}/{$channel}/{$customerId}]: this burst of messages was already answered"); return; }
+        maybeAutoReplyOnce($pdo, $clientId, $clientName, $channel, $customerId, $customerName, $externalId, $postCaption);
+    } finally { try { $pdo->query("SELECT RELEASE_LOCK(" . $pdo->quote($lockName) . ")"); } catch (Throwable $e) {} }
+}
+
+function maybeAutoReplyOnce(PDO $pdo, string $clientId, string $clientName, string $channel, string $customerId, ?string $customerName, ?string $externalId = null, ?string $postCaption = null) {
     $log = function (string $reason) use ($clientName, $channel, $customerId) {
         error_log("reply-bot SKIP [{$clientName}/{$channel}/{$customerId}]: {$reason}");
     };
@@ -736,10 +756,14 @@ function maybeAutoReply(PDO $pdo, string $clientId, string $clientName, string $
         // message was received and how to reach a human. The thread is still
         // flagged needs_human either way so the team follows up.
         $fallback = trim((string)($settings['fallback_message'] ?? ''));
+        $lastInText = ''; foreach (array_reverse($thread) as $m) { if ($m['direction'] === 'in') { $lastInText = (string)$m['message_text']; break; } }
+        $ar = (bool)preg_match('/\p{Arabic}/u', $lastInText);   // an Arabic customer gets an Arabic fallback
         if ($fallback === '') {
-            $fallback = $customerName
-                ? "Thanks for reaching out! For a quick answer, please share your phone/WhatsApp number or contact us directly, and our team will get back to you shortly. 😊"
-                : "Thanks for reaching out! Could you share your name and phone/WhatsApp number so our team can get back to you shortly? 😊";
+            $fallback = $ar
+                ? ($customerName ? "شكراً لتواصلك معنا! عشان نساعدك بسرعة، ممكن تبعتلنا رقم موبايلك أو واتساب وفريقنا هيتواصل معاك قريب. 😊" : "شكراً لتواصلك معنا! ممكن تبعتلنا اسمك ورقم موبايلك أو واتساب عشان فريقنا يتواصل معاك قريب؟ 😊")
+                : ($customerName
+                    ? "Thanks for reaching out! For a quick answer, please share your phone/WhatsApp number or contact us directly, and our team will get back to you shortly. 😊"
+                    : "Thanks for reaching out! Could you share your name and phone/WhatsApp number so our team can get back to you shortly? 😊");
         }
         $reply = $fallback;
         $usedFallback = true;
@@ -752,7 +776,7 @@ function maybeAutoReply(PDO $pdo, string $clientId, string $clientName, string $
         $inboundText = implode("\n", array_column(array_filter($thread, fn($m) => $m['direction'] === 'in'), 'message_text'));
         $hasPhone = preg_match('/(\+?\d[\d\s\-\(\)]{7,}\d)/', $inboundText);
         if ($hasPhone && $lastOut === trim($fallback)) {
-            $reply = "Thanks for sharing your number! Our team will reach out to you shortly. 😊";
+            $reply = $ar ? "شكراً لمشاركة رقمك! فريقنا هيتواصل معاك قريب. 😊" : "Thanks for sharing your number! Our team will reach out to you shortly. 😊";
         }
         $log('generateBotReply returned empty (Claude opted out or API error) — using fallback message');
     }
