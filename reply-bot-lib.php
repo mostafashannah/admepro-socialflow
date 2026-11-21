@@ -393,6 +393,53 @@ function summarizeLeadInquiry(string $combinedText) {
     return trim($text) ?: null;
 }
 
+/** Reads a whole conversation (customer + agency) and judges whether it is a QUALIFIED sales lead for admepro.
+ *  Returns ['verdict' => qualified|maybe|not_qualified, 'score' => 0-100, 'reason', 'business', 'service', 'goal', 'missing' => [], 'brief'] or null when the AI call fails. */
+function evaluateLeadQualification(string $dialog): ?array {
+    $payload = [
+        'model' => 'claude-sonnet-5-5',
+        'max_tokens' => 500,
+        'system' => "You judge whether a chat with a creative and digital marketing agency (admepro: social media management, branding, video and AI content, paid ads, websites) is a QUALIFIED sales lead.\n"
+                  . "qualified: a real business or a serious project, a clear need that matches what we sell, a goal or reason to act, and they are engaging.\n"
+                  . "maybe: interested but a key piece is missing (what the business is, which service, or the goal), or seriousness is unclear: a call is needed to decide.\n"
+                  . "not_qualified: not a fit: personal or student use, job seeker, someone selling to us, spam or joking, wants only free work, wants something we do not offer, or clearly declined.\n"
+                  . "Judge only what is in the conversation. Never invent facts. Reply with ONE JSON object only: "
+                  . "{\"verdict\":\"qualified|maybe|not_qualified\",\"score\":0-100,\"reason\":\"one short sentence\",\"business\":\"\",\"service\":\"\",\"goal\":\"\",\"missing\":[\"short items\"],\"brief\":\"at most 4 short lines about what they want and key details\"}",
+        'messages' => [['role' => 'user', 'content' => mb_substr($dialog, 0, 6000)]],
+    ];
+    [$status, $data] = callClaude($payload);
+    if ($status < 200 || $status >= 300) return null;
+    $text = ''; foreach (($data['content'] ?? []) as $b) if (($b['type'] ?? '') === 'text') $text .= $b['text'];
+    if (!preg_match('/\{.*\}/s', $text, $m)) return null;
+    $j = json_decode($m[0], true); if (!is_array($j)) return null;
+    $v = (string)($j['verdict'] ?? ''); if (!in_array($v, ['qualified', 'maybe', 'not_qualified'], true)) return null;
+    return ['verdict' => $v, 'score' => max(0, min(100, (int)($j['score'] ?? 0))), 'reason' => mb_substr(trim((string)($j['reason'] ?? '')), 0, 220),
+        'business' => mb_substr(trim((string)($j['business'] ?? '')), 0, 100), 'service' => mb_substr(trim((string)($j['service'] ?? '')), 0, 100), 'goal' => mb_substr(trim((string)($j['goal'] ?? '')), 0, 120),
+        'missing' => array_slice(array_values(array_filter(array_map(fn($x) => mb_substr(trim((string)$x), 0, 40), (array)($j['missing'] ?? [])))), 0, 4), 'brief' => mb_substr(trim((string)($j['brief'] ?? '')), 0, 500)];
+}
+
+/** Saves the verdict on the lead: a "qual:<verdict>" tag and a "Qualification:" line in its notes. Alerts the assigned account manager the first time it becomes qualified. */
+function applyLeadQualification(PDO $pdo, array $lead, array $q, string $tag, string $channel): void {
+    $label = ['qualified' => 'QUALIFIED', 'maybe' => 'NEEDS INFO', 'not_qualified' => 'NOT QUALIFIED'][$q['verdict']];
+    $line = "Qualification: {$label} · {$q['score']}/100 — " . ($q['reason'] !== '' ? $q['reason'] : 'no reason given') . ($q['missing'] ? ' · Missing: ' . implode(', ', $q['missing']) : '');
+    $notes = (string)($lead['notes'] ?? '');
+    $notes = preg_replace('/\n\nQualification: [^\n]*/u', '', $notes);
+    $notes = preg_replace_callback('/\n\n' . preg_quote($tag, '/') . '/', fn($m) => "\n\n" . $line . $m[0], $notes, 1, $cnt);
+    if (!$cnt) $notes .= "\n\n" . $line;
+    $tags = json_decode((string)($lead['tags'] ?? '[]'), true); if (!is_array($tags)) $tags = [];
+    $wasQualified = in_array('qual:qualified', $tags, true);
+    $tags = array_values(array_filter($tags, fn($t) => strpos((string)$t, 'qual:') !== 0)); $tags[] = 'qual:' . $q['verdict'];
+    try { $pdo->prepare("UPDATE leads SET notes = :n, tags = :t WHERE id = :id")->execute([':n' => $notes, ':t' => json_encode($tags), ':id' => $lead['id']]); }
+    catch (\Throwable $e) { $pdo->prepare("UPDATE leads SET notes = :n WHERE id = :id")->execute([':n' => $notes, ':id' => $lead['id']]); }
+    if ($q['verdict'] === 'qualified' && !$wasQualified && !empty($lead['assigned_to']) && function_exists('sendWhatsAppReply')) {
+        $st = $pdo->prepare("SELECT whatsapp_number FROM team_members WHERE email = :e AND status = 'active' LIMIT 1"); $st->execute([':e' => $lead['assigned_to']]); $num = $st->fetchColumn();
+        if ($num) {
+            $bits = array_filter([$q['business'], $q['service'], $q['goal']]);
+            sendWhatsAppReply($num, "🔥 Qualified lead: \"" . ($lead['name'] ?? '') . "\"" . (!empty($lead['phone']) ? " — " . $lead['phone'] : '') . ($bits ? "\n" . implode(' · ', $bits) : '') . "\nThey answered our questions and fit what we sell. Please call them now.");
+        }
+    }
+}
+
 // Creates a CRM lead from an inbound message expressing interest, whether it's
 // addressed to admepro's own inbox or to a managed client's — a customer asking
 // a client's Page/IG for a callback is just as much a real lead as one asking
@@ -432,7 +479,7 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
         if ($clientMatch->fetchColumn()) return;
 
         $tag = "src_id:{$channel}:{$customerId}";
-        $dupe = $pdo->prepare("SELECT id, phone, notes FROM leads WHERE notes LIKE :tag LIMIT 1");
+        $dupe = $pdo->prepare("SELECT id, name, phone, notes, tags, assigned_to FROM leads WHERE notes LIKE :tag LIMIT 1");
         $dupe->execute([':tag' => "%{$tag}%"]);
         if ($existing = $dupe->fetch(PDO::FETCH_ASSOC)) {
             // Already captured this sender before, but they may not have shared a phone
@@ -450,11 +497,13 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
                     $all = $pdo->prepare("SELECT direction, message_text FROM customer_messages WHERE client_id = :cid AND channel = :ch AND customer_id = :custid ORDER BY created_at ASC LIMIT 30");
                     $all->execute([':cid' => $clientId, ':ch' => $channel, ':custid' => $customerId]);
                     $dialog = implode("\n", array_map(fn($m) => ($m['direction'] === 'in' ? 'Customer: ' : 'Agency: ') . preg_replace('/\s+/', ' ', (string)$m['message_text']), $all->fetchAll(PDO::FETCH_ASSOC)));
-                    $nb = summarizeLeadInquiry($dialog);
+                    $qual = evaluateLeadQualification($dialog);
+                    $nb = ($qual['brief'] ?? '') !== '' ? $qual['brief'] : summarizeLeadInquiry($dialog);
                     if ($nb) {
-                        $newNotes = preg_replace_callback('/(expressing interest in our services:\n).*?(\n\n' . preg_quote($tag, '/') . ')/s', fn($mm) => $mm[1] . $nb . $mm[2], (string)$existing['notes'], 1);
-                        if ($newNotes && $newNotes !== $existing['notes']) $pdo->prepare("UPDATE leads SET notes = :n WHERE id = :id")->execute([':n' => $newNotes, ':id' => $existing['id']]);
+                        $newNotes = preg_replace_callback('/(expressing interest in our services:\n).*?(\n\n(?:Qualification: [^\n]*\n\n)?' . preg_quote($tag, '/') . ')/s', fn($mm) => $mm[1] . $nb . $mm[2], (string)$existing['notes'], 1);
+                        if ($newNotes && $newNotes !== $existing['notes']) { $pdo->prepare("UPDATE leads SET notes = :n WHERE id = :id")->execute([':n' => $newNotes, ':id' => $existing['id']]); $existing['notes'] = $newNotes; }
                     }
+                    if ($qual) applyLeadQualification($pdo, $existing, $qual, $tag, $channel);
                 }
             } catch (\Throwable $eN) { error_log('[reply-bot] lead brief refresh: ' . $eN->getMessage()); }
             return;

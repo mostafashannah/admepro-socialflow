@@ -29471,6 +29471,15 @@ function LeadProfileSection({lead, onUpdateLead}) {
 }
 
 // Lead Detail Panel
+// Qualification verdict the reply bot saves on a lead from the chat questionnaire: tag "qual:<verdict>" + a "Qualification:" line in the notes.
+const QUAL_META = {qualified:{label:"Qualified",color:"#16a34a"}, maybe:{label:"Needs info",color:"#d97706"}, not_qualified:{label:"Not qualified",color:"#6b7280"}};
+function leadQual(lead){
+  let tags = lead && lead.tags; if(typeof tags==="string"){ try{ tags=JSON.parse(tags); }catch(e){ tags=[]; } }
+  const t = (Array.isArray(tags)?tags:[]).find(x=>String(x).indexOf("qual:")===0); if(!t) return null;
+  const k = String(t).slice(5); const m = QUAL_META[k]; if(!m) return null;
+  const mm = String((lead&&lead.notes)||"").match(/Qualification: [^\n]*?(\d+)\/100 — ([^\n]*)/);
+  return {k, label:m.label, color:m.color, score:mm?+mm[1]:null, reason:mm?mm[2]:""};
+}
 function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivity, onConvert, currentUser, onDeleteLead}) {
   // Plain state, not persisted — opening any lead should always start on
   // Overview, not silently reopen to whatever tab was last viewed.
@@ -29522,6 +29531,10 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
                 {lead.source&&<Badge label={lead.source} color="#6b7280" xs/>}
                 {lead.value>0&&<Badge label={`$${lead.value.toLocaleString()}`} color="#10b981" xs/>}
               </div>
+              {(()=>{ const q=leadQual(lead); return q&&<div style={{marginTop:10,padding:"9px 12px",borderRadius:10,background:q.color+"14",border:"1px solid "+q.color+"44"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:12,fontWeight:800,color:q.color}}>{q.k==="qualified"?"✓ ":""}{q.label}{q.score!=null?" · "+q.score+"/100":""}</span><span style={{fontSize:10,color:"var(--text3)"}}>AI check of the chat answers</span></div>
+                {q.reason&&<p style={{fontSize:12,color:"var(--text2)",marginTop:3}}>{q.reason}</p>}
+              </div>; })()}
             </div>
             <div style={{display:"flex",gap:8,flexShrink:0}}>
               <button onClick={()=>setShowEditLead(true)}
@@ -29810,6 +29823,7 @@ function LeadCard({lead, onClick, team}) {
         {lead.platforms?.slice(0,3).map(p=><PChip key={p} platform={p} xs/>)}
         {lead.source&&!lead.platforms?.some(p=>p.toLowerCase()===lead.source.toLowerCase())&&<Badge label={lead.source} color="#6b7280" xs/>}
         {assignee&&<Badge label={assignee.name} color="#8b5cf6" xs/>}
+        {(()=>{ const q=leadQual(lead); return q&&<span title={q.reason||q.label} style={{fontSize:10,fontWeight:800,padding:"2px 8px",borderRadius:99,background:q.color+"22",color:q.color}}>{q.k==="qualified"?"✓ ":""}{q.label}{q.score!=null?" · "+q.score:""}</span>; })()}
       </div>
       {lead.followup_date&&(
         <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,color:overdue?"#ef4444":dueToday?"#f59e0b":"var(--text3)"}}>
@@ -29984,7 +29998,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   },[leads]);
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState("");
-  const [sourceF, setSourceF] = useState("all");
+  const [sourceF, setSourceF] = useState("all"); const [qualF, setQualF] = useState("all");
   const [assigneeF, setAssigneeF] = useState("all");
   const [countryF, setCountryF] = useState("all");
   const [industryF, setIndustryF] = useState("all");
@@ -30051,6 +30065,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
     if(assigneeF!=="all"&&l.assigned_to!==assigneeF) return false;
     if(countryF!=="all"&&leadCountry(l.phone)!==countryF) return false;
     if(industryF!=="all"&&(l.industry||"")!==industryF) return false;
+    if(qualF!=="all"){ const q=leadQual(l); if(qualF==="unrated"?!!q:(!q||q.k!==qualF)) return false; }
     return true;
   };
   const filtered = leadsScope.filter(l=>l.assigned_to&&matchesLeadFilters(l));
@@ -30160,6 +30175,13 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
               <option value="all">All countries</option>
               {LEAD_COUNTRIES.map(c=><option key={c} value={c}>{c}</option>)}
             </select>
+            <select value={qualF} onChange={e=>setQualF(e.target.value)} style={{...inputSt,...TB_CTRL,width:"auto",padding:"0 8px"}}>
+              <option value="all">Any qualification</option>
+              <option value="qualified">✓ Qualified</option>
+              <option value="maybe">Needs info</option>
+              <option value="not_qualified">Not qualified</option>
+              <option value="unrated">Not checked yet</option>
+            </select>
             <select value={industryF} onChange={e=>setIndustryF(e.target.value)} style={{...inputSt,...TB_CTRL,width:"auto",padding:"0 8px"}}>
               <option value="all">All industries</option>
               {industryOptions.map(i=><option key={i} value={i}>{i}</option>)}
@@ -30167,8 +30189,8 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
             </select>
             {chRows.length>1&&<><span style={{width:1,height:18,background:"var(--border2)",margin:"0 4px"}}/>
               {chRows.map(([k,n])=><button key={k} type="button" onClick={()=>setSourceF(f=>f===k?(curGroup?"group:"+curGroup:"all"):k)} style={{padding:"3px 10px",height:26,borderRadius:99,fontSize:11,fontWeight:700,border:`1px solid ${sourceF===k?"var(--accent)":"var(--border2)"}`,background:sourceF===k?"var(--accent)":"var(--surface2)",color:sourceF===k?"#fff":"var(--text2)",cursor:"pointer",whiteSpace:"nowrap"}}>{CH_LABEL[k]||k.replace(/_/g," ")} · {n}</button>)}</>}
-            {(search||sourceF!=="all"||assigneeF!=="all"||countryF!=="all"||industryF!=="all")&&
-              <button type="button" onClick={()=>{setSearch("");setSourceF("all");setAssigneeF("all");setCountryF("all");setIndustryF("all");}} style={{padding:"3px 11px",height:26,borderRadius:99,fontSize:11,fontWeight:700,color:"var(--accent)",border:"1px solid var(--accent)55",background:"transparent",cursor:"pointer"}}>Clear · {filtered.length} shown</button>}
+            {(search||sourceF!=="all"||assigneeF!=="all"||countryF!=="all"||industryF!=="all"||qualF!=="all")&&
+              <button type="button" onClick={()=>{setSearch("");setSourceF("all");setAssigneeF("all");setCountryF("all");setIndustryF("all");setQualF("all");}} style={{padding:"3px 11px",height:26,borderRadius:99,fontSize:11,fontWeight:700,color:"var(--accent)",border:"1px solid var(--accent)55",background:"transparent",cursor:"pointer"}}>Clear · {filtered.length} shown</button>}
           </div>
         </div>;
       })()}
