@@ -141,40 +141,85 @@ function gRenderEmail(array $camp, array $contact = [], $sendId = null) {
         $q = http_build_query(['c' => $sendId, 'u' => $url, 's' => gSign('c' . $sendId . $url)]);
         return gH(gBase() . '/marketing-track.php?' . $q);
     };
-    $body = '';
+    $align = $rtl ? 'right' : 'left';
+    $tints = ['#fdecee', '#eef2ff', '#ecfdf5', '#fff7ed'];
+
+    // One card in one of three looks: 'feature' (big, full width), 'grid' (compact, sits two per row), 'wide' (grid look, full width).
+    $card = function (array $b, string $variant, int $i) use ($link, $contact, $tints) {
+        $title = gH(gMergeTags($b['title'] ?? '', $contact)); $text = trim((string)($b['text'] ?? '')); $feature = $variant === 'feature';
+        $media = '';
+        if (!empty($b['image'])) $media = '<a href="' . $link($b['url']) . '" style="text-decoration:none"><img src="' . gH($b['image']) . '" alt="' . $title . '" width="100%" style="display:block;width:100%;height:auto;max-height:' . ($feature ? '300' : '170') . 'px;object-fit:cover;border:0"/></a>';
+        elseif (trim((string)($b['icon'] ?? '')) !== '') {
+            $tint = $tints[$i % count($tints)];
+            $media = $feature
+                ? '<a href="' . $link($b['url']) . '" style="text-decoration:none"><div style="background:' . $tint . ';padding:34px 16px;text-align:center;font-size:56px;line-height:1">' . gH($b['icon']) . '</div></a>'
+                : '<div style="padding:18px 18px 0"><span style="display:inline-block;width:48px;height:48px;line-height:48px;text-align:center;border-radius:50%;background:' . $tint . ';font-size:23px">' . gH($b['icon']) . '</span></div>';
+        }
+        $pad = $feature ? '22px 24px 24px' : '14px 18px 18px';
+        return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:' . ($feature ? '18' : '16') . 'px;overflow:hidden"><tr><td>'
+            . $media . '<div style="padding:' . $pad . '">'
+            . '<div style="font-size:' . ($feature ? '22' : '16') . 'px;font-weight:800;color:#111827;line-height:1.3;letter-spacing:-0.2px">' . $title . '</div>'
+            . ($text !== '' ? '<div style="margin-top:7px;font-size:' . ($feature ? '15' : '13.5') . 'px;line-height:1.6;color:#4b5563">' . nl2br(gH(gMergeTags($text, $contact))) . '</div>' : '')
+            . ($feature
+                ? '<div style="margin-top:16px"><a href="' . $link($b['url']) . '" style="display:inline-block;padding:11px 22px;background:#d90b2c;color:#ffffff;border-radius:999px;font-size:14px;font-weight:700;text-decoration:none">' . gH($b['button'] ?? 'Read more') . ' &rarr;</a></div>'
+                : '<div style="margin-top:11px"><a href="' . $link($b['url']) . '" style="color:#d90b2c;font-weight:700;font-size:13.5px;text-decoration:none">' . gH($b['button'] ?? 'Read more') . ' &rarr;</a></div>')
+            . '</div></td></tr></table>';
+    };
+    // A run of consecutive cards becomes a layout: 1 = feature; 2 = two side by side; 3+ = feature then pairs (a last odd one goes full width).
+    $body = ''; $banner = ''; $run = [];
+    $flush = function () use (&$run, &$body, $card) {
+        $cards = array_values(array_filter($run, fn($c) => !empty($c['url']))); $run = []; $n = count($cards); if (!$n) return;
+        $i = 0;
+        if ($n === 1 || ($n >= 3 && !empty($cards[0]['image']))) { $body .= '<div style="margin:6px 0 14px">' . $card($cards[0], 'feature', $i++) . '</div>'; }
+        for (; $i < $n; $i += 2) {
+            if (!isset($cards[$i + 1])) { $body .= '<div style="margin:0 0 14px">' . $card($cards[$i], 'wide', $i) . '</div>'; break; }
+            $body .= '<div style="margin:0 -7px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>'
+                . '<td class="col" width="50%" valign="top" style="padding:0 7px 14px">' . $card($cards[$i], 'grid', $i) . '</td>'
+                . '<td class="col" width="50%" valign="top" style="padding:0 7px 14px">' . $card($cards[$i + 1], 'grid', $i + 1) . '</td></tr></table></div>';
+        }
+    };
     foreach ($blocks as $b) {
         $t = $b['type'] ?? '';
+        if ($t === 'card') { $run[] = $b; continue; }
+        $flush();
         $txt = gMergeTags($b['text'] ?? '', $contact);
-        if ($t === 'heading') $body .= '<h2 style="margin:22px 0 8px;font-size:22px;line-height:1.3;font-weight:800;color:#111827">' . gH($txt) . '</h2>';
-        elseif ($t === 'text') $body .= '<p style="margin:0 0 14px;font-size:15px;line-height:1.7;color:#374151">' . nl2br(gH($txt)) . '</p>';
-        elseif ($t === 'image' && !empty($b['url'])) $body .= (!empty($b['link']) ? '<a href="' . $link($b['link']) . '">' : '') . '<img src="' . gH($b['url']) . '" alt="' . gH($b['alt'] ?? '') . '" style="display:block;width:100%;max-width:100%;height:auto;border-radius:12px;margin:8px 0 16px"/>' . (!empty($b['link']) ? '</a>' : '');
-        elseif ($t === 'button' && !empty($b['url'])) $body .= '<table cellpadding="0" cellspacing="0" style="margin:10px 0 20px"><tr><td style="background:#d90b2c;border-radius:10px"><a href="' . $link($b['url']) . '" style="display:inline-block;padding:13px 26px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none">' . gH($txt ?: 'Learn more') . '</a></td></tr></table>';
-        elseif ($t === 'divider') $body .= '<hr style="border:none;border-top:1px solid #e5e7eb;margin:22px 0"/>';
-        elseif ($t === 'card' && !empty($b['url'])) $body .= '<table width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 18px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden"><tr><td>'
-            . (!empty($b['image']) ? '<a href="' . $link($b['url']) . '"><img src="' . gH($b['image']) . '" alt="' . gH($b['title'] ?? '') . '" style="display:block;width:100%;height:auto;max-height:260px;object-fit:cover;border:0"/></a>'
-                : (trim((string)($b['icon'] ?? '')) !== '' ? '<a href="' . $link($b['url']) . '" style="text-decoration:none"><div style="background:#fdecee;padding:26px 16px;text-align:center;font-size:44px;line-height:1">' . gH($b['icon']) . '</div></a>' : ''))
-            . '<div style="padding:14px 16px"><div style="font-size:17px;font-weight:800;color:#111827;line-height:1.35">' . gH(gMergeTags($b['title'] ?? '', $contact)) . '</div>'
-            . (!empty($b['text']) ? '<div style="margin-top:6px;font-size:14px;line-height:1.6;color:#4b5563">' . nl2br(gH(gMergeTags($b['text'], $contact))) . '</div>' : '')
-            . '<div style="margin-top:12px"><a href="' . $link($b['url']) . '" style="color:#d90b2c;font-weight:700;font-size:14px;text-decoration:none">' . gH($b['button'] ?? 'Read more') . ' →</a></div></div></td></tr></table>';
+        if ($t === 'heading') $body .= '<div style="width:38px;height:4px;background:#d90b2c;border-radius:2px;margin:30px 0 12px"></div><h2 style="margin:0 0 14px;font-size:25px;line-height:1.25;font-weight:800;color:#111827;letter-spacing:-0.4px">' . gH($txt) . '</h2>';
+        elseif ($t === 'text') $body .= '<p style="margin:0 0 16px;font-size:15.5px;line-height:1.75;color:#374151">' . nl2br(gH($txt)) . '</p>';
+        elseif ($t === 'image' && !empty($b['url'])) {
+            $img = '<img src="' . gH($b['url']) . '" alt="' . gH($b['alt'] ?? '') . '" width="100%" style="display:block;width:100%;height:auto;border:0"/>';
+            $wrapped = !empty($b['link']) ? '<a href="' . $link($b['link']) . '" style="text-decoration:none">' . $img . '</a>' : $img;
+            if (($b['section'] ?? '') === 'banner' && $banner === '') $banner = $wrapped;   // the banner runs edge to edge under the header
+            else $body .= '<div style="margin:8px 0 18px;border-radius:14px;overflow:hidden">' . $wrapped . '</div>';
+        }
+        elseif ($t === 'button' && !empty($b['url'])) {
+            $wa = (bool)preg_match('#wa\.me|whatsapp#i', (string)$b['url']); $bg = $wa ? '#16a34a' : '#d90b2c';
+            $body .= '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:12px 0 22px"><tr><td style="background:' . $bg . ';border-radius:999px"><a href="' . $link($b['url']) . '" style="display:inline-block;padding:14px 30px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none">' . ($wa ? '&#128172; ' : '') . gH($txt) . '</a></td></tr></table>';
+        }
+        elseif ($t === 'divider') $body .= '<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>';
     }
+    $flush();
+
     $logoUrl = gBrandLogoUrl();
     $logoHtml = $logoUrl !== ''
-        ? '<img src="' . gH($logoUrl) . '" alt="admepro" height="40" style="display:block;height:40px;width:auto;max-width:240px;border:0"/>'
+        ? '<img src="' . gH($logoUrl) . '" alt="admepro" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0"/>'
         : '<table cellpadding="0" cellspacing="0"><tr><td><img src="' . gH(gBase() . '/icon-192.png') . '" alt="" width="34" height="34" style="display:block;border-radius:8px"/></td><td style="padding-left:10px;font-size:20px;font-weight:800;color:#111827;letter-spacing:-0.3px">admepro</td></tr></table>';
-    $brand = ''; foreach (gBrandLinks() as $lab => $u) $brand .= '<a href="' . $link($u) . '" style="display:inline-block;margin:0 9px 6px;font-size:13px;font-weight:600;color:#374151;text-decoration:underline">' . gH($lab) . '</a>';
-    $brand = $brand !== '' ? '<div style="margin:0 0 10px">' . $brand . '</div>' : '';
+    $brand = ''; foreach (gBrandLinks() as $lab => $u) $brand .= '<a href="' . $link($u) . '" style="display:inline-block;margin:0 4px 8px;padding:7px 14px;border:1px solid #374151;border-radius:999px;font-size:12.5px;font-weight:600;color:#e5e7eb;text-decoration:none">' . gH($lab) . '</a>';
     $pre = gH(gMergeTags($camp['preheader'] ?? '', $contact));
     $unsub = $sendId ? gBase() . '/marketing-unsub.php?' . http_build_query(['id' => $sendId, 's' => gSign('u' . $sendId)]) : '#';
     $pixel = $sendId ? '<img src="' . gH(gBase() . '/marketing-track.php?' . http_build_query(['o' => $sendId, 's' => gSign('o' . $sendId)])) . '" width="1" height="1" alt="" style="display:block;border:0"/>' : '';
-    return '<!DOCTYPE html><html dir="' . ($rtl ? 'rtl' : 'ltr') . '"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Arial,sans-serif">
+    return '<!DOCTYPE html><html dir="' . ($rtl ? 'rtl' : 'ltr') . '"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>@media only screen and (max-width:540px){.col{display:block!important;width:100%!important;box-sizing:border-box}.pad{padding-left:20px!important;padding-right:20px!important}.outer{padding:0!important}.shell{border-radius:0!important}}</style></head>
+<body style="margin:0;padding:0;background:#eef0f3;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Arial,sans-serif">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0">' . $pre . '</div>
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:28px 12px"><tr><td align="center">
-<table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb">
-<tr><td style="padding:24px 32px 4px">' . $logoHtml . '</td></tr>
-<tr><td style="padding:10px 32px 20px;text-align:' . ($rtl ? 'right' : 'left') . '">' . $body . '</td></tr>
-<tr><td style="padding:18px 32px 26px;border-top:1px solid #f3f4f6;font-size:12px;line-height:1.6;color:#9ca3af;text-align:center">
-' . $brand . 'admepro · 145 El Banafsig 3, New Cairo, Cairo, Egypt<br/>You receive this because you are in touch with admepro. <a href="' . gH($unsub) . '" style="color:#6b7280">Unsubscribe</a>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef0f3"><tr><td class="outer" align="center" style="padding:28px 12px">
+<table role="presentation" class="shell" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;background:#ffffff;border-radius:20px;overflow:hidden;border:1px solid #e5e7eb">
+<tr><td style="height:5px;line-height:5px;font-size:0;background:#d90b2c">&nbsp;</td></tr>
+<tr><td class="pad" style="padding:20px 32px;background:#ffffff"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td>' . $logoHtml . '</td><td align="right" style="font-size:12px;font-weight:600"><a href="' . $link('https://admepro.com') . '" style="color:#6b7280;text-decoration:none">admepro.com</a></td></tr></table></td></tr>'
+. ($banner !== '' ? '<tr><td style="padding:0;line-height:0;font-size:0">' . $banner . '</td></tr>' : '') . '
+<tr><td class="pad" style="padding:30px 32px 12px;text-align:' . $align . '">' . $body . '</td></tr>
+<tr><td class="pad" style="padding:28px 32px 30px;background:#111827;text-align:center">
+<div style="margin:0 0 14px">' . $brand . '</div>
+<div style="font-size:12px;line-height:1.7;color:#9ca3af">admepro &middot; 145 El Banafsig 3, New Cairo, Cairo, Egypt<br/>You receive this because you are in touch with admepro. <a href="' . gH($unsub) . '" style="color:#d1d5db">Unsubscribe</a></div>
 </td></tr></table></td></tr></table>' . $pixel . '</body></html>';
 }
 
