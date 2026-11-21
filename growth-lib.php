@@ -207,6 +207,15 @@ function gRenderEmail(array $camp, array $contact = [], $sendId = null) {
         elseif ($t === 'button' && !empty($b['url'])) {
             $body .= '<table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:14px auto 24px"><tr><td align="center" style="background:#d90b2c;border-radius:999px"><a href="' . $link($b['url']) . '" style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none">' . gH($txt) . '</a></td></tr></table>';
         }
+        elseif ($t === 'offer' && trim((string)($b['title'] ?? '')) !== '') {
+            $otext = trim((string)($b['text'] ?? '')); $otag = trim((string)($b['tag'] ?? ''));
+            $body .= '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:10px 0 22px;background:#111827;border-radius:18px"><tr><td class="offer-pad" style="padding:32px 30px">'
+                . ($otag !== '' ? '<div style="margin:0 0 14px"><span style="display:inline-block;padding:5px 13px;background:#d90b2c;color:#ffffff;border-radius:999px;font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase">' . gH(gMergeTags($otag, $contact)) . '</span></div>' : '')
+                . '<div class="offer-t" style="font-size:36px;line-height:1.1;font-weight:900;color:#ffffff;letter-spacing:-1px">' . gH(gMergeTags($b['title'], $contact)) . '</div>'
+                . ($otext !== '' ? '<div style="margin-top:14px;font-size:15.5px;line-height:1.75;color:#d1d5db">' . nl2br(gH(gMergeTags($otext, $contact))) . '</div>' : '')
+                . (!empty($b['url']) && trim((string)($b['button'] ?? '')) !== '' ? '<div style="margin-top:20px"><a href="' . $link($b['url']) . '" style="display:inline-block;padding:13px 28px;background:#d90b2c;color:#ffffff;border-radius:999px;font-size:15px;font-weight:700;text-decoration:none">' . gH($b['button']) . '</a></div>' : '')
+                . '</td></tr></table>';
+        }
         elseif ($t === 'divider') $body .= '<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>';
     }
     $flush();
@@ -220,7 +229,7 @@ function gRenderEmail(array $camp, array $contact = [], $sendId = null) {
     $unsub = $sendId ? gBase() . '/marketing-unsub.php?' . http_build_query(['id' => $sendId, 's' => gSign('u' . $sendId)]) : '#';
     $pixel = $sendId ? '<img src="' . gH(gBase() . '/marketing-track.php?' . http_build_query(['o' => $sendId, 's' => gSign('o' . $sendId)])) . '" width="1" height="1" alt="" style="display:block;border:0"/>' : '';
     return '<!DOCTYPE html><html dir="' . ($rtl ? 'rtl' : 'ltr') . '"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<style>@media only screen and (max-width:540px){.col{display:block!important;width:100%!important;box-sizing:border-box}.pad{padding-left:20px!important;padding-right:20px!important}.outer{padding:0!important}.shell{border-radius:0!important}}</style></head>
+<style>@media only screen and (max-width:540px){.col{display:block!important;width:100%!important;box-sizing:border-box}.pad{padding-left:20px!important;padding-right:20px!important}.offer-t{font-size:28px!important}.offer-pad{padding:26px 22px!important}.outer{padding:0!important}.shell{border-radius:0!important}}</style></head>
 <body style="margin:0;padding:0;background:#eef0f3;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Arial,sans-serif">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0">' . $pre . '</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef0f3"><tr><td class="outer" align="center" style="padding:28px 12px">

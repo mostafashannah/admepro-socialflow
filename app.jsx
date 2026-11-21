@@ -34675,7 +34675,7 @@ const W_SERVICES=[
   {k:"aicontent",icon:"i:aicontent",title:"AI content creation",text:"AI-powered images, videos, copy and campaign ideas, produced fast and polished by our creative team so your content stays on brand."},
   {k:"ai",icon:"i:ai",title:"AI automation and chatbots",text:"AI assistants that answer customers, capture leads and automate repetitive marketing work."}];
 const W_GROUPS=[["all","All"],["gcc","GCC"],["retail","Retail"],["ai","AI"],["real_estate","Real estate"],["food","Food & hospitality"],["auto","Automotive"]];
-const W_RANK={banner:0,intro:1,services:2,ai:3,hubs:4,portfolio:5};
+const W_RANK={banner:0,intro:1,offer:1.5,services:2,ai:3,hubs:4,portfolio:5};
 const W_HUBS=[
   {k:"real_estate",icon:"i:real_estate",title:"Real Estate Marketing",text:"We build the full system: brand, content, and performance ads."},
   {k:"retail",icon:"i:retail",title:"E-Commerce & Retail Growth",text:"Full-funnel marketing for online stores and retail brands."},
@@ -34689,7 +34689,7 @@ function MktEditor({init,ov,onClose}) {
   const [site,setSite]=useState(null); const [picked,setPicked]=useState([]); const [siteBusy,setSiteBusy]=useState(false); const [autoPick,setAutoPick]=useState(true);
   const siteItems=[...(site?.projects||[]),...(site?.posts||[])];
   const [svcPick,setSvcPick]=useState(["social","brand","video"]); const [wCat,setWCat]=useState("all"); const [wPick,setWPick]=useState([]);
-  const [openSec,setOpenSec]=useState("sara"); const [sBrief,setSBrief]=useState(""); const [saraBusy,setSaraBusy]=useState(false); const [svcImg,setSvcImg]=useState({}); const [bannerUrl,setBannerUrl]=useState(""); const banner=f.blocks.find(b=>b.section==="banner"&&b.url);
+  const [dragI,setDragI]=useState(null); const [overI,setOverI]=useState(null); const [offerF,setOfferF]=useState({tag:"",title:"",text:"",button:"",url:""}); const [openSec,setOpenSec]=useState("sara"); const [sBrief,setSBrief]=useState(""); const [saraBusy,setSaraBusy]=useState(false); const [svcImg,setSvcImg]=useState({}); const [bannerUrl,setBannerUrl]=useState(""); const banner=f.blocks.find(b=>b.section==="banner"&&b.url);
   const [hubImg,setHubImg]=useState({}); const [hubPick,setHubPick]=useState(["real_estate","retail","gcc","ai"]); const [hubUrl,setHubUrl]=useState({}); const [aiPick,setAiPick]=useState([]); const [aiQ,setAiQ]=useState("");
   useEffect(()=>{ if(site?.hubs) setHubUrl(p=>({...site.hubs,...Object.fromEntries(Object.entries(p).filter(([,v])=>v))})); },[site]);
   const wItems=siteItems.filter(it=>wCat==="all"||(it.groups||[]).includes(wCat));
@@ -34707,15 +34707,16 @@ function MktEditor({init,ov,onClose}) {
     return {...p,blocks:[...bl.slice(0,idx),...tagged,...bl.slice(idx)]};
   });
   const resetStructure=async()=>{ if(!confirm("Replace this email with the default structure? Your current blocks will be lost.")) return; try{ const d=await sApi.post("welcome_reset",{market:f.audience?.market}); setF(p=>({...p,subject:d.subject,preheader:d.preheader,blocks:d.blocks})); setMsg("Reset. Save to keep it."); }catch(e){ setMsg(e.message); } };
-  useEffect(()=>{ if(init.welcome) loadSite(false); },[]);
+  useEffect(()=>{ if(f.channel==="email") loadSite(false); },[]);
   const secCount=n=>f.blocks.filter(b=>b.section===n&&(b.type==="card"||b.type==="text"||b.type==="image")).length;
   // Sara reads the brief and picks intro / services / AI content projects / portfolio categories / recent projects / banner. Only those sections are filled; the rest of the email stays as it is.
   const runSara=async()=>{
     setSaraBusy(true); setMsg("");
     try{
-      const d=await sApi.post("welcome_sara",{brief:sBrief,market:f.audience?.market});
+      const d=await sApi.post("welcome_sara",{brief:sBrief,market:f.audience?.market,kind:init.welcome?"intro":"newsletter"});
       const byUrl=u=>siteItems.find(x=>x.url===u);
       const card=it=>({type:"card",title:it.title,text:it.summary||"",image:it.image||"",url:it.url,button:"View project"});
+      if(d.offer&&d.offer.title) addSection("offer",[{type:"offer",tag:d.offer.badge||"",title:d.offer.title,text:d.offer.text||""}]);
       const bn=d.banner&&byUrl(d.banner); if(bn&&bn.image) addSection("banner",[{type:"image",url:bn.image,alt:bn.title,link:bn.url}]);
       if(d.intro) addSection("intro",[{type:"text",text:W_INTRO[d.intro]||d.intro}]);
       if(d.services?.length) addSection("services",W_SERVICES.filter(sv=>d.services.includes(sv.k)).map(sv=>({type:"card",title:sv.title,text:sv.text,icon:sv.icon,image:"",url:"https://admepro.com",button:"Learn more"})));
@@ -34738,7 +34739,7 @@ function MktEditor({init,ov,onClose}) {
     try{ const d=await mApi.post("audience_count",{channel:f.channel,audience:f.audience}); if(!confirm(`Send to ${d.count} people ${when?"on "+n:"now"}?`)) return;
       await mApi.post("schedule",{id,at:when?when.replace("T"," ")+":00":""}); onClose(); }catch(e){ setMsg(e.message); } };
   const tpl=(tpls?.rows||[]).find(t=>t.name===f.wa_template&&t.lang===f.wa_lang);
-  const BLOCK_TYPES=[["heading","Heading"],["text","Text"],["image","Image"],["button","Button"],["card","Project / article card"],["divider","Divider"]];
+  const BLOCK_TYPES=[["heading","Heading"],["text","Text"],["image","Image"],["button","Button"],["card","Project / article card"],["offer","Offer card"],["divider","Divider"]];
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
@@ -34750,42 +34751,16 @@ function MktEditor({init,ov,onClose}) {
       <div style={{display:"grid",gridTemplateColumns:isEmail?"repeat(auto-fit,minmax(320px,1fr))":"1fr",gap:12,alignItems:"start"}}>
         <div style={{display:"flex",flexDirection:"column",gap:12,minWidth:0}}>
           {isEmail?<>
-            {!init.welcome&&<div style={{...gCard,display:"flex",flexDirection:"column",gap:8,background:"linear-gradient(135deg,var(--accent)0d,transparent)"}}>
-              <b style={{fontSize:13}}>✨ Write with Sara</b>
-              <textarea value={brief} onChange={e=>setBrief(e.target.value)} rows={3} placeholder="e.g. Ramadan offer: 20% off social media packages for new clients until end of month. Mention our new video production studio." style={{...inputSt,resize:"vertical"}}/>
-              <div style={{borderTop:"1px dashed var(--border2)",paddingTop:8,display:"flex",flexDirection:"column",gap:6}}>
-                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-                  <b style={{fontSize:12}}>🌐 Build it from our website</b>
-                  <button style={wBtn(false)} disabled={siteBusy} onClick={()=>loadSite(!!site)}>{siteBusy?"Loading…":site?"Refresh":"Choose projects & articles"}</button>
-                  {picked.length>0?<span style={{fontSize:12,color:"var(--text2)"}}>{picked.length} picked — Sara will link readers to them</span>:<label style={{display:"flex",gap:6,alignItems:"center",fontSize:12,cursor:"pointer"}}><input type="checkbox" checked={autoPick} onChange={e=>setAutoPick(e.target.checked)}/> Nothing picked: let Sara choose the best pages for my brief</label>}
-                </div>
-                {site?.error&&<div style={{fontSize:12,color:"#dc2626"}}>{site.error}</div>}
-                {site&&!site.error&&siteItems.length===0&&<div style={{fontSize:12,color:"var(--text3)"}}>No live projects or articles found on the site yet.</div>}
-                {siteItems.length>0&&<div style={{maxHeight:200,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
-                  {siteItems.map(it=>(
-                    <label key={it.url} style={{display:"flex",gap:8,alignItems:"center",fontSize:12,cursor:"pointer",padding:"4px 6px",borderRadius:8,background:picked.includes(it.url)?"var(--accent)12":"transparent"}}>
-                      <input type="checkbox" checked={picked.includes(it.url)} onChange={e=>setPicked(p=>e.target.checked?(p.length>=6?p:[...p,it.url]):p.filter(x=>x!==it.url))}/>
-                      {it.image&&<img src={it.image} alt="" style={{width:34,height:34,objectFit:"cover",borderRadius:6}}/>}
-                      <span style={{flex:1,minWidth:0}}><b>{it.title}</b><span style={{color:"var(--text3)"}}> · {it.kind==="article"?"Article":"Project"}</span></span>
-                    </label>
-                  ))}
-                </div>}
-              </div>
-              <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                <button style={gPill(lang==="en")} onClick={()=>setLang("en")}>English</button><button style={gPill(lang==="ar")} onClick={()=>setLang("ar")}>Arabic</button>
-                <div style={{flex:1}}/><button style={wBtn(true)} disabled={writing||(!brief.trim()&&picked.length===0)} onClick={write}>{writing?"Writing…":"Draft it"}</button>
-              </div>
-            </div>}
-            {init.welcome&&<div style={{...gCard,display:"flex",flexDirection:"column",gap:12,background:"linear-gradient(135deg,var(--accent)0d,transparent)"}}>
+            {isEmail&&<div style={{...gCard,display:"flex",flexDirection:"column",gap:12,background:"linear-gradient(135deg,var(--accent)0d,transparent)"}}>
               <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                 <b style={{fontSize:13}}>🧩 Build the email</b>
                 <span style={{fontSize:11,color:"var(--text3)",flex:1}}>Each choice replaces only its own section. The rest of the email stays as it is.</span>
-                <button style={wBtn(false)} onClick={resetStructure}>Reset to default structure</button>
+                {init.welcome&&<button style={wBtn(false)} onClick={resetStructure}>Reset to default structure</button>}
               </div>
               <style>{".wsec{border:1px solid var(--border);border-radius:12px;background:var(--surface)}.wsec>.wsec-h{display:flex;align-items:center;gap:8px;padding:11px 14px;cursor:pointer;font-size:12px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.04em}.wsec>:not(.wsec-h){margin:0 14px 12px}.wsec[data-open='0']>:not(.wsec-h){display:none !important}.wsec[data-open='1']>.wsec-h{color:var(--accent)}.wsec textarea,.wsec input:not([type=checkbox]),.wsec select{box-sizing:border-box;max-width:100%}.wsec>textarea,.wsec>input,.wsec>select{width:calc(100% - 28px)}"}</style>
               <div className="wsec" data-open={openSec==="sara"?"1":"0"}>
                 <div className="wsec-h" onClick={()=>setOpenSec(openSec==="sara"?"":"sara")}><span style={{flex:1}}>✨ Build with Sara</span><span>{openSec==="sara"?"▾":"▸"}</span></div>
-                <div style={{fontSize:11,color:"var(--text3)"}}>Write who this contact is and what to stress. Sara chooses the intro, services, portfolio categories, recent projects and banner from your real website, and fills the sections below. The structure stays; you can still change any section by hand.</div>
+                <div style={{fontSize:11,color:"var(--text3)"}}>Write who this email is for and what to stress (an offer, a launch, a market). Sara chooses the intro, services, portfolio categories, recent projects and banner from your real website, and fills the sections below. The structure stays; you can still change any section by hand.</div>
                 <textarea value={sBrief} onChange={e=>setSBrief(e.target.value)} rows={3} placeholder="e.g. Real estate developer in Riyadh, planning a new launch. Stress real estate marketing and AI content, show our GCC work." style={{...inputSt,resize:"vertical"}}/>
                 <div><button style={wBtn(true)} disabled={saraBusy||sBrief.trim().length<8} onClick={runSara}>{saraBusy?"Sara is choosing…":"Let Sara build it"}</button></div>
               </div>
@@ -34808,6 +34783,18 @@ function MktEditor({init,ov,onClose}) {
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                   {[["short","Short"],["full","Full"]].map(([k,lb])=><button key={k} style={gPill(false)} onClick={()=>addSection("intro",[{type:"text",text:W_INTRO[k]}])}>{hasSection("intro")?"Replace with ":"Add "}{lb}</button>)}
                   {hasSection("intro")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("intro",[])}>Remove intro</button>}
+                </div>
+              </div>
+              <div className="wsec" data-open={openSec==="offer"?"1":"0"}>
+                <div className="wsec-h" onClick={()=>setOpenSec(openSec==="offer"?"":"offer")}><span style={{flex:1}}>Offer card</span>{(hasSection("offer"))&&<span style={{fontSize:10,fontWeight:800,padding:"2px 8px",borderRadius:999,background:"#16a34a22",color:"#16a34a",textTransform:"none"}}>Added</span>}<span>{openSec==="offer"?"▾":"▸"}</span></div>
+                <div style={{fontSize:11,color:"var(--text3)"}}>A big, bold dark card: headline first, a short paragraph under it, and an optional button. Good for an offer, a launch or an announcement.</div>
+                <input value={offerF.tag} onChange={e=>setOfferF(p=>({...p,tag:e.target.value}))} placeholder="Badge (optional), e.g. Limited offer" style={inputSt}/>
+                <input value={offerF.title} onChange={e=>setOfferF(p=>({...p,title:e.target.value}))} placeholder="Headline (big and bold)" style={{...inputSt,fontWeight:800}}/>
+                <textarea value={offerF.text} onChange={e=>setOfferF(p=>({...p,text:e.target.value}))} rows={3} placeholder="Paragraph under the headline" style={{...inputSt,resize:"vertical"}}/>
+                <div style={{display:"flex",gap:6}}><input value={offerF.button} onChange={e=>setOfferF(p=>({...p,button:e.target.value}))} placeholder="Button text (optional)" style={{...inputSt,flex:1,minWidth:0}}/><input value={offerF.url} onChange={e=>setOfferF(p=>({...p,url:e.target.value}))} placeholder="Button link https://…" style={{...inputSt,flex:2,minWidth:0}}/></div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  <button style={wBtn(true)} disabled={!offerF.title.trim()} onClick={()=>addSection("offer",[{type:"offer",tag:offerF.tag.trim(),title:offerF.title.trim(),text:offerF.text.trim(),button:offerF.button.trim(),url:/^https?:\/\//i.test(offerF.url.trim())?offerF.url.trim():""}])}>{hasSection("offer")?"Replace offer card":"Add offer card"}</button>
+                  {hasSection("offer")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("offer",[])}>Remove offer card</button>}
                 </div>
               </div>
               <div className="wsec" data-open={openSec==="services"?"1":"0"}>
@@ -34870,9 +34857,10 @@ function MktEditor({init,ov,onClose}) {
             <div style={{...gCard,display:"flex",flexDirection:"column",gap:10}}>
               <b style={{fontSize:14}}>Content</b>
               {f.blocks.map((b,i)=>(
-                <div key={i} style={{border:"1px solid var(--border)",borderRadius:10,padding:10,display:"flex",flexDirection:"column",gap:6}}>
+                <div key={i} data-blk={i} onDragOver={e=>{ if(dragI!==null){ e.preventDefault(); if(overI!==i) setOverI(i); } }} onDrop={e=>{ e.preventDefault(); if(dragI!==null&&dragI!==i){ const a=[...f.blocks]; const [m]=a.splice(dragI,1); a.splice(i,0,m); s("blocks",a); } setDragI(null); setOverI(null); }} style={{border:"1px solid var(--border)",borderTop:overI===i&&dragI!==null&&dragI!==i?"3px solid var(--accent)":"1px solid var(--border)",borderRadius:10,padding:10,display:"flex",flexDirection:"column",gap:6,opacity:dragI===i?0.45:1}}>
                   <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <span style={{fontSize:11,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",flex:1}}>{b.type}</span>
+                    <span draggable title="Drag to move this block" onDragStart={e=>{ setDragI(i); try{ e.dataTransfer.effectAllowed="move"; e.dataTransfer.setData("text/plain",String(i)); const el=e.currentTarget.closest("[data-blk]"); if(el) e.dataTransfer.setDragImage(el,20,20); }catch(err){} }} onDragEnd={()=>{ setDragI(null); setOverI(null); }} style={{cursor:"grab",fontSize:16,lineHeight:1,padding:"0 4px",color:"var(--text3)",userSelect:"none"}}>⠿</span>
+                    <span style={{fontSize:11,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",flex:1}}>{b.type==="card"?"card · "+(b.title||"").slice(0,28):b.type==="offer"?"offer · "+(b.title||"").slice(0,28):b.type}</span>
                     <button onClick={()=>move(i,-1)} style={{fontSize:12,padding:"2px 6px"}}>↑</button><button onClick={()=>move(i,1)} style={{fontSize:12,padding:"2px 6px"}}>↓</button>
                     <button onClick={()=>s("blocks",f.blocks.filter((_,j)=>j!==i))} style={{fontSize:12,padding:"2px 6px",color:"#dc2626"}}>✕</button>
                   </div>
@@ -34880,6 +34868,7 @@ function MktEditor({init,ov,onClose}) {
                   {b.type==="text"&&<textarea value={b.text||""} onChange={e=>setBlock(i,{text:e.target.value})} rows={4} style={{...inputSt,resize:"vertical"}}/>}
                   {b.type==="image"&&<><input value={b.url||""} onChange={e=>setBlock(i,{url:e.target.value})} placeholder="Image URL (https://…)" style={inputSt}/><input value={b.link||""} onChange={e=>setBlock(i,{link:e.target.value})} placeholder="Link when clicked (optional)" style={inputSt}/></>}
                   {b.type==="card"&&<><input value={b.title||""} onChange={e=>setBlock(i,{title:e.target.value})} placeholder="Title" style={{...inputSt,fontWeight:700}}/><textarea value={b.text||""} onChange={e=>setBlock(i,{text:e.target.value})} rows={2} placeholder="One line that makes them click" style={{...inputSt,resize:"vertical"}}/><div style={{display:"flex",gap:6}}><input value={b.image||""} onChange={e=>setBlock(i,{image:e.target.value})} placeholder="Image URL" style={{...inputSt,flex:3}}/><input value={b.icon||""} onChange={e=>setBlock(i,{icon:e.target.value})} placeholder="Icon (e.g. i:social, i:brand, i:video) if no image" style={{...inputSt,flex:2}}/></div><div style={{display:"flex",gap:6}}><input value={b.button||""} onChange={e=>setBlock(i,{button:e.target.value})} placeholder="Button text" style={{...inputSt,flex:1}}/><input value={b.url||""} onChange={e=>setBlock(i,{url:e.target.value})} placeholder="https://…" style={{...inputSt,flex:2}}/></div></>}
+                  {b.type==="offer"&&<><input value={b.tag||""} onChange={e=>setBlock(i,{tag:e.target.value})} placeholder="Badge (optional)" style={inputSt}/><input value={b.title||""} onChange={e=>setBlock(i,{title:e.target.value})} placeholder="Headline (big and bold)" style={{...inputSt,fontWeight:800}}/><textarea value={b.text||""} onChange={e=>setBlock(i,{text:e.target.value})} rows={3} placeholder="Paragraph under the headline" style={{...inputSt,resize:"vertical"}}/><div style={{display:"flex",gap:6}}><input value={b.button||""} onChange={e=>setBlock(i,{button:e.target.value})} placeholder="Button text (optional)" style={{...inputSt,flex:1}}/><input value={b.url||""} onChange={e=>setBlock(i,{url:e.target.value})} placeholder="https://…" style={{...inputSt,flex:2}}/></div></>}
                   {b.type==="button"&&<div style={{display:"flex",gap:6}}><input value={b.text||""} onChange={e=>setBlock(i,{text:e.target.value})} placeholder="Button text" style={{...inputSt,flex:1}}/><input value={b.url||""} onChange={e=>setBlock(i,{url:e.target.value})} placeholder="https://…" style={{...inputSt,flex:2}}/></div>}
                 </div>))}
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{BLOCK_TYPES.map(([k,lb])=><button key={k} style={wBtn(false)} onClick={()=>s("blocks",[...f.blocks,{type:k,text:"",url:k==="button"?"https://admepro.com":""}])}>+ {lb}</button>)}</div>
