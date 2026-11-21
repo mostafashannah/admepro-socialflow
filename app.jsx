@@ -34690,7 +34690,7 @@ function MktEditor({init,ov,onClose}) {
   const siteItems=[...(site?.projects||[]),...(site?.posts||[])];
   const [svcPick,setSvcPick]=useState(["social","brand","video"]); const [wCat,setWCat]=useState("all"); const [wPick,setWPick]=useState([]);
   const [openSec,setOpenSec]=useState("sara"); const [sBrief,setSBrief]=useState(""); const [saraBusy,setSaraBusy]=useState(false); const [svcImg,setSvcImg]=useState({}); const [bannerUrl,setBannerUrl]=useState(""); const banner=f.blocks.find(b=>b.section==="banner"&&b.url);
-  const [hubPick,setHubPick]=useState(["real_estate","retail","gcc","ai"]); const [hubUrl,setHubUrl]=useState({}); const [aiPick,setAiPick]=useState([]); const [aiQ,setAiQ]=useState("");
+  const [hubImg,setHubImg]=useState({}); const [hubPick,setHubPick]=useState(["real_estate","retail","gcc","ai"]); const [hubUrl,setHubUrl]=useState({}); const [aiPick,setAiPick]=useState([]); const [aiQ,setAiQ]=useState("");
   useEffect(()=>{ if(site?.hubs) setHubUrl(p=>({...site.hubs,...Object.fromEntries(Object.entries(p).filter(([,v])=>v))})); },[site]);
   const wItems=siteItems.filter(it=>wCat==="all"||(it.groups||[]).includes(wCat));
   const loadSite=async(refresh)=>{ setSiteBusy(true); try{ setSite(await mApi.get("site_content",refresh?{refresh:1}:{})); }catch(e){ setSite({error:e.message,projects:[],posts:[]}); } finally{ setSiteBusy(false); } };
@@ -34719,9 +34719,8 @@ function MktEditor({init,ov,onClose}) {
       const bn=d.banner&&byUrl(d.banner); if(bn&&bn.image) addSection("banner",[{type:"image",url:bn.image,alt:bn.title,link:bn.url}]);
       if(d.intro) addSection("intro",[{type:"text",text:W_INTRO[d.intro]||d.intro}]);
       if(d.services?.length) addSection("services",W_SERVICES.filter(sv=>d.services.includes(sv.k)).map(sv=>({type:"card",title:sv.title,text:sv.text,icon:sv.icon,image:"",url:"https://admepro.com",button:"Learn more"})));
-      const ai=(d.ai_projects||[]).map(byUrl).filter(Boolean); if(ai.length) addSection("ai",[{type:"heading",text:"Recent AI content projects"},...ai.map(card)]);
       const hubs=W_HUBS.filter(h=>(d.hubs||[]).includes(h.k)&&/^https?:\/\//i.test(hubUrl[h.k]||""));
-      if(hubs.length) addSection("hubs",[{type:"heading",text:"Our work"},...hubs.map(h=>({type:"card",title:h.title,text:h.text,icon:h.icon,image:(site?.hub_images?.[h.k])||(siteItems.find(it=>it.image&&(it.groups||[]).includes(h.k))||{}).image||"",url:hubUrl[h.k].trim(),button:"See our work"}))]);
+      if(hubs.length) addSection("hubs",[{type:"heading",text:"Our work"},...hubs.map(h=>({type:"card",title:h.title,text:h.text,icon:h.icon,image:hubImg[h.k]||(site?.hub_images?.[h.k])||(siteItems.find(it=>it.image&&(it.groups||[]).includes(h.k))||{}).image||"",url:hubUrl[h.k].trim(),button:"See our work"}))]);
       const pr=(d.projects||[]).map(byUrl).filter(Boolean); if(pr.length) addSection("portfolio",[{type:"heading",text:"Recent projects"},...pr.map(card)]);
       setF(p=>({...p,subject:d.subject||p.subject,preheader:d.preheader||p.preheader}));
       setMsg("Sara built it: "+(d.note||"done")+" (not saved yet, check the preview, then Save draft)");
@@ -34786,7 +34785,7 @@ function MktEditor({init,ov,onClose}) {
               <style>{".wsec{border:1px solid var(--border);border-radius:12px;background:var(--surface)}.wsec>.wsec-h{display:flex;align-items:center;gap:8px;padding:11px 14px;cursor:pointer;font-size:12px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.04em}.wsec>:not(.wsec-h){margin:0 14px 12px}.wsec[data-open='0']>:not(.wsec-h){display:none !important}.wsec[data-open='1']>.wsec-h{color:var(--accent)}"}</style>
               <div className="wsec" data-open={openSec==="sara"?"1":"0"}>
                 <div className="wsec-h" onClick={()=>setOpenSec(openSec==="sara"?"":"sara")}><span style={{flex:1}}>✨ Build with Sara</span><span>{openSec==="sara"?"▾":"▸"}</span></div>
-                <div style={{fontSize:11,color:"var(--text3)"}}>Write who this contact is and what to stress. Sara chooses the intro, services, AI content projects, portfolio categories, recent projects and banner from your real website, and fills the sections below. The structure stays; you can still change any section by hand.</div>
+                <div style={{fontSize:11,color:"var(--text3)"}}>Write who this contact is and what to stress. Sara chooses the intro, services, portfolio categories, recent projects and banner from your real website, and fills the sections below. The structure stays; you can still change any section by hand.</div>
                 <textarea value={sBrief} onChange={e=>setSBrief(e.target.value)} rows={3} placeholder="e.g. Real estate developer in Riyadh, planning a new launch. Stress real estate marketing and AI content, show our GCC work." style={{...inputSt,resize:"vertical"}}/>
                 <div><button style={wBtn(true)} disabled={saraBusy||sBrief.trim().length<8} onClick={runSara}>{saraBusy?"Sara is choosing…":"Let Sara build it"}</button></div>
               </div>
@@ -34826,36 +34825,25 @@ function MktEditor({init,ov,onClose}) {
                   {hasSection("services")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("services",[])}>Remove services</button>}
                 </div>
               </div>
-              <div className="wsec" data-open={openSec==="ai"?"1":"0"}>
-                <div className="wsec-h" onClick={()=>setOpenSec(openSec==="ai"?"":"ai")}><span style={{flex:1}}>3 · AI content projects</span>{(secCount("ai")>0)&&<span style={{fontSize:10,fontWeight:800,padding:"2px 8px",borderRadius:999,background:"#16a34a22",color:"#16a34a",textTransform:"none"}}>{secCount("ai")} added</span>}<span>{openSec==="ai"?"▾":"▸"}</span></div>
-                <div style={{fontSize:11,color:"var(--text3)"}}>Pick the website projects that show our AI content work (for example clients with AI-made content). They replace the AI section of the email.</div>
-                <input value={aiQ} onChange={e=>setAiQ(e.target.value)} placeholder="Search website projects…" style={inputSt}/>
-                {siteItems.length>0&&<div style={{maxHeight:180,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
-                  {siteItems.filter(it=>it.kind==="project"&&(!aiQ.trim()||it.title.toLowerCase().includes(aiQ.trim().toLowerCase()))).map(it=><label key={it.url} style={{display:"flex",gap:8,alignItems:"center",fontSize:12,cursor:"pointer",padding:"4px 6px",borderRadius:8,background:aiPick.includes(it.url)?"var(--accent)12":"transparent"}}>
-                    <input type="checkbox" checked={aiPick.includes(it.url)} onChange={e=>setAiPick(p=>e.target.checked?(p.length>=4?p:[...p,it.url]):p.filter(x=>x!==it.url))}/>
-                    {it.image&&<img src={it.image} alt="" style={{width:30,height:30,objectFit:"cover",borderRadius:6}}/>}
-                    <span style={{flex:1,minWidth:0}}><b>{it.title}</b></span>
-                  </label>)}
-                </div>}
-                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  <button style={wBtn(true)} disabled={aiPick.length===0} onClick={()=>{ const chosen=aiPick.map(u=>siteItems.find(x=>x.url===u)).filter(Boolean); addSection("ai",[{type:"heading",text:"Recent AI content projects"},...chosen.map(it=>({type:"card",title:it.title,text:it.summary||"",image:it.image||"",url:it.url,button:"View project"}))]); }}>{hasSection("ai")?"Replace AI content projects":"Add AI content projects"} ({aiPick.length})</button>
-                  {hasSection("ai")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("ai",[])}>Remove AI section</button>}
-                </div>
-              </div>
               <div className="wsec" data-open={openSec==="hubs"?"1":"0"}>
-                <div className="wsec-h" onClick={()=>setOpenSec(openSec==="hubs"?"":"hubs")}><span style={{flex:1}}>4 · Portfolio categories</span>{(secCount("hubs")>0)&&<span style={{fontSize:10,fontWeight:800,padding:"2px 8px",borderRadius:999,background:"#16a34a22",color:"#16a34a",textTransform:"none"}}>{secCount("hubs")} added</span>}<span>{openSec==="hubs"?"▾":"▸"}</span></div>
-                <div style={{fontSize:11,color:"var(--text3)"}}>One card per category. Pressing it opens that portfolio page on the website. Links are found automatically; fix or paste any that are empty.</div>
+                <div className="wsec-h" onClick={()=>setOpenSec(openSec==="hubs"?"":"hubs")}><span style={{flex:1}}>3 · Portfolio categories</span>{(secCount("hubs")>0)&&<span style={{fontSize:10,fontWeight:800,padding:"2px 8px",borderRadius:999,background:"#16a34a22",color:"#16a34a",textTransform:"none"}}>{secCount("hubs")} added</span>}<span>{openSec==="hubs"?"▾":"▸"}</span></div>
+                <div style={{fontSize:11,color:"var(--text3)"}}>One card per category. Pressing it opens that portfolio page on the website. Links are found automatically; fix or paste any that are empty. Choose which project the card takes its banner image from, or leave it automatic.</div>
                 {W_HUBS.map(h=><div key={h.k} style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                   <label style={{display:"flex",gap:6,alignItems:"center",fontSize:12,fontWeight:600,cursor:"pointer",flex:"0 0 210px"}}><input type="checkbox" checked={hubPick.includes(h.k)} onChange={e=>setHubPick(p=>e.target.checked?[...p,h.k]:p.filter(x=>x!==h.k))}/>{h.title}</label>
                   <input value={hubUrl[h.k]||""} onChange={e=>setHubUrl(p=>({...p,[h.k]:e.target.value}))} placeholder="https://admepro.com/…" style={{...inputSt,flex:"1 1 200px"}}/>
+                  {siteItems.some(it=>it.image)&&<div style={{flex:"1 1 100%",display:"flex",gap:8,alignItems:"center"}}>
+                    <span style={{fontSize:11,color:"var(--text3)",flex:"0 0 auto"}}>Image from</span>
+                    {hubImg[h.k]&&<img src={hubImg[h.k]} alt="" style={{width:44,height:28,objectFit:"cover",borderRadius:5}}/>}
+                    <select value={hubImg[h.k]||""} onChange={e=>setHubImg(p=>({...p,[h.k]:e.target.value}))} style={{...inputSt,flex:1,minWidth:0,fontSize:12,padding:"6px 8px"}}><option value="">Automatic (the category page image)</option>{siteItems.filter(it=>it.image).map(it=><option key={it.url} value={it.image}>{it.title}</option>)}</select>
+                  </div>}
                 </div>)}
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  <button style={wBtn(true)} disabled={!W_HUBS.some(h=>hubPick.includes(h.k)&&/^https?:\/\//i.test(hubUrl[h.k]||""))} onClick={()=>addSection("hubs",[{type:"heading",text:"Our work"},...W_HUBS.filter(h=>hubPick.includes(h.k)&&/^https?:\/\//i.test(hubUrl[h.k]||"")).map(h=>({type:"card",title:h.title,text:h.text,icon:h.icon,image:(site?.hub_images?.[h.k])||(siteItems.find(it=>it.image&&(it.groups||[]).includes(h.k))||{}).image||"",url:hubUrl[h.k].trim(),button:"See our work"}))])}>{hasSection("hubs")?"Replace category links":"Add category links"}</button>
+                  <button style={wBtn(true)} disabled={!W_HUBS.some(h=>hubPick.includes(h.k)&&/^https?:\/\//i.test(hubUrl[h.k]||""))} onClick={()=>addSection("hubs",[{type:"heading",text:"Our work"},...W_HUBS.filter(h=>hubPick.includes(h.k)&&/^https?:\/\//i.test(hubUrl[h.k]||"")).map(h=>({type:"card",title:h.title,text:h.text,icon:h.icon,image:hubImg[h.k]||(site?.hub_images?.[h.k])||(siteItems.find(it=>it.image&&(it.groups||[]).includes(h.k))||{}).image||"",url:hubUrl[h.k].trim(),button:"See our work"}))])}>{hasSection("hubs")?"Replace category links":"Add category links"}</button>
                   {hasSection("hubs")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("hubs",[])}>Remove category links</button>}
                 </div>
               </div>
               <div className="wsec" data-open={openSec==="portfolio"?"1":"0"}>
-                <div className="wsec-h" onClick={()=>setOpenSec(openSec==="portfolio"?"":"portfolio")}><span style={{flex:1}}>5 · Recent projects</span>{(secCount("portfolio")>0)&&<span style={{fontSize:10,fontWeight:800,padding:"2px 8px",borderRadius:999,background:"#16a34a22",color:"#16a34a",textTransform:"none"}}>{secCount("portfolio")} added</span>}<span>{openSec==="portfolio"?"▾":"▸"}</span></div>
+                <div className="wsec-h" onClick={()=>setOpenSec(openSec==="portfolio"?"":"portfolio")}><span style={{flex:1}}>4 · Recent projects</span>{(secCount("portfolio")>0)&&<span style={{fontSize:10,fontWeight:800,padding:"2px 8px",borderRadius:999,background:"#16a34a22",color:"#16a34a",textTransform:"none"}}>{secCount("portfolio")} added</span>}<span>{openSec==="portfolio"?"▾":"▸"}</span></div>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
                   {W_GROUPS.map(([k,lb])=><button key={k} style={gPill(wCat===k)} onClick={()=>setWCat(k)}>{lb}</button>)}
                   <button style={wBtn(false)} disabled={siteBusy} onClick={()=>loadSite(!!site)}>{siteBusy?"Loading…":site?"Refresh":"Load website projects"}</button>

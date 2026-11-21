@@ -181,9 +181,9 @@ case 'welcome_sara': {
     $sv = ''; foreach ($svc as $k => $v) $sv .= "- $k: $v\n"; $hb = ''; foreach ($hubs as $k => $v) $hb .= "- $k: $v\n";
     $prompt = "You are Sara, admepro's senior content creator. admepro is an AI-powered creative and digital marketing agency in Cairo. We are writing a first INTRODUCTION email to a new contact in this market: $market.\n\n"
         . "Brief from the team:\n$brief\n\nChoose what to include, ONLY from these lists.\nServices (key: name):\n$sv\nPortfolio category pages (key: name):\n$hb\nWebsite projects (url | title | groups | summary):\n" . ($menu ?: "(none available)\n") . "\n"
-        . "Rules: pick what fits the brief and the market, not everything. Max 4 services, max 3 AI content projects, max 4 portfolio categories, max 4 recent projects. AI content projects are projects that show AI-made content. Use real urls from the list only.\n"
+        . "Rules: pick what fits the brief and the market, not everything. Max 4 services, max 4 portfolio categories, max 4 recent projects. Use real urls from the list only.\n"
         . "intro: \"short\" or \"full\", or your own 2 to 3 sentence agency introduction (plain text, no claims about results or clients you cannot see in the lists).\n"
-        . "Return ONLY JSON: {\"subject\":\"...\",\"preheader\":\"...\",\"intro\":\"short|full|text\",\"services\":[keys],\"ai_projects\":[urls],\"hubs\":[keys],\"projects\":[urls],\"banner\":\"url of one project whose image fits best, or empty\",\"note\":\"one short sentence on what you chose and why\"}. Subject max 70 chars; you may use {{first_name}} and {{company}}.";
+        . "Return ONLY JSON: {\"subject\":\"...\",\"preheader\":\"...\",\"intro\":\"short|full|text\",\"services\":[keys],\"hubs\":[keys],\"projects\":[urls],\"banner\":\"url of one project whose image fits best, or empty\",\"note\":\"one short sentence on what you chose and why\"}. Subject max 70 chars; you may use {{first_name}} and {{company}}.";
     [$ok, $text, , $err] = gClaude(['max_tokens' => 1200, 'output_config' => ['effort' => 'low'], 'system' => 'Reply with ONE valid JSON object only, no other text.', 'messages' => [['role' => 'user', 'content' => $prompt]]], 90);
     if (!$ok) gOut(502, ['error' => $err ?: 'Sara could not answer, try again']);
     $j = gJson($text); if (!is_array($j)) gOut(502, ['error' => 'Sara\'s answer could not be read, try again']);
@@ -192,7 +192,7 @@ case 'welcome_sara': {
     $intro = trim((string)($j['intro'] ?? '')); if (!in_array($intro, ['short', 'full'], true)) $intro = mb_substr($intro, 0, 600);
     $banner = (string)($j['banner'] ?? ''); if (!isset($pool[$banner])) $banner = '';
     gOut(200, ['subject' => mb_substr(trim((string)($j['subject'] ?? '')), 0, 120), 'preheader' => mb_substr(trim((string)($j['preheader'] ?? '')), 0, 160), 'intro' => $intro,
-        'services' => $keys($j['services'] ?? [], $svc, 4), 'ai_projects' => $urls($j['ai_projects'] ?? [], 3), 'hubs' => $keys($j['hubs'] ?? [], $hubs, 4), 'projects' => $urls($j['projects'] ?? [], 4),
+        'services' => $keys($j['services'] ?? [], $svc, 4), 'hubs' => $keys($j['hubs'] ?? [], $hubs, 4), 'projects' => $urls($j['projects'] ?? [], 4),
         'banner' => $banner, 'note' => mb_substr(trim((string)($j['note'] ?? '')), 0, 240), 'site_error' => $site['error'] ?? null]);
 }
 case 'welcome_list': {
