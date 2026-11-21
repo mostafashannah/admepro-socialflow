@@ -22,6 +22,7 @@ function swMarket($country): string {
 function swDefaultCampaign(string $market): array {
     $about = 'admepro is an AI-powered creative and digital marketing agency based in Cairo. We build brands and run their social media, content and video production, websites and paid ads. We also create AI content (images, videos and campaign ideas) and use AI automation, so you get faster, smarter work from one team.';
     $blocks = [
+        ['type' => 'image', 'url' => '', 'alt' => 'admepro', 'link' => 'https://admepro.com', 'section' => 'banner'], // banner slot: choose the image in the builder (an empty banner is simply not shown)
         ['type' => 'text', 'text' => $market === 'gulf' ? 'Dear {{first_name}},' : 'Hi {{first_name}},'],
         ['type' => 'text', 'text' => $about, 'section' => 'intro'],
         ['type' => 'card', 'title' => 'Social media management', 'text' => 'Content planning, designs, reels, daily posting and community replies, with a monthly performance report.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'image' => '', 'section' => 'services'],
@@ -72,7 +73,7 @@ function swCampaign(PDO $pdo, string $market): array {
 /** The blocks with the lead's one personal sentence added after the greeting. */
 function swBlocks(array $camp, ?string $personal): array {
     $blocks = $camp['blocks']; $personal = trim((string)$personal);
-    if ($personal !== '') array_splice($blocks, min(1, count($blocks)), 0, [['type' => 'text', 'text' => $personal]]);
+    if ($personal !== '') { $gi = -1; foreach ($blocks as $i => $bl) if (($bl['type'] ?? '') === 'text' && empty($bl['section'])) { $gi = $i; break; } array_splice($blocks, $gi + 1, 0, [['type' => 'text', 'text' => $personal]]); }
     return $blocks;
 }
 

@@ -34675,7 +34675,7 @@ const W_SERVICES=[
   {k:"aicontent",title:"AI content creation",text:"AI-powered images, videos, copy and campaign ideas, produced fast and polished by our creative team so your content stays on brand."},
   {k:"ai",title:"AI automation and chatbots",text:"AI assistants that answer customers, capture leads and automate repetitive marketing work."}];
 const W_GROUPS=[["all","All"],["gcc","GCC"],["retail","Retail"],["ai","AI"],["real_estate","Real estate"],["food","Food & hospitality"],["auto","Automotive"]];
-const W_RANK={intro:1,services:2,ai:3,hubs:4,portfolio:5};
+const W_RANK={banner:0,intro:1,services:2,ai:3,hubs:4,portfolio:5};
 const W_HUBS=[
   {k:"real_estate",title:"Real Estate Marketing",text:"We build the full system: brand, content, and performance ads."},
   {k:"retail",title:"E-Commerce & Retail Growth",text:"Full-funnel marketing for online stores and retail brands."},
@@ -34689,6 +34689,7 @@ function MktEditor({init,ov,onClose}) {
   const [site,setSite]=useState(null); const [picked,setPicked]=useState([]); const [siteBusy,setSiteBusy]=useState(false); const [autoPick,setAutoPick]=useState(true);
   const siteItems=[...(site?.projects||[]),...(site?.posts||[])];
   const [svcPick,setSvcPick]=useState(["social","brand","video"]); const [wCat,setWCat]=useState("all"); const [wPick,setWPick]=useState([]);
+  const [bannerUrl,setBannerUrl]=useState(""); const banner=f.blocks.find(b=>b.section==="banner"&&b.url);
   const [hubPick,setHubPick]=useState(["real_estate","retail","gcc","ai"]); const [hubUrl,setHubUrl]=useState({}); const [aiPick,setAiPick]=useState([]); const [aiQ,setAiQ]=useState("");
   useEffect(()=>{ if(site?.hubs) setHubUrl(p=>({...site.hubs,...Object.fromEntries(Object.entries(p).filter(([,v])=>v))})); },[site]);
   const wItems=siteItems.filter(it=>wCat==="all"||(it.groups||[]).includes(wCat));
@@ -34702,7 +34703,7 @@ function MktEditor({init,ov,onClose}) {
     if(!nb.length) return {...p,blocks:bl};
     const tagged=nb.map(b=>({...b,section:name}));
     let idx=bl.findIndex(b=>b.section&&W_RANK[b.section]>W_RANK[name]);
-    if(idx<0){ if(name==="intro") idx=Math.min(1,bl.length); else { const bi=bl.map(b=>b.type).lastIndexOf("button"); idx=bi<0?bl.length:(bi>0&&bl[bi-1].type==="text"?bi-1:bi); } }
+    if(name==="banner") idx=0; else if(idx<0){ if(name==="intro"){ const gi=bl.findIndex(x=>x.type==="text"&&!x.section); idx=gi<0?Math.min(1,bl.length):gi+1; } else { const bi=bl.map(b=>b.type).lastIndexOf("button"); idx=bi<0?bl.length:(bi>0&&bl[bi-1].type==="text"?bi-1:bi); } }
     return {...p,blocks:[...bl.slice(0,idx),...tagged,...bl.slice(idx)]};
   });
   const resetStructure=async()=>{ if(!confirm("Replace this email with the default structure? Your current blocks will be lost.")) return; try{ const d=await sApi.post("welcome_reset",{market:f.audience?.market}); setF(p=>({...p,subject:d.subject,preheader:d.preheader,blocks:d.blocks})); setMsg("Reset. Save to keep it."); }catch(e){ setMsg(e.message); } };
@@ -34761,6 +34762,20 @@ function MktEditor({init,ov,onClose}) {
                 <b style={{fontSize:13}}>🧩 Build the email</b>
                 <span style={{fontSize:11,color:"var(--text3)",flex:1}}>Each choice replaces only its own section. The rest of the email stays as it is.</span>
                 <button style={wBtn(false)} onClick={resetStructure}>Reset to default structure</button>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                <span style={gLabel}>Banner (top of the email)</span>
+                {banner&&<div style={{display:"flex",gap:8,alignItems:"center"}}><img src={banner.url} alt="" style={{width:90,height:48,objectFit:"cover",borderRadius:8}}/><span style={{fontSize:12,color:"var(--text2)",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{banner.alt||"Banner set"}</span><button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("banner",[])}>Remove banner</button></div>}
+                <div style={{fontSize:11,color:"var(--text3)"}}>Click a website project to use its image as the banner (the banner links to that project), or paste an image link.</div>
+                {siteItems.filter(it=>it.image).length>0&&<div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:4}}>
+                  {siteItems.filter(it=>it.image).map(it=><div key={it.url} title={it.title} onClick={()=>addSection("banner",[{type:"image",url:it.image,alt:it.title,link:it.url}])} style={{flex:"0 0 auto",width:96,cursor:"pointer",border:"2px solid "+(banner&&banner.url===it.image?"var(--accent)":"transparent"),borderRadius:8,overflow:"hidden"}}>
+                    <img src={it.image} alt={it.title} style={{display:"block",width:"100%",height:56,objectFit:"cover"}}/>
+                    <div style={{fontSize:10,padding:"2px 4px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{it.title}</div></div>)}
+                </div>}
+                <div style={{display:"flex",gap:6}}>
+                  <input value={bannerUrl} onChange={e=>setBannerUrl(e.target.value)} placeholder="Or paste an image link (https://…)" style={{...inputSt,flex:1}}/>
+                  <button style={wBtn(false)} disabled={!/^https?:\/\//i.test(bannerUrl.trim())} onClick={()=>{ addSection("banner",[{type:"image",url:bannerUrl.trim(),alt:"admepro",link:"https://admepro.com"}]); setBannerUrl(""); }}>Use link</button>
+                </div>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
                 <span style={gLabel}>1 · Agency intro</span>
