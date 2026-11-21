@@ -34789,7 +34789,7 @@ function MktEditor({init,ov,onClose}) {
                   </label>)}
                 </div>}
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  <button style={wBtn(true)} disabled={aiPick.length===0} onClick={()=>{ const chosen=aiPick.map(u=>siteItems.find(x=>x.url===u)).filter(Boolean); addSection("ai",[{type:"heading",text:"AI content projects"},...chosen.map(it=>({type:"card",title:it.title,text:it.summary||"",image:it.image||"",url:it.url,button:"View project"}))]); }}>{hasSection("ai")?"Replace AI content projects":"Add AI content projects"} ({aiPick.length})</button>
+                  <button style={wBtn(true)} disabled={aiPick.length===0} onClick={()=>{ const chosen=aiPick.map(u=>siteItems.find(x=>x.url===u)).filter(Boolean); addSection("ai",[{type:"heading",text:"Recent AI content projects"},...chosen.map(it=>({type:"card",title:it.title,text:it.summary||"",image:it.image||"",url:it.url,button:"View project"}))]); }}>{hasSection("ai")?"Replace AI content projects":"Add AI content projects"} ({aiPick.length})</button>
                   {hasSection("ai")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("ai",[])}>Remove AI section</button>}
                 </div>
               </div>
@@ -34821,7 +34821,7 @@ function MktEditor({init,ov,onClose}) {
                   </label>)}
                 </div>}
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  <button style={wBtn(true)} disabled={wPick.length===0} onClick={()=>{ const chosen=wPick.map(u=>siteItems.find(x=>x.url===u)).filter(Boolean); addSection("portfolio",[{type:"heading",text:wCat==="all"?"Selected work":"Selected work: "+(W_GROUPS.find(x=>x[0]===wCat)||[,""])[1]},...chosen.map(it=>({type:"card",title:it.title,text:it.summary||"",image:it.image||"",url:it.url,button:it.kind==="article"?"Read more":"View project"}))]); }}>{hasSection("portfolio")?"Replace portfolio":"Add portfolio"} ({wPick.length})</button>
+                  <button style={wBtn(true)} disabled={wPick.length===0} onClick={()=>{ const chosen=wPick.map(u=>siteItems.find(x=>x.url===u)).filter(Boolean); addSection("portfolio",[{type:"heading",text:"Recent projects"},...chosen.map(it=>({type:"card",title:it.title,text:it.summary||"",image:it.image||"",url:it.url,button:it.kind==="article"?"Read more":"View project"}))]); }}>{hasSection("portfolio")?"Replace portfolio":"Add portfolio"} ({wPick.length})</button>
                   {hasSection("portfolio")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("portfolio",[])}>Remove portfolio</button>}
                 </div>
               </div>
