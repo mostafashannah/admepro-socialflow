@@ -192,8 +192,7 @@ function gRenderEmail(array $camp, array $contact = [], $sendId = null) {
             else $body .= '<div style="margin:8px 0 18px;border-radius:14px;overflow:hidden">' . $wrapped . '</div>';
         }
         elseif ($t === 'button' && !empty($b['url'])) {
-            $wa = (bool)preg_match('#wa\.me|whatsapp#i', (string)$b['url']); $bg = $wa ? '#16a34a' : '#d90b2c';
-            $body .= '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:12px 0 22px"><tr><td style="background:' . $bg . ';border-radius:999px"><a href="' . $link($b['url']) . '" style="display:inline-block;padding:14px 30px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none">' . ($wa ? '&#128172; ' : '') . gH($txt) . '</a></td></tr></table>';
+            $body .= '<table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:14px auto 24px"><tr><td align="center" style="background:#d90b2c;border-radius:999px"><a href="' . $link($b['url']) . '" style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none">' . gH($txt) . '</a></td></tr></table>';
         }
         elseif ($t === 'divider') $body .= '<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>';
     }
