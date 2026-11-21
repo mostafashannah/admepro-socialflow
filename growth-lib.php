@@ -104,6 +104,20 @@ function gSiteGroups(string $hay): array {
     return $out;
 }
 
+/** The agency logo for email headers (Logo Versions in Branding): the horizontal logo first, never an SVG (many mail apps block SVG). '' when none is uploaded. */
+function gBrandLogoUrl(): string {
+    static $url = null; if ($url !== null) return $url;
+    $url = '';
+    try {
+        $r = gPdo()->query("SELECT secondary_logo, light_logo, primary_logo FROM branding_assets WHERE setting_key='agency_branding' LIMIT 1")->fetch(PDO::FETCH_ASSOC) ?: [];
+        foreach (['secondary_logo', 'light_logo', 'primary_logo'] as $slot) {
+            $v = (string)($r[$slot] ?? ''); if ($v === '' || stripos($v, 'data:image/svg') === 0) continue;
+            $url = gBase() . '/brand-logo.php?' . http_build_query(['slot' => $slot, 'v' => substr(md5($v), 0, 8)]); break;
+        }
+    } catch (Throwable $e) { error_log('[brand-logo] ' . $e->getMessage()); }
+    return $url;
+}
+
 /** Links shown in the footer of EVERY email built on the newsletter template. Override in config.php with define('MARKETING_LINKS', ['Website' => 'https://…', …]). */
 function gBrandLinks(): array {
     if (defined('MARKETING_LINKS') && is_array(MARKETING_LINKS)) return MARKETING_LINKS;
@@ -137,6 +151,10 @@ function gRenderEmail(array $camp, array $contact = [], $sendId = null) {
             . (!empty($b['text']) ? '<div style="margin-top:6px;font-size:14px;line-height:1.6;color:#4b5563">' . nl2br(gH(gMergeTags($b['text'], $contact))) . '</div>' : '')
             . '<div style="margin-top:12px"><a href="' . $link($b['url']) . '" style="color:#d90b2c;font-weight:700;font-size:14px;text-decoration:none">' . gH($b['button'] ?? 'Read more') . ' →</a></div></div></td></tr></table>';
     }
+    $logoUrl = gBrandLogoUrl();
+    $logoHtml = $logoUrl !== ''
+        ? '<img src="' . gH($logoUrl) . '" alt="admepro" height="40" style="display:block;height:40px;width:auto;max-width:240px;border:0"/>'
+        : '<table cellpadding="0" cellspacing="0"><tr><td><img src="' . gH(gBase() . '/icon-192.png') . '" alt="" width="34" height="34" style="display:block;border-radius:8px"/></td><td style="padding-left:10px;font-size:20px;font-weight:800;color:#111827;letter-spacing:-0.3px">admepro</td></tr></table>';
     $brand = ''; foreach (gBrandLinks() as $lab => $u) $brand .= '<a href="' . $link($u) . '" style="display:inline-block;margin:0 9px 6px;font-size:13px;font-weight:600;color:#374151;text-decoration:underline">' . gH($lab) . '</a>';
     $brand = $brand !== '' ? '<div style="margin:0 0 10px">' . $brand . '</div>' : '';
     $pre = gH(gMergeTags($camp['preheader'] ?? '', $contact));
@@ -147,7 +165,7 @@ function gRenderEmail(array $camp, array $contact = [], $sendId = null) {
 <div style="display:none;max-height:0;overflow:hidden;opacity:0">' . $pre . '</div>
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:28px 12px"><tr><td align="center">
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb">
-<tr><td style="padding:24px 32px 4px"><table cellpadding="0" cellspacing="0"><tr><td><img src="' . gH(gBase() . '/icon-192.png') . '" alt="" width="34" height="34" style="display:block;border-radius:8px"/></td><td style="padding-left:10px;font-size:20px;font-weight:800;color:#111827;letter-spacing:-0.3px">admepro</td></tr></table></td></tr>
+<tr><td style="padding:24px 32px 4px">' . $logoHtml . '</td></tr>
 <tr><td style="padding:10px 32px 20px;text-align:' . ($rtl ? 'right' : 'left') . '">' . $body . '</td></tr>
 <tr><td style="padding:18px 32px 26px;border-top:1px solid #f3f4f6;font-size:12px;line-height:1.6;color:#9ca3af;text-align:center">
 ' . $brand . 'admepro · 145 El Banafsig 3, New Cairo, Cairo, Egypt<br/>You receive this because you are in touch with admepro. <a href="' . gH($unsub) . '" style="color:#6b7280">Unsubscribe</a>
