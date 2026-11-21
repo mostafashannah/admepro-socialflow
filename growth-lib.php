@@ -386,6 +386,17 @@ function gSiteContent($force = false) {
         }
         curl_multi_close($mh);
     }
+    // Portfolio hub pages (Real estate / E-commerce & retail / GCC & KSA / AI content): the shortest matching page in the sitemap, never an individual project.
+    $proj = array_flip(array_column(array_merge($out['projects'], $out['posts']), 'url'));
+    $hubRe = ['real_estate' => '#(^|[/-])real-?estate#i', 'retail' => '#e-?commerce|retail#i', 'gcc' => '#(^|[/-])(gcc|ksa|saudi|gulf)([/-]|$)#i', 'ai' => '#(^|[/-])ai([/-]|$)#i'];
+    $hubs = [];
+    foreach ($hubRe as $k => $re) {
+        $best = null;
+        foreach ($urls as $u) { if (strpos($u, '/ar/') !== false || isset($proj[$u])) continue; $p = trim((string)parse_url($u, PHP_URL_PATH), '/'); if ($p === '' || !preg_match($re, $p)) continue;
+            $d = substr_count($p, '/'); if (!$best || $d < $best[0] || ($d === $best[0] && strlen($p) < $best[1])) $best = [$d, strlen($p), $u]; }
+        $hubs[$k] = $best ? $best[2] : '';
+    }
+    $out['hubs'] = $hubs;
     @file_put_contents($cache, json_encode($out, JSON_UNESCAPED_UNICODE));
     return $out;
 }

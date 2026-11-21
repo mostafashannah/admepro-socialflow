@@ -34675,7 +34675,12 @@ const W_SERVICES=[
   {k:"aicontent",title:"AI content creation",text:"AI-powered images, videos, copy and campaign ideas, produced fast and polished by our creative team so your content stays on brand."},
   {k:"ai",title:"AI automation and chatbots",text:"AI assistants that answer customers, capture leads and automate repetitive marketing work."}];
 const W_GROUPS=[["all","All"],["gcc","GCC"],["retail","Retail"],["ai","AI"],["real_estate","Real estate"],["food","Food & hospitality"],["auto","Automotive"]];
-const W_RANK={intro:1,services:2,ai:3,portfolio:4};
+const W_RANK={intro:1,services:2,ai:3,hubs:4,portfolio:5};
+const W_HUBS=[
+  {k:"real_estate",title:"Real Estate Marketing",text:"We build the full system: brand, content, and performance ads."},
+  {k:"retail",title:"E-Commerce & Retail Growth",text:"Full-funnel marketing for online stores and retail brands."},
+  {k:"gcc",title:"GCC & KSA Markets",text:"Full-service campaigns for brands expanding into Saudi Arabia and the Gulf."},
+  {k:"ai",title:"AI Content Projects",text:"AI video generation, AI content production, and AI campaign strategies."}];
 function MktEditor({init,ov,onClose}) {
   const [f,setF]=useState(()=>({...init,blocks:init.blocks||[],wa_params:init.wa_params||[],audience:init.audience||{}}));
   const [saving,setSaving]=useState(false); const [msg,setMsg]=useState("");
@@ -34684,6 +34689,8 @@ function MktEditor({init,ov,onClose}) {
   const [site,setSite]=useState(null); const [picked,setPicked]=useState([]); const [siteBusy,setSiteBusy]=useState(false); const [autoPick,setAutoPick]=useState(true);
   const siteItems=[...(site?.projects||[]),...(site?.posts||[])];
   const [svcPick,setSvcPick]=useState(["social","brand","video"]); const [wCat,setWCat]=useState("all"); const [wPick,setWPick]=useState([]);
+  const [hubPick,setHubPick]=useState(["real_estate","retail","gcc","ai"]); const [hubUrl,setHubUrl]=useState({}); const [aiPick,setAiPick]=useState([]); const [aiQ,setAiQ]=useState("");
+  useEffect(()=>{ if(site?.hubs) setHubUrl(p=>({...site.hubs,...Object.fromEntries(Object.entries(p).filter(([,v])=>v))})); },[site]);
   const wItems=siteItems.filter(it=>wCat==="all"||(it.groups||[]).includes(wCat));
   const loadSite=async(refresh)=>{ setSiteBusy(true); try{ setSite(await mApi.get("site_content",refresh?{refresh:1}:{})); }catch(e){ setSite({error:e.message,projects:[],posts:[]}); } finally{ setSiteBusy(false); } };
   const s=(k,v)=>setF(p=>({...p,[k]:v}));
@@ -34771,14 +34778,35 @@ function MktEditor({init,ov,onClose}) {
                 </div>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                <span style={gLabel}>3 · AI project</span>
+                <span style={gLabel}>3 · AI content projects</span>
+                <div style={{fontSize:11,color:"var(--text3)"}}>Pick the website projects that show our AI content work (for example clients with AI-made content). They replace the AI section of the email.</div>
+                <input value={aiQ} onChange={e=>setAiQ(e.target.value)} placeholder="Search website projects…" style={inputSt}/>
+                {siteItems.length>0&&<div style={{maxHeight:180,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
+                  {siteItems.filter(it=>it.kind==="project"&&(!aiQ.trim()||it.title.toLowerCase().includes(aiQ.trim().toLowerCase()))).map(it=><label key={it.url} style={{display:"flex",gap:8,alignItems:"center",fontSize:12,cursor:"pointer",padding:"4px 6px",borderRadius:8,background:aiPick.includes(it.url)?"var(--accent)12":"transparent"}}>
+                    <input type="checkbox" checked={aiPick.includes(it.url)} onChange={e=>setAiPick(p=>e.target.checked?(p.length>=4?p:[...p,it.url]):p.filter(x=>x!==it.url))}/>
+                    {it.image&&<img src={it.image} alt="" style={{width:30,height:30,objectFit:"cover",borderRadius:6}}/>}
+                    <span style={{flex:1,minWidth:0}}><b>{it.title}</b></span>
+                  </label>)}
+                </div>}
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  <button style={wBtn(!hasSection("ai"))} onClick={()=>addSection("ai",[{type:"card",title:"AI project: SocialFlow, our AI content platform",text:"We built our own platform where an AI assistant plans, writes, designs, schedules and reports your social content, and answers your customers on WhatsApp and Instagram. You see everything in one place.",image:"",url:"https://admepro.com",button:"Learn more"}])}>{hasSection("ai")?"Reset AI project":"Add AI project"}</button>
-                  {hasSection("ai")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("ai",[])}>Remove AI project</button>}
+                  <button style={wBtn(true)} disabled={aiPick.length===0} onClick={()=>{ const chosen=aiPick.map(u=>siteItems.find(x=>x.url===u)).filter(Boolean); addSection("ai",[{type:"heading",text:"AI content projects"},...chosen.map(it=>({type:"card",title:it.title,text:it.summary||"",image:it.image||"",url:it.url,button:"View project"}))]); }}>{hasSection("ai")?"Replace AI content projects":"Add AI content projects"} ({aiPick.length})</button>
+                  {hasSection("ai")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("ai",[])}>Remove AI section</button>}
                 </div>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                <span style={gLabel}>4 · Portfolio from the website</span>
+                <span style={gLabel}>4 · Portfolio categories (links to the website pages)</span>
+                <div style={{fontSize:11,color:"var(--text3)"}}>One card per category. Pressing it opens that portfolio page on the website. Links are found automatically; fix or paste any that are empty.</div>
+                {W_HUBS.map(h=><div key={h.k} style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                  <label style={{display:"flex",gap:6,alignItems:"center",fontSize:12,fontWeight:600,cursor:"pointer",flex:"0 0 210px"}}><input type="checkbox" checked={hubPick.includes(h.k)} onChange={e=>setHubPick(p=>e.target.checked?[...p,h.k]:p.filter(x=>x!==h.k))}/>{h.title}</label>
+                  <input value={hubUrl[h.k]||""} onChange={e=>setHubUrl(p=>({...p,[h.k]:e.target.value}))} placeholder="https://admepro.com/…" style={{...inputSt,flex:"1 1 200px"}}/>
+                </div>)}
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  <button style={wBtn(true)} disabled={!W_HUBS.some(h=>hubPick.includes(h.k)&&/^https?:\/\//i.test(hubUrl[h.k]||""))} onClick={()=>addSection("hubs",[{type:"heading",text:"Our work"},...W_HUBS.filter(h=>hubPick.includes(h.k)&&/^https?:\/\//i.test(hubUrl[h.k]||"")).map(h=>({type:"card",title:h.title,text:h.text,image:"",url:hubUrl[h.k].trim(),button:"See our work"}))])}>{hasSection("hubs")?"Replace category links":"Add category links"}</button>
+                  {hasSection("hubs")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("hubs",[])}>Remove category links</button>}
+                </div>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                <span style={gLabel}>5 · Individual projects from the website</span>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
                   {W_GROUPS.map(([k,lb])=><button key={k} style={gPill(wCat===k)} onClick={()=>setWCat(k)}>{lb}</button>)}
                   <button style={wBtn(false)} disabled={siteBusy} onClick={()=>loadSite(!!site)}>{siteBusy?"Loading…":site?"Refresh":"Load website projects"}</button>

@@ -24,7 +24,7 @@ function swDefaultCampaign(string $market): array {
     $blocks = [
         ['type' => 'text', 'text' => $market === 'gulf' ? 'Dear {{first_name}},' : 'Hi {{first_name}},'],
         ['type' => 'text', 'text' => $about, 'section' => 'intro'],
-        ['type' => 'card', 'title' => 'AI project: SocialFlow, our AI content platform', 'text' => 'We built our own platform where an AI assistant plans, writes, designs, schedules and reports your social content, and answers your customers on WhatsApp and Instagram. You see everything in one place.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'image' => '', 'section' => 'ai'],
+        ['type' => 'card', 'title' => 'AI Content Projects', 'text' => 'AI video generation, AI content production, and AI campaign strategies.', 'url' => 'https://admepro.com', 'button' => 'See our AI work', 'image' => '', 'section' => 'ai'],
         ['type' => 'card', 'title' => 'Social media management', 'text' => 'Content planning, designs, reels, daily posting and community replies, with a monthly performance report.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'image' => '', 'section' => 'services'],
         ['type' => 'card', 'title' => 'Brand and video production', 'text' => 'Brand identity, reels and campaign videos shot and edited by our in-house team.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'image' => '', 'section' => 'services'],
         ['type' => 'text', 'text' => $market === 'gulf'
