@@ -25,8 +25,6 @@ function swDefaultCampaign(string $market): array {
         ['type' => 'image', 'url' => '', 'alt' => 'admepro', 'link' => 'https://admepro.com', 'section' => 'banner'], // banner slot: choose the image in the builder (an empty banner is simply not shown)
         ['type' => 'text', 'text' => $market === 'gulf' ? 'Dear {{first_name}},' : 'Hi {{first_name}},'],
         ['type' => 'text', 'text' => $about, 'section' => 'intro'],
-        ['type' => 'card', 'title' => 'Social media management', 'text' => 'Content planning, designs, reels, daily posting and community replies, with a monthly performance report.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'icon' => '📱', 'image' => '', 'section' => 'services'],
-        ['type' => 'card', 'title' => 'Brand and video production', 'text' => 'Brand identity, reels and campaign videos shot and edited by our in-house team.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'icon' => '🎬', 'image' => '', 'section' => 'services'],
         ['type' => 'text', 'text' => $market === 'gulf'
             ? 'If it would help {{company}}, one of our team will be glad to share ideas for your brand. Reply to this email or message us on WhatsApp.'
             : 'If you would like ideas for {{company}}, just reply here or message us on WhatsApp and one of our team will contact you.'],
@@ -48,8 +46,17 @@ function swCampaign(PDO $pdo, string $market): array {
         $d = swDefaultCampaign($market);
         $pdo->prepare("INSERT INTO mkt_campaigns (channel, name, subject, preheader, blocks, wa_params, audience, status, created_by, created_at) VALUES ('email',?,?,?,?,'[]',?,'draft','sales-agent',?)")
             ->execute([$d['name'], $d['subject'], $d['preheader'], json_encode($d['blocks'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                json_encode(['auto' => 'welcome', 'market' => $market, 'consent' => ['opt_in', 'lead']]), gNow()]);
+                json_encode(['auto' => 'welcome', 'market' => $market, 'v' => 2, 'consent' => ['opt_in', 'lead']]), gNow()]);
         $q = $pdo->prepare("SELECT * FROM mkt_campaigns WHERE id=?"); $q->execute([(int)$pdo->lastInsertId()]); $r = $q->fetch(PDO::FETCH_ASSOC);
+    }
+    // One-time (audience v < 2): the old default structure had three pre-filled cards (SocialFlow + two services). Sections are now chosen in the builder, so remove those exact default cards.
+    $aud = json_decode((string)$r['audience'], true) ?: [];
+    if ((int)($aud['v'] ?? 0) < 2) {
+        $defaultTitles = ['AI project: SocialFlow, our AI content platform', 'AI Content Projects', 'Social media management', 'Brand and video production'];
+        $kept = []; foreach (json_decode((string)$r['blocks'], true) ?: [] as $bl) { if (($bl['type'] ?? '') === 'card' && rtrim((string)($bl['url'] ?? ''), '/') === 'https://admepro.com' && in_array($bl['title'] ?? '', $defaultTitles, true)) continue; $kept[] = $bl; }
+        $aud['v'] = 2;
+        $pdo->prepare("UPDATE mkt_campaigns SET blocks=?, audience=? WHERE id=?")->execute([json_encode($kept, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), json_encode($aud), $r['id']]);
+        $r['blocks'] = json_encode($kept, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); $r['audience'] = json_encode($aud);
     }
     // Campaigns created before the rename: switch only names and subjects that are still the old defaults (never anything the team edited).
     $upd = [];
