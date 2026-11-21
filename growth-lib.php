@@ -97,6 +97,9 @@ function gLoc($v): string {
     if (is_array($v)) { foreach (['en', 'en-US', 'en_US', 'default'] as $k) if (isset($v[$k]) && is_string($v[$k]) && $v[$k] !== '') return $v[$k]; foreach ($v as $x) if (is_string($x) && $x !== '') return $x; }
     return '';
 }
+/** Text from the website, or '' when it is only the leftover word "Array" (a list that was read as text). */
+function gCleanText($s): string { $s = trim((string)$s); return $s === 'Array' ? '' : $s; }
+
 /** Portfolio groups a website item belongs to (by keywords in its title, summary, category and tags): gcc | retail | ai | real_estate | food | auto. */
 function gSiteGroups(string $hay): array {
     $hay = strtolower($hay);
@@ -146,7 +149,7 @@ function gRenderEmail(array $camp, array $contact = [], $sendId = null) {
 
     // One card in one of three looks: 'feature' (big, full width), 'grid' (compact, sits two per row), 'wide' (grid look, full width).
     $card = function (array $b, string $variant, int $i) use ($link, $contact, $tints) {
-        $title = gH(gMergeTags($b['title'] ?? '', $contact)); $text = trim((string)($b['text'] ?? '')); $feature = $variant === 'feature';
+        $title = gH(gMergeTags($b['title'] ?? '', $contact)); $text = trim((string)($b['text'] ?? '')); if ($text === 'Array') $text = ''; $feature = $variant === 'feature';
         $media = '';
         if (!empty($b['image'])) $media = '<a href="' . $link($b['url']) . '" style="text-decoration:none"><img src="' . gH($b['image']) . '" alt="' . $title . '" width="100%" style="display:block;width:100%;height:auto;max-height:' . ($feature ? '300' : '170') . 'px;object-fit:cover;border:0"/></a>';
         elseif (trim((string)($b['icon'] ?? '')) !== '') {
@@ -390,7 +393,7 @@ function gSyncLeadsAndClients(PDO $pdo, &$tagged = null) {
  * Reads the website repo (same GitHub settings as the Website tab) for project / post JSON, and keeps only items whose page
  * is really live: a URL in https://<site>/sitemap.xml that ends with the item's slug. Cached for 15 minutes. */
 function gSiteContent($force = false) {
-    $cache = sys_get_temp_dir() . '/sf-site-content.json';
+    $cache = sys_get_temp_dir() . '/sf-site-content-v2.json'; // v2: older cached copies contained "Array" as the description
     if (!$force && is_file($cache) && time() - filemtime($cache) < 900) { $j = json_decode((string)file_get_contents($cache), true); if (is_array($j)) return $j; }
     $repo = defined('WEBSITE_GITHUB_REPO') ? WEBSITE_GITHUB_REPO : ''; $tok = defined('WEBSITE_GITHUB_TOKEN') ? WEBSITE_GITHUB_TOKEN : '';
     $branch = defined('WEBSITE_GITHUB_BRANCH') && WEBSITE_GITHUB_BRANCH ? WEBSITE_GITHUB_BRANCH : 'main';
@@ -426,7 +429,7 @@ function gSiteContent($force = false) {
             $img = $j['cover'] ?? $j['image'] ?? $j['thumbnail'] ?? (is_array($j['images'] ?? null) ? ($j['images'][0] ?? '') : '');
             if (is_array($img)) $img = $img['src'] ?? $img['url'] ?? '';
             if ($img && !preg_match('#^https?://#', (string)$img)) $img = $site . '/' . ltrim((string)$img, '/');
-            $out[$kind][] = ['slug' => $slug, 'title' => (gLoc($j['title'] ?? '') ?: gLoc($j['name'] ?? '') ?: $slug), 'summary' => mb_substr(strip_tags(gLoc($j['description'] ?? '') ?: gLoc($j['summary'] ?? '') ?: gLoc($j['excerpt'] ?? '') ?: gLoc($j['seoDescription'] ?? '')), 0, 280),
+            $out[$kind][] = ['slug' => $slug, 'title' => (gLoc($j['title'] ?? '') ?: gLoc($j['name'] ?? '') ?: $slug), 'summary' => gCleanText(mb_substr(strip_tags(gLoc($j['description'] ?? '') ?: gLoc($j['summary'] ?? '') ?: gLoc($j['excerpt'] ?? '') ?: gLoc($j['seoDescription'] ?? '')), 0, 280)),
                 'image' => (string)$img, 'url' => $url, 'date' => (string)($j['date'] ?? ''), 'kind' => $kind === 'posts' ? 'article' : 'project',
                 'category' => mb_substr(is_scalar($j['category'] ?? null) ? (string)$j['category'] : (is_scalar($j['sector'] ?? null) ? (string)$j['sector'] : (is_scalar($j['industry'] ?? null) ? (string)$j['industry'] : '')), 0, 60),
                 'groups' => gSiteGroups(implode(' ', [$slug, gLoc($j['title'] ?? '') . ' ' . gLoc($j['name'] ?? ''), gLoc($j['description'] ?? '') . ' ' . gLoc($j['summary'] ?? '') . ' ' . gLoc($j['excerpt'] ?? ''), is_scalar($j['category'] ?? null) ? (string)$j['category'] : '', is_scalar($j['sector'] ?? null) ? (string)$j['sector'] : '', is_scalar($j['industry'] ?? null) ? (string)$j['industry'] : '', is_array($j['tags'] ?? null) ? implode(' ', array_filter($j['tags'], 'is_scalar')) : (is_scalar($j['tags'] ?? null) ? (string)$j['tags'] : ''), is_scalar($j['location'] ?? null) ? (string)$j['location'] : '', is_scalar($j['country'] ?? null) ? (string)$j['country'] : '']))];
