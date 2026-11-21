@@ -34689,7 +34689,7 @@ function MktEditor({init,ov,onClose}) {
   const [site,setSite]=useState(null); const [picked,setPicked]=useState([]); const [siteBusy,setSiteBusy]=useState(false); const [autoPick,setAutoPick]=useState(true);
   const siteItems=[...(site?.projects||[]),...(site?.posts||[])];
   const [svcPick,setSvcPick]=useState(["social","brand","video"]); const [wCat,setWCat]=useState("all"); const [wPick,setWPick]=useState([]);
-  const [svcImg,setSvcImg]=useState({}); const [bannerUrl,setBannerUrl]=useState(""); const banner=f.blocks.find(b=>b.section==="banner"&&b.url);
+  const [openSec,setOpenSec]=useState("sara"); const [sBrief,setSBrief]=useState(""); const [saraBusy,setSaraBusy]=useState(false); const [svcImg,setSvcImg]=useState({}); const [bannerUrl,setBannerUrl]=useState(""); const banner=f.blocks.find(b=>b.section==="banner"&&b.url);
   const [hubPick,setHubPick]=useState(["real_estate","retail","gcc","ai"]); const [hubUrl,setHubUrl]=useState({}); const [aiPick,setAiPick]=useState([]); const [aiQ,setAiQ]=useState("");
   useEffect(()=>{ if(site?.hubs) setHubUrl(p=>({...site.hubs,...Object.fromEntries(Object.entries(p).filter(([,v])=>v))})); },[site]);
   const wItems=siteItems.filter(it=>wCat==="all"||(it.groups||[]).includes(wCat));
@@ -34708,6 +34708,26 @@ function MktEditor({init,ov,onClose}) {
   });
   const resetStructure=async()=>{ if(!confirm("Replace this email with the default structure? Your current blocks will be lost.")) return; try{ const d=await sApi.post("welcome_reset",{market:f.audience?.market}); setF(p=>({...p,subject:d.subject,preheader:d.preheader,blocks:d.blocks})); setMsg("Reset. Save to keep it."); }catch(e){ setMsg(e.message); } };
   useEffect(()=>{ if(init.welcome) loadSite(false); },[]);
+  const secCount=n=>f.blocks.filter(b=>b.section===n&&(b.type==="card"||b.type==="text"||b.type==="image")).length;
+  // Sara reads the brief and picks intro / services / AI content projects / portfolio categories / recent projects / banner. Only those sections are filled; the rest of the email stays as it is.
+  const runSara=async()=>{
+    setSaraBusy(true); setMsg("");
+    try{
+      const d=await sApi.post("welcome_sara",{brief:sBrief,market:f.audience?.market});
+      const byUrl=u=>siteItems.find(x=>x.url===u);
+      const card=it=>({type:"card",title:it.title,text:it.summary||"",image:it.image||"",url:it.url,button:"View project"});
+      const bn=d.banner&&byUrl(d.banner); if(bn&&bn.image) addSection("banner",[{type:"image",url:bn.image,alt:bn.title,link:bn.url}]);
+      if(d.intro) addSection("intro",[{type:"text",text:W_INTRO[d.intro]||d.intro}]);
+      if(d.services?.length) addSection("services",W_SERVICES.filter(sv=>d.services.includes(sv.k)).map(sv=>({type:"card",title:sv.title,text:sv.text,icon:sv.icon,image:"",url:"https://admepro.com",button:"Learn more"})));
+      const ai=(d.ai_projects||[]).map(byUrl).filter(Boolean); if(ai.length) addSection("ai",[{type:"heading",text:"Recent AI content projects"},...ai.map(card)]);
+      const hubs=W_HUBS.filter(h=>(d.hubs||[]).includes(h.k)&&/^https?:\/\//i.test(hubUrl[h.k]||""));
+      if(hubs.length) addSection("hubs",[{type:"heading",text:"Our work"},...hubs.map(h=>({type:"card",title:h.title,text:h.text,icon:h.icon,image:(site?.hub_images?.[h.k])||(siteItems.find(it=>it.image&&(it.groups||[]).includes(h.k))||{}).image||"",url:hubUrl[h.k].trim(),button:"See our work"}))]);
+      const pr=(d.projects||[]).map(byUrl).filter(Boolean); if(pr.length) addSection("portfolio",[{type:"heading",text:"Recent projects"},...pr.map(card)]);
+      setF(p=>({...p,subject:d.subject||p.subject,preheader:d.preheader||p.preheader}));
+      setMsg("Sara built it: "+(d.note||"done")+" (not saved yet, check the preview, then Save draft)");
+    }catch(e){ setMsg(e.message); }
+    setSaraBusy(false);
+  };
   useEffect(()=>{ if(!isEmail) return; const t=setTimeout(()=>mApi.post("preview",{blocks:f.blocks,preheader:f.preheader,lang:f.audience?.lang}).then(d=>setHtml(d.html)).catch(()=>{}),400); return ()=>clearTimeout(t); },[JSON.stringify(f.blocks),f.preheader,f.audience?.lang]);
   useEffect(()=>{ if(!isEmail) mApi.get("wa_templates").then(setTpls).catch(e=>setTpls({rows:[],error:e.message})); },[]);
   const save=async()=>{ setSaving(true); setMsg(""); try{ const d=await mApi.post("campaign_save",f); s("id",d.id); setMsg("Saved"); return d.id; }catch(e){ setMsg(e.message); return null; } finally{ setSaving(false); } };
@@ -34763,8 +34783,15 @@ function MktEditor({init,ov,onClose}) {
                 <span style={{fontSize:11,color:"var(--text3)",flex:1}}>Each choice replaces only its own section. The rest of the email stays as it is.</span>
                 <button style={wBtn(false)} onClick={resetStructure}>Reset to default structure</button>
               </div>
-              <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                <span style={gLabel}>Banner (top of the email)</span>
+              <style>{".wsec{border:1px solid var(--border);border-radius:12px;background:var(--surface)}.wsec>.wsec-h{display:flex;align-items:center;gap:8px;padding:11px 14px;cursor:pointer;font-size:12px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.04em}.wsec>:not(.wsec-h){margin:0 14px 12px}.wsec[data-open='0']>:not(.wsec-h){display:none}.wsec[data-open='1']>.wsec-h{color:var(--accent)}"}</style>
+              <div className="wsec" data-open={openSec==="sara"?"1":"0"}>
+                <div className="wsec-h" onClick={()=>setOpenSec(openSec==="sara"?"":"sara")}><span style={{flex:1}}>✨ Build with Sara</span><span>{openSec==="sara"?"▾":"▸"}</span></div>
+                <div style={{fontSize:11,color:"var(--text3)"}}>Write who this contact is and what to stress. Sara chooses the intro, services, AI content projects, portfolio categories, recent projects and banner from your real website, and fills the sections below. The structure stays; you can still change any section by hand.</div>
+                <textarea value={sBrief} onChange={e=>setSBrief(e.target.value)} rows={3} placeholder="e.g. Real estate developer in Riyadh, planning a new launch. Stress real estate marketing and AI content, show our GCC work." style={{...inputSt,resize:"vertical"}}/>
+                <div><button style={wBtn(true)} disabled={saraBusy||sBrief.trim().length<8} onClick={runSara}>{saraBusy?"Sara is choosing…":"Let Sara build it"}</button></div>
+              </div>
+              <div className="wsec" data-open={openSec==="banner"?"1":"0"}>
+                <div className="wsec-h" onClick={()=>setOpenSec(openSec==="banner"?"":"banner")}><span style={{flex:1}}>Banner (top of the email)</span>{(banner)&&<span style={{fontSize:10,fontWeight:800,padding:"2px 8px",borderRadius:999,background:"#16a34a22",color:"#16a34a",textTransform:"none"}}>Set</span>}<span>{openSec==="banner"?"▾":"▸"}</span></div>
                 {banner&&<div style={{display:"flex",gap:8,alignItems:"center"}}><img src={banner.url} alt="" style={{width:90,height:48,objectFit:"cover",borderRadius:8}}/><span style={{fontSize:12,color:"var(--text2)",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{banner.alt||"Banner set"}</span><button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("banner",[])}>Remove banner</button></div>}
                 <div style={{fontSize:11,color:"var(--text3)"}}>Click a website project to use its image as the banner (the banner links to that project), or paste an image link.</div>
                 {siteItems.filter(it=>it.image).length>0&&<div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:4}}>
@@ -34777,22 +34804,21 @@ function MktEditor({init,ov,onClose}) {
                   <button style={wBtn(false)} disabled={!/^https?:\/\//i.test(bannerUrl.trim())} onClick={()=>{ addSection("banner",[{type:"image",url:bannerUrl.trim(),alt:"admepro",link:"https://admepro.com"}]); setBannerUrl(""); }}>Use link</button>
                 </div>
               </div>
-              <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                <span style={gLabel}>1 · Agency intro</span>
+              <div className="wsec" data-open={openSec==="intro"?"1":"0"}>
+                <div className="wsec-h" onClick={()=>setOpenSec(openSec==="intro"?"":"intro")}><span style={{flex:1}}>1 · Agency intro</span>{(hasSection("intro"))&&<span style={{fontSize:10,fontWeight:800,padding:"2px 8px",borderRadius:999,background:"#16a34a22",color:"#16a34a",textTransform:"none"}}>Added</span>}<span>{openSec==="intro"?"▾":"▸"}</span></div>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                   {[["short","Short"],["full","Full"]].map(([k,lb])=><button key={k} style={gPill(false)} onClick={()=>addSection("intro",[{type:"text",text:W_INTRO[k]}])}>{hasSection("intro")?"Replace with ":"Add "}{lb}</button>)}
                   {hasSection("intro")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("intro",[])}>Remove intro</button>}
                 </div>
               </div>
-              <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                <span style={gLabel}>2 · Services</span>
+              <div className="wsec" data-open={openSec==="services"?"1":"0"}>
+                <div className="wsec-h" onClick={()=>setOpenSec(openSec==="services"?"":"services")}><span style={{flex:1}}>2 · Services</span>{(secCount("services")>0)&&<span style={{fontSize:10,fontWeight:800,padding:"2px 8px",borderRadius:999,background:"#16a34a22",color:"#16a34a",textTransform:"none"}}>{secCount("services")} added</span>}<span>{openSec==="services"?"▾":"▸"}</span></div>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{W_SERVICES.map(sv=><button key={sv.k} style={gPill(svcPick.includes(sv.k))} onClick={()=>setSvcPick(p=>p.includes(sv.k)?p.filter(x=>x!==sv.k):[...p,sv.k])}>{sv.title}</button>)}</div>
                 {svcPick.length>0&&siteItems.some(it=>it.image)&&<div style={{display:"flex",flexDirection:"column",gap:4}}>
                   <span style={{fontSize:11,color:"var(--text3)"}}>Optional: show a real project image on each service card (otherwise it shows its icon).</span>
-                  {W_SERVICES.filter(sv=>svcPick.includes(sv.k)).map(sv=><div key={sv.k} style={{display:"flex",gap:8,alignItems:"center"}}>
-                    <span style={{fontSize:12,fontWeight:600,flex:"0 0 190px"}}>{sv.icon} {sv.title}</span>
-                    {svcImg[sv.k]&&<img src={svcImg[sv.k]} alt="" style={{width:44,height:28,objectFit:"cover",borderRadius:5}}/>}
-                    <select value={svcImg[sv.k]||""} onChange={e=>setSvcImg(p=>({...p,[sv.k]:e.target.value}))} style={{...inputSt,flex:1,minWidth:0}}><option value="">Icon only</option>{siteItems.filter(it=>it.image).map(it=><option key={it.url} value={it.image}>{it.title}</option>)}</select>
+                  {W_SERVICES.filter(sv=>svcPick.includes(sv.k)).map(sv=><div key={sv.k} style={{display:"flex",flexDirection:"column",gap:4,padding:"8px 10px",border:"1px solid var(--border)",borderRadius:10}}>
+                    <div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:12,fontWeight:700,flex:1}}>{sv.icon} {sv.title}</span>{svcImg[sv.k]&&<img src={svcImg[sv.k]} alt="" style={{width:44,height:28,objectFit:"cover",borderRadius:5}}/>}</div>
+                    <select value={svcImg[sv.k]||""} onChange={e=>setSvcImg(p=>({...p,[sv.k]:e.target.value}))} style={{...inputSt,width:"100%",minWidth:0,fontSize:12,padding:"6px 8px"}}><option value="">Icon only</option>{siteItems.filter(it=>it.image).map(it=><option key={it.url} value={it.image}>{it.title}</option>)}</select>
                   </div>)}
                 </div>}
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -34800,8 +34826,8 @@ function MktEditor({init,ov,onClose}) {
                   {hasSection("services")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("services",[])}>Remove services</button>}
                 </div>
               </div>
-              <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                <span style={gLabel}>3 · AI content projects</span>
+              <div className="wsec" data-open={openSec==="ai"?"1":"0"}>
+                <div className="wsec-h" onClick={()=>setOpenSec(openSec==="ai"?"":"ai")}><span style={{flex:1}}>3 · AI content projects</span>{(secCount("ai")>0)&&<span style={{fontSize:10,fontWeight:800,padding:"2px 8px",borderRadius:999,background:"#16a34a22",color:"#16a34a",textTransform:"none"}}>{secCount("ai")} added</span>}<span>{openSec==="ai"?"▾":"▸"}</span></div>
                 <div style={{fontSize:11,color:"var(--text3)"}}>Pick the website projects that show our AI content work (for example clients with AI-made content). They replace the AI section of the email.</div>
                 <input value={aiQ} onChange={e=>setAiQ(e.target.value)} placeholder="Search website projects…" style={inputSt}/>
                 {siteItems.length>0&&<div style={{maxHeight:180,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
@@ -34816,8 +34842,8 @@ function MktEditor({init,ov,onClose}) {
                   {hasSection("ai")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("ai",[])}>Remove AI section</button>}
                 </div>
               </div>
-              <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                <span style={gLabel}>4 · Portfolio categories (links to the website pages)</span>
+              <div className="wsec" data-open={openSec==="hubs"?"1":"0"}>
+                <div className="wsec-h" onClick={()=>setOpenSec(openSec==="hubs"?"":"hubs")}><span style={{flex:1}}>4 · Portfolio categories</span>{(secCount("hubs")>0)&&<span style={{fontSize:10,fontWeight:800,padding:"2px 8px",borderRadius:999,background:"#16a34a22",color:"#16a34a",textTransform:"none"}}>{secCount("hubs")} added</span>}<span>{openSec==="hubs"?"▾":"▸"}</span></div>
                 <div style={{fontSize:11,color:"var(--text3)"}}>One card per category. Pressing it opens that portfolio page on the website. Links are found automatically; fix or paste any that are empty.</div>
                 {W_HUBS.map(h=><div key={h.k} style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                   <label style={{display:"flex",gap:6,alignItems:"center",fontSize:12,fontWeight:600,cursor:"pointer",flex:"0 0 210px"}}><input type="checkbox" checked={hubPick.includes(h.k)} onChange={e=>setHubPick(p=>e.target.checked?[...p,h.k]:p.filter(x=>x!==h.k))}/>{h.title}</label>
@@ -34828,8 +34854,8 @@ function MktEditor({init,ov,onClose}) {
                   {hasSection("hubs")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("hubs",[])}>Remove category links</button>}
                 </div>
               </div>
-              <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                <span style={gLabel}>5 · Individual projects from the website</span>
+              <div className="wsec" data-open={openSec==="portfolio"?"1":"0"}>
+                <div className="wsec-h" onClick={()=>setOpenSec(openSec==="portfolio"?"":"portfolio")}><span style={{flex:1}}>5 · Recent projects</span>{(secCount("portfolio")>0)&&<span style={{fontSize:10,fontWeight:800,padding:"2px 8px",borderRadius:999,background:"#16a34a22",color:"#16a34a",textTransform:"none"}}>{secCount("portfolio")} added</span>}<span>{openSec==="portfolio"?"▾":"▸"}</span></div>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
                   {W_GROUPS.map(([k,lb])=><button key={k} style={gPill(wCat===k)} onClick={()=>setWCat(k)}>{lb}</button>)}
                   <button style={wBtn(false)} disabled={siteBusy} onClick={()=>loadSite(!!site)}>{siteBusy?"Loading…":site?"Refresh":"Load website projects"}</button>

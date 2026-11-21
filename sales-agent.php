@@ -169,6 +169,32 @@ case 'welcome_reset': {
     $pdo->prepare("UPDATE mkt_campaigns SET subject=?, preheader=?, blocks=?, updated_at=? WHERE id=?")->execute([$d['subject'], $d['preheader'], json_encode($d['blocks'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), gNow(), $camp['id']]);
     gOut(200, ['ok' => true, 'subject' => $d['subject'], 'preheader' => $d['preheader'], 'blocks' => $d['blocks']]);
 }
+case 'welcome_sara': {
+    // Sara reads the brief and CHOOSES what goes into the introduction email: intro, services, AI content projects, portfolio categories, recent projects, banner.
+    // The structure of the email is untouched: the app only fills those sections with her picks (validated against the real website and the service list).
+    $brief = mb_substr(trim((string)($b['brief'] ?? '')), 0, 2000); if (mb_strlen($brief) < 8) gOut(400, ['error' => 'Write a short brief for Sara first']);
+    $market = ($b['market'] ?? '') === 'gulf' ? 'Gulf (Saudi Arabia, UAE, Kuwait, Qatar...)' : 'Egypt';
+    $site = gSiteContent(); $pool = []; foreach ($site['projects'] ?? [] as $it) $pool[$it['url']] = $it;
+    $svc = ['social' => 'Social media management', 'brand' => 'Branding and identity', 'video' => 'Video and reels production', 'web' => 'Websites and e-commerce', 'ads' => 'Paid advertising', 'aicontent' => 'AI content creation', 'ai' => 'AI automation and chatbots'];
+    $hubs = ['real_estate' => 'Real Estate Marketing', 'retail' => 'E-Commerce & Retail Growth', 'gcc' => 'GCC & KSA Markets', 'ai' => 'AI Content Projects'];
+    $menu = ''; foreach ($pool as $it) $menu .= "- {$it['url']} | {$it['title']} | groups: " . implode(',', (array)($it['groups'] ?? [])) . ' | ' . mb_substr((string)$it['summary'], 0, 110) . "\n";
+    $sv = ''; foreach ($svc as $k => $v) $sv .= "- $k: $v\n"; $hb = ''; foreach ($hubs as $k => $v) $hb .= "- $k: $v\n";
+    $prompt = "You are Sara, admepro's senior content creator. admepro is an AI-powered creative and digital marketing agency in Cairo. We are writing a first INTRODUCTION email to a new contact in this market: $market.\n\n"
+        . "Brief from the team:\n$brief\n\nChoose what to include, ONLY from these lists.\nServices (key: name):\n$sv\nPortfolio category pages (key: name):\n$hb\nWebsite projects (url | title | groups | summary):\n" . ($menu ?: "(none available)\n") . "\n"
+        . "Rules: pick what fits the brief and the market, not everything. Max 4 services, max 3 AI content projects, max 4 portfolio categories, max 4 recent projects. AI content projects are projects that show AI-made content. Use real urls from the list only.\n"
+        . "intro: \"short\" or \"full\", or your own 2 to 3 sentence agency introduction (plain text, no claims about results or clients you cannot see in the lists).\n"
+        . "Return ONLY JSON: {\"subject\":\"...\",\"preheader\":\"...\",\"intro\":\"short|full|text\",\"services\":[keys],\"ai_projects\":[urls],\"hubs\":[keys],\"projects\":[urls],\"banner\":\"url of one project whose image fits best, or empty\",\"note\":\"one short sentence on what you chose and why\"}. Subject max 70 chars; you may use {{first_name}} and {{company}}.";
+    [$ok, $text, , $err] = gClaude(['max_tokens' => 1200, 'output_config' => ['effort' => 'low'], 'system' => 'Reply with ONE valid JSON object only, no other text.', 'messages' => [['role' => 'user', 'content' => $prompt]]], 90);
+    if (!$ok) gOut(502, ['error' => $err ?: 'Sara could not answer, try again']);
+    $j = gJson($text); if (!is_array($j)) gOut(502, ['error' => 'Sara\'s answer could not be read, try again']);
+    $urls = fn($v, $n) => array_slice(array_values(array_filter((array)$v, fn($u) => is_string($u) && isset($pool[$u]))), 0, $n);
+    $keys = fn($v, $allowed, $n) => array_slice(array_values(array_filter((array)$v, fn($k) => is_string($k) && isset($allowed[$k]))), 0, $n);
+    $intro = trim((string)($j['intro'] ?? '')); if (!in_array($intro, ['short', 'full'], true)) $intro = mb_substr($intro, 0, 600);
+    $banner = (string)($j['banner'] ?? ''); if (!isset($pool[$banner])) $banner = '';
+    gOut(200, ['subject' => mb_substr(trim((string)($j['subject'] ?? '')), 0, 120), 'preheader' => mb_substr(trim((string)($j['preheader'] ?? '')), 0, 160), 'intro' => $intro,
+        'services' => $keys($j['services'] ?? [], $svc, 4), 'ai_projects' => $urls($j['ai_projects'] ?? [], 3), 'hubs' => $keys($j['hubs'] ?? [], $hubs, 4), 'projects' => $urls($j['projects'] ?? [], 4),
+        'banner' => $banner, 'note' => mb_substr(trim((string)($j['note'] ?? '')), 0, 240), 'site_error' => $site['error'] ?? null]);
+}
 case 'welcome_list': {
     require_once __DIR__ . '/sales-welcome-lib.php';
     $st = $_GET['status'] ?? 'pending'; $w = '1=1'; $bind = [];
