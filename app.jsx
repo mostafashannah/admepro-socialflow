@@ -34664,8 +34664,8 @@ function MktAudience({channel,aud,setAud,ov}) {
 }
 
 const W_INTRO={
-  short:"admepro is a creative and digital marketing agency in Cairo. We run brands' social media, content, video, websites and ads, so you get one team for everything your brand shows online.",
-  full:"admepro is a creative and digital marketing agency based in Cairo. Our in-house team covers brand identity, social media management, content and video production, websites and e-commerce, paid advertising and AI-powered automation. We combine creative work with our own technology, so campaigns are planned, produced, published and reported in one place."};
+  short:"admepro is an AI-powered creative and digital marketing agency in Cairo. We run brands' social media, content (including AI content), video, websites and ads, so you get one team for everything your brand shows online.",
+  full:"admepro is an AI-powered creative and digital marketing agency based in Cairo. Our in-house team covers brand identity, social media management, content and video production, websites and e-commerce, and paid advertising. We also create AI content (images, videos and campaign ideas) and use AI automation, so campaigns are planned, produced, published and reported faster, in one place."};
 const W_SERVICES=[
   {k:"social",title:"Social media management",text:"Content planning, designs, reels, daily posting and community replies, with a monthly performance report."},
   {k:"brand",title:"Branding and identity",text:"Logo, visual identity and brand guidelines that make your brand recognisable everywhere."},

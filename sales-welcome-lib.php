@@ -20,11 +20,10 @@ function swMarket($country): string {
 
 /** Starting content of the two campaigns. Edited afterwards in the newsletter editor; this is only used the first time. */
 function swDefaultCampaign(string $market): array {
-    $about = 'admepro is a creative and digital marketing agency based in Cairo. We build brands and run their social media, content and video production, websites and paid ads, so you get one team for everything your brand shows online.';
+    $about = 'admepro is an AI-powered creative and digital marketing agency based in Cairo. We build brands and run their social media, content and video production, websites and paid ads. We also create AI content (images, videos and campaign ideas) and use AI automation, so you get faster, smarter work from one team.';
     $blocks = [
         ['type' => 'text', 'text' => $market === 'gulf' ? 'Dear {{first_name}},' : 'Hi {{first_name}},'],
         ['type' => 'text', 'text' => $about, 'section' => 'intro'],
-        ['type' => 'card', 'title' => 'AI Content Projects', 'text' => 'AI video generation, AI content production, and AI campaign strategies.', 'url' => 'https://admepro.com', 'button' => 'See our AI work', 'image' => '', 'section' => 'ai'],
         ['type' => 'card', 'title' => 'Social media management', 'text' => 'Content planning, designs, reels, daily posting and community replies, with a monthly performance report.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'image' => '', 'section' => 'services'],
         ['type' => 'card', 'title' => 'Brand and video production', 'text' => 'Brand identity, reels and campaign videos shot and edited by our in-house team.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'image' => '', 'section' => 'services'],
         ['type' => 'text', 'text' => $market === 'gulf'
@@ -57,6 +56,15 @@ function swCampaign(PDO $pdo, string $market): array {
     if (isset($old[$r['name']])) $upd['name'] = $old[$r['name']];
     $oldSub = ['Welcome to admepro, a creative team for {{company}}' => 'Introducing admepro: a creative team for {{company}}', 'Hi {{first_name}}, meet admepro: marketing for {{company}}' => 'Hi {{first_name}}, a quick introduction to admepro'];
     if (isset($oldSub[$r['subject']])) $upd['subject'] = $oldSub[$r['subject']];
+    // Blocks from the first defaults: the generic AI card (SocialFlow / generic link) is removed, and the old intro text gets the AI wording. Anything the team wrote or linked themselves is left alone.
+    $blocks = json_decode((string)$r['blocks'], true) ?: []; $nb = []; $changed = false;
+    $oldAbout = "admepro is a creative and digital marketing agency based in Cairo. We build brands and run their social media, content and video production, websites and paid ads, so you get one team for everything your brand shows online.";
+    foreach ($blocks as $bl) {
+        if (($bl['section'] ?? '') === 'ai' && ($bl['type'] ?? '') === 'card' && rtrim((string)($bl['url'] ?? ''), '/') === 'https://admepro.com') { $changed = true; continue; }
+        if (($bl['type'] ?? '') === 'text' && trim((string)($bl['text'] ?? '')) === $oldAbout) { $bl['text'] = "admepro is an AI-powered creative and digital marketing agency based in Cairo. We build brands and run their social media, content and video production, websites and paid ads. We also create AI content (images, videos and campaign ideas) and use AI automation, so you get faster, smarter work from one team."; $changed = true; }
+        $nb[] = $bl;
+    }
+    if ($changed) { $pdo->prepare("UPDATE mkt_campaigns SET blocks=? WHERE id=?")->execute([json_encode($nb, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $r['id']]); $r['blocks'] = json_encode($nb, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); }
     if ($upd) { foreach ($upd as $k => $v) { $pdo->prepare("UPDATE mkt_campaigns SET $k=? WHERE id=?")->execute([$v, $r['id']]); $r[$k] = $v; } }
     return swCampRow($r);
 }
