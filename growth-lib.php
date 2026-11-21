@@ -153,10 +153,20 @@ function gRenderEmail(array $camp, array $contact = [], $sendId = null) {
         $media = '';
         if (!empty($b['image'])) $media = '<a href="' . $link($b['url']) . '" style="text-decoration:none"><img src="' . gH($b['image']) . '" alt="' . $title . '" width="100%" style="display:block;width:100%;height:auto;max-height:' . ($feature ? '300' : '170') . 'px;object-fit:cover;border:0"/></a>';
         elseif (trim((string)($b['icon'] ?? '')) !== '') {
-            $tint = $tints[$i % count($tints)];
-            $media = $feature
-                ? '<a href="' . $link($b['url']) . '" style="text-decoration:none"><div style="background:' . $tint . ';padding:34px 16px;text-align:center;font-size:56px;line-height:1">' . gH($b['icon']) . '</div></a>'
-                : '<div style="padding:18px 18px 0"><span style="display:inline-block;width:48px;height:48px;line-height:48px;text-align:center;border-radius:50%;background:' . $tint . ';font-size:23px">' . gH($b['icon']) . '</span></div>';
+            $ic = trim((string)$b['icon']);
+            $emojiKey = ['📱' => 'social', '🎨' => 'brand', '🎬' => 'video', '💻' => 'web', '📣' => 'ads', '✨' => 'aicontent', '🤖' => 'ai', '🏢' => 'real_estate', '🛍️' => 'retail', '🛍' => 'retail', '🌍' => 'gcc'];
+            $key = preg_match('/^i:([a-z_]+)$/', $ic, $mm) ? $mm[1] : ($emojiKey[$ic] ?? '');
+            if ($key !== '' && is_file(__DIR__ . '/email-icons/' . $key . '.png')) {       // our own minimal icons (black line + red dot)
+                $src = gH(gBase() . '/email-icons/' . $key . '.png');
+                $media = $feature
+                    ? '<a href="' . $link($b['url']) . '" style="text-decoration:none"><div style="background:#f6f7f9;padding:30px 16px;text-align:center;line-height:0"><img src="' . $src . '" alt="" width="76" height="76" style="display:inline-block;border:0"/></div></a>'
+                    : '<div style="padding:18px 18px 0;line-height:0"><img src="' . $src . '" alt="" width="52" height="52" style="display:block;border:0"/></div>';
+            } else {                                                                          // any other emoji typed by hand keeps working
+                $tint = $tints[$i % count($tints)];
+                $media = $feature
+                    ? '<a href="' . $link($b['url']) . '" style="text-decoration:none"><div style="background:' . $tint . ';padding:34px 16px;text-align:center;font-size:56px;line-height:1">' . gH($ic) . '</div></a>'
+                    : '<div style="padding:18px 18px 0"><span style="display:inline-block;width:48px;height:48px;line-height:48px;text-align:center;border-radius:50%;background:' . $tint . ';font-size:23px">' . gH($ic) . '</span></div>';
+            }
         }
         $pad = $feature ? '22px 24px 24px' : '14px 18px 18px';
         return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:' . ($feature ? '18' : '16') . 'px;overflow:hidden"><tr><td>'
