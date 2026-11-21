@@ -163,6 +163,12 @@ case 'welcome_campaigns': {
     require_once __DIR__ . '/sales-welcome-lib.php';
     gOut(200, ['rows' => [swCampaign($pdo, 'gulf'), swCampaign($pdo, 'egypt')]]);
 }
+case 'welcome_reset': {
+    require_once __DIR__ . '/sales-welcome-lib.php';
+    $camp = swCampaign($pdo, ($b['market'] ?? '') === 'gulf' ? 'gulf' : 'egypt'); $d = swDefaultCampaign($camp['audience']['market'] ?? 'egypt');
+    $pdo->prepare("UPDATE mkt_campaigns SET subject=?, preheader=?, blocks=?, updated_at=? WHERE id=?")->execute([$d['subject'], $d['preheader'], json_encode($d['blocks'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), gNow(), $camp['id']]);
+    gOut(200, ['ok' => true, 'subject' => $d['subject'], 'preheader' => $d['preheader'], 'blocks' => $d['blocks']]);
+}
 case 'welcome_list': {
     require_once __DIR__ . '/sales-welcome-lib.php';
     $st = $_GET['status'] ?? 'pending'; $w = '1=1'; $bind = [];

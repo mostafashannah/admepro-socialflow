@@ -23,10 +23,10 @@ function swDefaultCampaign(string $market): array {
     $about = 'admepro is a creative and digital marketing agency based in Cairo. We build brands and run their social media, content and video production, websites and paid ads, so you get one team for everything your brand shows online.';
     $blocks = [
         ['type' => 'text', 'text' => $market === 'gulf' ? 'Dear {{first_name}},' : 'Hi {{first_name}},'],
-        ['type' => 'text', 'text' => $about],
-        ['type' => 'card', 'title' => 'AI project: SocialFlow, our AI content platform', 'text' => 'We built our own platform where an AI assistant plans, writes, designs, schedules and reports your social content, and answers your customers on WhatsApp and Instagram. You see everything in one place.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'image' => ''],
-        ['type' => 'card', 'title' => 'Social media management', 'text' => 'Content planning, designs, reels, daily posting and community replies, with a monthly performance report.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'image' => ''],
-        ['type' => 'card', 'title' => 'Brand and video production', 'text' => 'Brand identity, reels and campaign videos shot and edited by our in-house team.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'image' => ''],
+        ['type' => 'text', 'text' => $about, 'section' => 'intro'],
+        ['type' => 'card', 'title' => 'AI project: SocialFlow, our AI content platform', 'text' => 'We built our own platform where an AI assistant plans, writes, designs, schedules and reports your social content, and answers your customers on WhatsApp and Instagram. You see everything in one place.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'image' => '', 'section' => 'ai'],
+        ['type' => 'card', 'title' => 'Social media management', 'text' => 'Content planning, designs, reels, daily posting and community replies, with a monthly performance report.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'image' => '', 'section' => 'services'],
+        ['type' => 'card', 'title' => 'Brand and video production', 'text' => 'Brand identity, reels and campaign videos shot and edited by our in-house team.', 'url' => 'https://admepro.com', 'button' => 'Learn more', 'image' => '', 'section' => 'services'],
         ['type' => 'text', 'text' => $market === 'gulf'
             ? 'If it would help {{company}}, one of our team will be glad to share ideas for your brand. Reply to this email or message us on WhatsApp.'
             : 'If you would like ideas for {{company}}, just reply here or message us on WhatsApp and one of our team will contact you.'],

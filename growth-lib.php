@@ -91,6 +91,19 @@ function gMergeTags($s, array $c) {
     $first = trim(explode(' ', trim((string)($c['name'] ?? '')))[0] ?? '');
     return strtr((string)$s, ['{{name}}' => $first ?: 'there', '{{first_name}}' => $first ?: 'there', '{{company}}' => (string)($c['company'] ?? '')]);
 }
+/** Portfolio groups a website item belongs to (by keywords in its title, summary, category and tags): gcc | retail | ai | real_estate | food | auto. */
+function gSiteGroups(string $hay): array {
+    $hay = strtolower($hay);
+    $map = ['gcc' => '/uae|dubai|abu dhabi|saudi|ksa|riyadh|jeddah|kuwait|qatar|doha|bahrain|oman|muscat|gulf|gcc|emirat/',
+        'retail' => '/retail|fashion|store|shop|e-?commerce|boutique|supermarket|\bmall\b|jewel|apparel|clothing|furniture/',
+        'ai' => '/\bai\b|artificial|chatbot|automation|machine learning|\bgpt\b|\bagents?\b/',
+        'real_estate' => '/real estate|property|properties|developer|compound|villa|residential|apartment|\btowers?\b|community|developments?/',
+        'food' => '/restaurant|cafe|coffee|food|hospitality|hotel|bakery|catering/',
+        'auto' => '/\bauto|\bcars?\b|motors|vehicle|automotive/'];
+    $out = []; foreach ($map as $k => $re) if (preg_match($re, $hay)) $out[] = $k;
+    return $out;
+}
+
 /** Links shown in the footer of EVERY email built on the newsletter template. Override in config.php with define('MARKETING_LINKS', ['Website' => 'https://…', …]). */
 function gBrandLinks(): array {
     if (defined('MARKETING_LINKS') && is_array(MARKETING_LINKS)) return MARKETING_LINKS;
@@ -345,7 +358,9 @@ function gSiteContent($force = false) {
             if (is_array($img)) $img = $img['src'] ?? $img['url'] ?? '';
             if ($img && !preg_match('#^https?://#', (string)$img)) $img = $site . '/' . ltrim((string)$img, '/');
             $out[$kind][] = ['slug' => $slug, 'title' => (string)($j['title'] ?? $j['name'] ?? $slug), 'summary' => mb_substr(strip_tags((string)($j['description'] ?? $j['summary'] ?? $j['excerpt'] ?? $j['seoDescription'] ?? '')), 0, 280),
-                'image' => (string)$img, 'url' => $url, 'date' => (string)($j['date'] ?? ''), 'kind' => $kind === 'posts' ? 'article' : 'project'];
+                'image' => (string)$img, 'url' => $url, 'date' => (string)($j['date'] ?? ''), 'kind' => $kind === 'posts' ? 'article' : 'project',
+                'category' => mb_substr(is_scalar($j['category'] ?? null) ? (string)$j['category'] : (is_scalar($j['sector'] ?? null) ? (string)$j['sector'] : (is_scalar($j['industry'] ?? null) ? (string)$j['industry'] : '')), 0, 60),
+                'groups' => gSiteGroups(implode(' ', [$slug, (string)($j['title'] ?? $j['name'] ?? ''), (string)($j['description'] ?? $j['summary'] ?? $j['excerpt'] ?? ''), is_scalar($j['category'] ?? null) ? (string)$j['category'] : '', is_scalar($j['sector'] ?? null) ? (string)$j['sector'] : '', is_scalar($j['industry'] ?? null) ? (string)$j['industry'] : '', is_array($j['tags'] ?? null) ? implode(' ', array_filter($j['tags'], 'is_scalar')) : (is_scalar($j['tags'] ?? null) ? (string)$j['tags'] : ''), is_scalar($j['location'] ?? null) ? (string)$j['location'] : '', is_scalar($j['country'] ?? null) ? (string)$j['country'] : '']))];
         }
     }
     // Thumbnails: ask each live page for the preview image it declares itself (og:image), which is always the real, working URL.

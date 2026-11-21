@@ -34663,6 +34663,18 @@ function MktAudience({channel,aud,setAud,ov}) {
     </div>);
 }
 
+const W_INTRO={
+  short:"admepro is a creative and digital marketing agency in Cairo. We run brands' social media, content, video, websites and ads, so you get one team for everything your brand shows online.",
+  full:"admepro is a creative and digital marketing agency based in Cairo. Our in-house team covers brand identity, social media management, content and video production, websites and e-commerce, paid advertising and AI-powered automation. We combine creative work with our own technology, so campaigns are planned, produced, published and reported in one place."};
+const W_SERVICES=[
+  {k:"social",title:"Social media management",text:"Content planning, designs, reels, daily posting and community replies, with a monthly performance report."},
+  {k:"brand",title:"Branding and identity",text:"Logo, visual identity and brand guidelines that make your brand recognisable everywhere."},
+  {k:"video",title:"Video and reels production",text:"Brand films, reels and campaign videos shot and edited by our in-house team."},
+  {k:"web",title:"Websites and e-commerce",text:"Fast, modern websites and online stores built to turn visitors into customers."},
+  {k:"ads",title:"Paid advertising",text:"Meta, Google and TikTok campaigns with clear targeting, optimisation and reporting."},
+  {k:"ai",title:"AI automation and chatbots",text:"AI assistants that answer customers, capture leads and automate repetitive marketing work."}];
+const W_GROUPS=[["all","All"],["gcc","GCC"],["retail","Retail"],["ai","AI"],["real_estate","Real estate"],["food","Food & hospitality"],["auto","Automotive"]];
+const W_RANK={intro:1,services:2,ai:3,portfolio:4};
 function MktEditor({init,ov,onClose}) {
   const [f,setF]=useState(()=>({...init,blocks:init.blocks||[],wa_params:init.wa_params||[],audience:init.audience||{}}));
   const [saving,setSaving]=useState(false); const [msg,setMsg]=useState("");
@@ -34670,9 +34682,23 @@ function MktEditor({init,ov,onClose}) {
   const [testTo,setTestTo]=useState(""); const [when,setWhen]=useState(""); const [tpls,setTpls]=useState(null);
   const [site,setSite]=useState(null); const [picked,setPicked]=useState([]); const [siteBusy,setSiteBusy]=useState(false); const [autoPick,setAutoPick]=useState(true);
   const siteItems=[...(site?.projects||[]),...(site?.posts||[])];
+  const [svcPick,setSvcPick]=useState(["social","brand","video"]); const [wCat,setWCat]=useState("all"); const [wPick,setWPick]=useState([]);
+  const wItems=siteItems.filter(it=>wCat==="all"||(it.groups||[]).includes(wCat));
   const loadSite=async(refresh)=>{ setSiteBusy(true); try{ setSite(await mApi.get("site_content",refresh?{refresh:1}:{})); }catch(e){ setSite({error:e.message,projects:[],posts:[]}); } finally{ setSiteBusy(false); } };
   const s=(k,v)=>setF(p=>({...p,[k]:v}));
   const isEmail=f.channel==="email";
+  const hasSection=n=>f.blocks.some(b=>b.section===n);
+  // Replaces ONLY the blocks of one section (or inserts them in the right place); everything else in the email stays untouched.
+  const addSection=(name,nb)=>setF(p=>{
+    const bl=p.blocks.filter(b=>b.section!==name);
+    if(!nb.length) return {...p,blocks:bl};
+    const tagged=nb.map(b=>({...b,section:name}));
+    let idx=bl.findIndex(b=>b.section&&W_RANK[b.section]>W_RANK[name]);
+    if(idx<0){ if(name==="intro") idx=Math.min(1,bl.length); else { const bi=bl.map(b=>b.type).lastIndexOf("button"); idx=bi<0?bl.length:(bi>0&&bl[bi-1].type==="text"?bi-1:bi); } }
+    return {...p,blocks:[...bl.slice(0,idx),...tagged,...bl.slice(idx)]};
+  });
+  const resetStructure=async()=>{ if(!confirm("Replace this email with the default structure? Your current blocks will be lost.")) return; try{ const d=await sApi.post("welcome_reset",{market:f.audience?.market}); setF(p=>({...p,subject:d.subject,preheader:d.preheader,blocks:d.blocks})); setMsg("Reset. Save to keep it."); }catch(e){ setMsg(e.message); } };
+  useEffect(()=>{ if(init.welcome) loadSite(false); },[]);
   useEffect(()=>{ if(!isEmail) return; const t=setTimeout(()=>mApi.post("preview",{blocks:f.blocks,preheader:f.preheader,lang:f.audience?.lang}).then(d=>setHtml(d.html)).catch(()=>{}),400); return ()=>clearTimeout(t); },[JSON.stringify(f.blocks),f.preheader,f.audience?.lang]);
   useEffect(()=>{ if(!isEmail) mApi.get("wa_templates").then(setTpls).catch(e=>setTpls({rows:[],error:e.message})); },[]);
   const save=async()=>{ setSaving(true); setMsg(""); try{ const d=await mApi.post("campaign_save",f); s("id",d.id); setMsg("Saved"); return d.id; }catch(e){ setMsg(e.message); return null; } finally{ setSaving(false); } };
@@ -34696,7 +34722,7 @@ function MktEditor({init,ov,onClose}) {
       <div style={{display:"grid",gridTemplateColumns:isEmail?"repeat(auto-fit,minmax(320px,1fr))":"1fr",gap:12,alignItems:"start"}}>
         <div style={{display:"flex",flexDirection:"column",gap:12,minWidth:0}}>
           {isEmail?<>
-            <div style={{...gCard,display:"flex",flexDirection:"column",gap:8,background:"linear-gradient(135deg,var(--accent)0d,transparent)"}}>
+            {!init.welcome&&<div style={{...gCard,display:"flex",flexDirection:"column",gap:8,background:"linear-gradient(135deg,var(--accent)0d,transparent)"}}>
               <b style={{fontSize:13}}>✨ Write with Sara</b>
               <textarea value={brief} onChange={e=>setBrief(e.target.value)} rows={3} placeholder="e.g. Ramadan offer: 20% off social media packages for new clients until end of month. Mention our new video production studio." style={{...inputSt,resize:"vertical"}}/>
               <div style={{borderTop:"1px dashed var(--border2)",paddingTop:8,display:"flex",flexDirection:"column",gap:6}}>
@@ -34721,7 +34747,56 @@ function MktEditor({init,ov,onClose}) {
                 <button style={gPill(lang==="en")} onClick={()=>setLang("en")}>English</button><button style={gPill(lang==="ar")} onClick={()=>setLang("ar")}>Arabic</button>
                 <div style={{flex:1}}/><button style={wBtn(true)} disabled={writing||(!brief.trim()&&picked.length===0)} onClick={write}>{writing?"Writing…":"Draft it"}</button>
               </div>
-            </div>
+            </div>}
+            {init.welcome&&<div style={{...gCard,display:"flex",flexDirection:"column",gap:12,background:"linear-gradient(135deg,var(--accent)0d,transparent)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                <b style={{fontSize:13}}>🧩 Build the email</b>
+                <span style={{fontSize:11,color:"var(--text3)",flex:1}}>Each choice replaces only its own section. The rest of the email stays as it is.</span>
+                <button style={wBtn(false)} onClick={resetStructure}>Reset to default structure</button>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                <span style={gLabel}>1 · Agency intro</span>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {[["short","Short"],["full","Full"]].map(([k,lb])=><button key={k} style={gPill(false)} onClick={()=>addSection("intro",[{type:"text",text:W_INTRO[k]}])}>{hasSection("intro")?"Replace with ":"Add "}{lb}</button>)}
+                  {hasSection("intro")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("intro",[])}>Remove intro</button>}
+                </div>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                <span style={gLabel}>2 · Services</span>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{W_SERVICES.map(sv=><button key={sv.k} style={gPill(svcPick.includes(sv.k))} onClick={()=>setSvcPick(p=>p.includes(sv.k)?p.filter(x=>x!==sv.k):[...p,sv.k])}>{sv.title}</button>)}</div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  <button style={wBtn(true)} disabled={svcPick.length===0} onClick={()=>{ addSection("services",W_SERVICES.filter(sv=>svcPick.includes(sv.k)).map(sv=>({type:"card",title:sv.title,text:sv.text,image:"",url:"https://admepro.com",button:"Learn more"}))); }}>{hasSection("services")?"Replace services":"Add services"} ({svcPick.length})</button>
+                  {hasSection("services")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("services",[])}>Remove services</button>}
+                </div>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                <span style={gLabel}>3 · AI project</span>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  <button style={wBtn(!hasSection("ai"))} onClick={()=>addSection("ai",[{type:"card",title:"AI project: SocialFlow, our AI content platform",text:"We built our own platform where an AI assistant plans, writes, designs, schedules and reports your social content, and answers your customers on WhatsApp and Instagram. You see everything in one place.",image:"",url:"https://admepro.com",button:"Learn more"}])}>{hasSection("ai")?"Reset AI project":"Add AI project"}</button>
+                  {hasSection("ai")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("ai",[])}>Remove AI project</button>}
+                </div>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                <span style={gLabel}>4 · Portfolio from the website</span>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                  {W_GROUPS.map(([k,lb])=><button key={k} style={gPill(wCat===k)} onClick={()=>setWCat(k)}>{lb}</button>)}
+                  <button style={wBtn(false)} disabled={siteBusy} onClick={()=>loadSite(!!site)}>{siteBusy?"Loading…":site?"Refresh":"Load website projects"}</button>
+                </div>
+                {site?.error&&<div style={{fontSize:12,color:"#dc2626"}}>{site.error}</div>}
+                {site&&!site.error&&<div style={{fontSize:11,color:"var(--text3)"}}>{wItems.length} project{wItems.length===1?"":"s"} {wCat==="all"?"on the website":"in this category"}. Tick up to 6.</div>}
+                {wItems.length>0&&<div style={{maxHeight:220,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
+                  {wItems.map(it=><label key={it.url} style={{display:"flex",gap:8,alignItems:"center",fontSize:12,cursor:"pointer",padding:"4px 6px",borderRadius:8,background:wPick.includes(it.url)?"var(--accent)12":"transparent"}}>
+                    <input type="checkbox" checked={wPick.includes(it.url)} onChange={e=>setWPick(p=>e.target.checked?(p.length>=6?p:[...p,it.url]):p.filter(x=>x!==it.url))}/>
+                    {it.image&&<img src={it.image} alt="" style={{width:34,height:34,objectFit:"cover",borderRadius:6}}/>}
+                    <span style={{flex:1,minWidth:0}}><b>{it.title}</b><span style={{color:"var(--text3)"}}> · {it.kind==="article"?"Article":"Project"}{it.category?" · "+it.category:""}</span></span>
+                  </label>)}
+                </div>}
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  <button style={wBtn(true)} disabled={wPick.length===0} onClick={()=>{ const chosen=wPick.map(u=>siteItems.find(x=>x.url===u)).filter(Boolean); addSection("portfolio",[{type:"heading",text:wCat==="all"?"Selected work":"Selected work: "+(W_GROUPS.find(x=>x[0]===wCat)||[,""])[1]},...chosen.map(it=>({type:"card",title:it.title,text:it.summary||"",image:it.image||"",url:it.url,button:it.kind==="article"?"Read more":"View project"}))]); }}>{hasSection("portfolio")?"Replace portfolio":"Add portfolio"} ({wPick.length})</button>
+                  {hasSection("portfolio")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("portfolio",[])}>Remove portfolio</button>}
+                </div>
+              </div>
+            </div>}
             <div style={{...gCard,display:"flex",flexDirection:"column",gap:8}}>
               <span style={gLabel}>Subject</span><input value={f.subject} onChange={e=>s("subject",e.target.value)} placeholder="Subject line — {{first_name}} works here" style={inputSt}/>
               <span style={gLabel}>Preview text</span><input value={f.preheader} onChange={e=>s("preheader",e.target.value)} placeholder="Short line shown after the subject in the inbox" style={inputSt}/>
