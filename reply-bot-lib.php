@@ -100,7 +100,7 @@ function toneDirective(string $tone): string {
 }
 
 // Builds the Claude system prompt from Client Brain + reply-bot brain + reply history.
-function buildReplyBotSystemPrompt(PDO $pdo, string $clientId, string $clientName, string $botBrain, bool $isComment = false, string $dontDo = '', string $tone = 'friendly') {
+function buildReplyBotSystemPrompt(PDO $pdo, string $clientId, string $clientName, string $botBrain, bool $isComment = false, string $dontDo = '', string $tone = 'friendly', ?string $channel = null) {
     $parts = [];
     $parts[] = $isComment
         ? "You are the AI auto-reply assistant for {$clientName}'s social media inbox, built into SocialFlow. "
@@ -160,7 +160,20 @@ function buildReplyBotSystemPrompt(PDO $pdo, string $clientId, string $clientNam
         $parts[] = "When someone asks about our services, or says what they're interested in, give a useful, specific answer (3 to 5 short sentences, plain text, no markdown) before asking for anything: "
                  . "say what we actually do for that service and what they get, e.g. social media management (content planning, designs, reels, posting and community replies, monthly reporting), "
                  . "paid advertising (Meta/Google/TikTok campaigns, targeting, optimisation, performance reports), branding and creative design, video and reel production, websites and SEO. "
-                 . "Never invent prices, packages, timelines or client names. Then ask for their business name and the best number, and say one of our team will contact them.";
+                 . "Never invent prices, packages, timelines or client names.";
+        if (!$isComment) {
+            $numberRule = $channel === 'whatsapp'
+                ? "We already have their WhatsApp number: never ask for it."
+                : "We do not have their phone number yet on this channel: after the three questions, ask ONCE for their phone/WhatsApp number so the team can reach them.";
+            $parts[] = "SHORT QUALIFYING QUESTIONNAIRE. Use it only when the person is interested in our services (not job seekers, vendors or complaints). Learn what we need in three short questions, ONE question per message:\n"
+                     . "1) Their business: what it is / its field.\n"
+                     . "2) The service they need: list the options inline in one short line (social media, branding, video and AI content, ads, website).\n"
+                     . "3) Their main goal or timing right now (for example more leads, a launch, awareness).\n"
+                     . "Be smart: skip any question the customer already answered, even in their first message, and infer what you can. Never ask two questions in one message and never repeat a question. "
+                     . "Start each reply by acknowledging their last answer in a few specific words (not a generic thanks). If they ask about a service, answer it briefly first (3 to 5 sentences), then ask the next question. "
+                     . "If they ask for a price, say it depends on the scope and continue the questions: never invent numbers. If they decline or seem not interested, stop asking.\n"
+                     . "When the three are answered (or skipped), close: thank them and say one of our team will contact them shortly with ideas. No choices about who or when, and no more questions. " . $numberRule;
+        }
     }
 
     if (trim($botBrain) !== '') {
@@ -188,8 +201,8 @@ function buildReplyBotSystemPrompt(PDO $pdo, string $clientId, string $clientNam
 }
 
 // Returns the drafted reply text, or null (on failure, or if Claude opts out via NEEDS_HUMAN).
-function generateBotReply(PDO $pdo, string $clientId, string $clientName, string $botBrain, array $threadMessages, bool $isComment = false, string $dontDo = '', string $tone = 'friendly', ?string $customerName = null, ?string $postCaption = null) {
-    $system = buildReplyBotSystemPrompt($pdo, $clientId, $clientName, $botBrain, $isComment, $dontDo, $tone);
+function generateBotReply(PDO $pdo, string $clientId, string $clientName, string $botBrain, array $threadMessages, bool $isComment = false, string $dontDo = '', string $tone = 'friendly', ?string $customerName = null, ?string $postCaption = null, ?string $channel = null) {
+    $system = buildReplyBotSystemPrompt($pdo, $clientId, $clientName, $botBrain, $isComment, $dontDo, $tone, $channel);
 
     $convo = implode("\n", array_map(
         fn($m) => ($m['direction'] === 'in' ? 'Customer' : 'Agency') . ': ' . $m['message_text'],
@@ -419,7 +432,7 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
         if ($clientMatch->fetchColumn()) return;
 
         $tag = "src_id:{$channel}:{$customerId}";
-        $dupe = $pdo->prepare("SELECT id, phone FROM leads WHERE notes LIKE :tag LIMIT 1");
+        $dupe = $pdo->prepare("SELECT id, phone, notes FROM leads WHERE notes LIKE :tag LIMIT 1");
         $dupe->execute([':tag' => "%{$tag}%"]);
         if ($existing = $dupe->fetch(PDO::FETCH_ASSOC)) {
             // Already captured this sender before, but they may not have shared a phone
@@ -430,6 +443,20 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
                 $upd = $pdo->prepare("UPDATE leads SET phone = :phone WHERE id = :id");
                 $upd->execute([':phone' => $phone, ':id' => $existing['id']]);
             }
+            // The customer keeps answering the bot's short questionnaire after the lead was created: refresh the lead's brief from the whole
+            // conversation (both sides), for the first few answers only, so the team sees business / service / goal without opening the inbox.
+            try {
+                if ($clientId && count($threadTexts) >= 2 && count($threadTexts) <= 6 && preg_match('/expressing interest in our services:\n/', (string)($existing['notes'] ?? ''))) {
+                    $all = $pdo->prepare("SELECT direction, message_text FROM customer_messages WHERE client_id = :cid AND channel = :ch AND customer_id = :custid ORDER BY created_at ASC LIMIT 30");
+                    $all->execute([':cid' => $clientId, ':ch' => $channel, ':custid' => $customerId]);
+                    $dialog = implode("\n", array_map(fn($m) => ($m['direction'] === 'in' ? 'Customer: ' : 'Agency: ') . preg_replace('/\s+/', ' ', (string)$m['message_text']), $all->fetchAll(PDO::FETCH_ASSOC)));
+                    $nb = summarizeLeadInquiry($dialog);
+                    if ($nb) {
+                        $newNotes = preg_replace_callback('/(expressing interest in our services:\n).*?(\n\n' . preg_quote($tag, '/') . ')/s', fn($mm) => $mm[1] . $nb . $mm[2], (string)$existing['notes'], 1);
+                        if ($newNotes && $newNotes !== $existing['notes']) $pdo->prepare("UPDATE leads SET notes = :n WHERE id = :id")->execute([':n' => $newNotes, ':id' => $existing['id']]);
+                    }
+                }
+            } catch (\Throwable $eN) { error_log('[reply-bot] lead brief refresh: ' . $eN->getMessage()); }
             return;
         }
 
@@ -747,7 +774,7 @@ function maybeAutoReplyOnce(PDO $pdo, string $clientId, string $clientName, stri
     $thread = array_reverse($stmt->fetchAll(PDO::FETCH_ASSOC));
     if (!$thread) { $log('empty thread'); return; }
 
-    $reply = generateBotReply($pdo, $clientId, $clientName, (string)($settings['brain'] ?? ''), $thread, $isComment, (string)($settings['dont_do'] ?? ''), (string)($settings['tone'] ?? 'friendly'), $customerName, $postCaption);
+    $reply = generateBotReply($pdo, $clientId, $clientName, (string)($settings['brain'] ?? ''), $thread, $isComment, (string)($settings['dont_do'] ?? ''), (string)($settings['tone'] ?? 'friendly'), $customerName, $postCaption, $channel);
     $usedFallback = false;
     if (!$reply) {
         // Claude opted out (NEEDS_HUMAN) or the API call failed — rather than
