@@ -46,7 +46,7 @@ function swCampaign(PDO $pdo, string $market): array {
         $d = swDefaultCampaign($market);
         $pdo->prepare("INSERT INTO mkt_campaigns (channel, name, subject, preheader, blocks, wa_params, audience, status, created_by, created_at) VALUES ('email',?,?,?,?,'[]',?,'draft','sales-agent',?)")
             ->execute([$d['name'], $d['subject'], $d['preheader'], json_encode($d['blocks'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                json_encode(['auto' => 'welcome', 'market' => $market, 'v' => 2, 'consent' => ['opt_in', 'lead']]), gNow()]);
+                json_encode(['auto' => 'welcome', 'market' => $market, 'v' => 3, 'consent' => ['opt_in', 'lead']]), gNow()]);
         $q = $pdo->prepare("SELECT * FROM mkt_campaigns WHERE id=?"); $q->execute([(int)$pdo->lastInsertId()]); $r = $q->fetch(PDO::FETCH_ASSOC);
     }
     // One-time (audience v < 2): the old default structure had three pre-filled cards (SocialFlow + two services). Sections are now chosen in the builder, so remove those exact default cards.
@@ -57,6 +57,15 @@ function swCampaign(PDO $pdo, string $market): array {
         $aud['v'] = 2;
         $pdo->prepare("UPDATE mkt_campaigns SET blocks=?, audience=? WHERE id=?")->execute([json_encode($kept, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), json_encode($aud), $r['id']]);
         $r['blocks'] = json_encode($kept, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); $r['audience'] = json_encode($aud);
+    }
+    // One-time (audience v < 3): project cards saved with the text "Array" (a per-language description was read as text) lose that text.
+    $aud = json_decode((string)$r['audience'], true) ?: [];
+    if ((int)($aud['v'] ?? 0) < 3) {
+        $fixed = json_decode((string)$r['blocks'], true) ?: [];
+        foreach ($fixed as &$bl) if (($bl['type'] ?? '') === 'card' && trim((string)($bl['text'] ?? '')) === 'Array') $bl['text'] = '';
+        unset($bl); $aud['v'] = 3;
+        $pdo->prepare("UPDATE mkt_campaigns SET blocks=?, audience=? WHERE id=?")->execute([json_encode($fixed, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), json_encode($aud), $r['id']]);
+        $r['blocks'] = json_encode($fixed, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); $r['audience'] = json_encode($aud);
     }
     // Campaigns created before the rename: switch only names and subjects that are still the old defaults (never anything the team edited).
     $upd = [];

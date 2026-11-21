@@ -91,6 +91,12 @@ function gMergeTags($s, array $c) {
     $first = trim(explode(' ', trim((string)($c['name'] ?? '')))[0] ?? '');
     return strtr((string)$s, ['{{name}}' => $first ?: 'there', '{{first_name}}' => $first ?: 'there', '{{company}}' => (string)($c['company'] ?? '')]);
 }
+/** A website field that may be plain text or a per-language list ({"en": "...", "ar": "..."}): returns one readable string (English first), never "Array". */
+function gLoc($v): string {
+    if (is_string($v)) return $v;
+    if (is_array($v)) { foreach (['en', 'en-US', 'en_US', 'default'] as $k) if (isset($v[$k]) && is_string($v[$k]) && $v[$k] !== '') return $v[$k]; foreach ($v as $x) if (is_string($x) && $x !== '') return $x; }
+    return '';
+}
 /** Portfolio groups a website item belongs to (by keywords in its title, summary, category and tags): gcc | retail | ai | real_estate | food | auto. */
 function gSiteGroups(string $hay): array {
     $hay = strtolower($hay);
@@ -376,10 +382,10 @@ function gSiteContent($force = false) {
             $img = $j['cover'] ?? $j['image'] ?? $j['thumbnail'] ?? (is_array($j['images'] ?? null) ? ($j['images'][0] ?? '') : '');
             if (is_array($img)) $img = $img['src'] ?? $img['url'] ?? '';
             if ($img && !preg_match('#^https?://#', (string)$img)) $img = $site . '/' . ltrim((string)$img, '/');
-            $out[$kind][] = ['slug' => $slug, 'title' => (string)($j['title'] ?? $j['name'] ?? $slug), 'summary' => mb_substr(strip_tags((string)($j['description'] ?? $j['summary'] ?? $j['excerpt'] ?? $j['seoDescription'] ?? '')), 0, 280),
+            $out[$kind][] = ['slug' => $slug, 'title' => (gLoc($j['title'] ?? '') ?: gLoc($j['name'] ?? '') ?: $slug), 'summary' => mb_substr(strip_tags(gLoc($j['description'] ?? '') ?: gLoc($j['summary'] ?? '') ?: gLoc($j['excerpt'] ?? '') ?: gLoc($j['seoDescription'] ?? '')), 0, 280),
                 'image' => (string)$img, 'url' => $url, 'date' => (string)($j['date'] ?? ''), 'kind' => $kind === 'posts' ? 'article' : 'project',
                 'category' => mb_substr(is_scalar($j['category'] ?? null) ? (string)$j['category'] : (is_scalar($j['sector'] ?? null) ? (string)$j['sector'] : (is_scalar($j['industry'] ?? null) ? (string)$j['industry'] : '')), 0, 60),
-                'groups' => gSiteGroups(implode(' ', [$slug, (string)($j['title'] ?? $j['name'] ?? ''), (string)($j['description'] ?? $j['summary'] ?? $j['excerpt'] ?? ''), is_scalar($j['category'] ?? null) ? (string)$j['category'] : '', is_scalar($j['sector'] ?? null) ? (string)$j['sector'] : '', is_scalar($j['industry'] ?? null) ? (string)$j['industry'] : '', is_array($j['tags'] ?? null) ? implode(' ', array_filter($j['tags'], 'is_scalar')) : (is_scalar($j['tags'] ?? null) ? (string)$j['tags'] : ''), is_scalar($j['location'] ?? null) ? (string)$j['location'] : '', is_scalar($j['country'] ?? null) ? (string)$j['country'] : '']))];
+                'groups' => gSiteGroups(implode(' ', [$slug, gLoc($j['title'] ?? '') . ' ' . gLoc($j['name'] ?? ''), gLoc($j['description'] ?? '') . ' ' . gLoc($j['summary'] ?? '') . ' ' . gLoc($j['excerpt'] ?? ''), is_scalar($j['category'] ?? null) ? (string)$j['category'] : '', is_scalar($j['sector'] ?? null) ? (string)$j['sector'] : '', is_scalar($j['industry'] ?? null) ? (string)$j['industry'] : '', is_array($j['tags'] ?? null) ? implode(' ', array_filter($j['tags'], 'is_scalar')) : (is_scalar($j['tags'] ?? null) ? (string)$j['tags'] : ''), is_scalar($j['location'] ?? null) ? (string)$j['location'] : '', is_scalar($j['country'] ?? null) ? (string)$j['country'] : '']))];
         }
     }
     // Thumbnails: ask each live page for the preview image it declares itself (og:image), which is always the real, working URL.
