@@ -149,3 +149,47 @@ function swSend(PDO $pdo, int $id, string $by, int $cap): array {
     $pdo->prepare("UPDATE sales_prospects SET status=IF(status IN ('new','approved'),'contacted',status), updated_at=? WHERE id=?")->execute([gNow(), $row['prospect_id']]);
     return [true, null];
 }
+
+/** Open / click / unsubscribe times of welcome rows from the newsletter pipeline (mkt_sends). Matched in PHP, with no SQL join, so tables with different collations can never break it.
+ *  Returns [welcome row id => ['opened_at','clicked_at','unsub_at']]. */
+function swTracking(PDO $pdo, array $rows): array {
+    if (!$rows) return [];
+    $camp = ['gulf' => (int)swCampaign($pdo, 'gulf')['id'], 'egypt' => (int)swCampaign($pdo, 'egypt')['id']];
+    $emails = array_values(array_unique(array_map(fn($r) => strtolower((string)$r['to_email']), $rows)));
+    $cid = [];
+    foreach (array_chunk($emails, 400) as $chunk) {
+        $q = $pdo->prepare("SELECT id, email FROM mkt_contacts WHERE email IN (" . implode(',', array_fill(0, count($chunk), '?')) . ")"); $q->execute($chunk);
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $c) $cid[strtolower((string)$c['email'])] = (int)$c['id'];
+    }
+    $sends = [];
+    foreach (array_chunk(array_values(array_unique($cid)), 400) as $chunk) {
+        $q = $pdo->prepare("SELECT campaign_id, contact_id, opened_at, clicked_at, unsub_at FROM mkt_sends WHERE campaign_id IN (?,?) AND contact_id IN (" . implode(',', array_fill(0, count($chunk), '?')) . ")");
+        $q->execute(array_merge([$camp['gulf'], $camp['egypt']], $chunk));
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $s) $sends[((int)$s['campaign_id']) . '|' . ((int)$s['contact_id'])] = $s;
+    }
+    $out = [];
+    foreach ($rows as $r) {
+        $c = $cid[strtolower((string)$r['to_email'])] ?? 0; $s = $sends[($camp[$r['market']] ?? 0) . '|' . $c] ?? [];
+        $out[$r['id']] = ['opened_at' => $s['opened_at'] ?? null, 'clicked_at' => $s['clicked_at'] ?? null, 'unsub_at' => $s['unsub_at'] ?? null];
+    }
+    return $out;
+}
+
+/** What the mail provider says happened to recent emails: [Resend email id => last_event]. Cached for 2 minutes. Empty when Resend can't be asked. */
+function swResendEvents(): array {
+    $f = sys_get_temp_dir() . '/sf-resend-events.json';
+    if (is_file($f) && time() - filemtime($f) < 120) { $j = json_decode((string)file_get_contents($f), true); if (is_array($j)) return $j; }
+    if (!defined('RESEND_API_KEY') || !RESEND_API_KEY) return [];
+    $map = []; $after = '';
+    for ($p = 0; $p < 4; $p++) {
+        $ch = curl_init('https://api.resend.com/emails?limit=100' . ($after !== '' ? '&after=' . rawurlencode($after) : ''));
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20, CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . RESEND_API_KEY]]);
+        $res = curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+        $d = json_decode((string)$res, true); if ($code !== 200 || !is_array($d)) break;
+        foreach ((array)($d['data'] ?? []) as $m) if (!empty($m['id'])) $map[$m['id']] = (string)($m['last_event'] ?? 'sent');
+        if (empty($d['has_more']) || empty($d['data'])) break;
+        $after = (string)end($d['data'])['id']; usleep(350000);
+    }
+    if ($map) @file_put_contents($f, json_encode($map));
+    return $map;
+}

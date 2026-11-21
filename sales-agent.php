@@ -202,15 +202,41 @@ case 'welcome_list': {
     require_once __DIR__ . '/sales-welcome-lib.php';
     $st = $_GET['status'] ?? 'pending'; $w = '1=1'; $bind = [];
     $mk = in_array($_GET['market'] ?? '', ['gulf', 'egypt'], true) ? $_GET['market'] : '';
-    $gid = swCampaign($pdo, 'gulf')['id']; $eid = swCampaign($pdo, 'egypt')['id'];
-    $mw = $mk !== '' ? "sw.market=" . $pdo->quote($mk) : '1=1';
-    $join = "FROM sales_welcome sw LEFT JOIN mkt_contacts k ON k.email = sw.to_email LEFT JOIN mkt_sends ms ON ms.contact_id = k.id AND ms.campaign_id = IF(sw.market='gulf', $gid, $eid)";
-    if (in_array($st, ['pending', 'approved', 'rejected', 'failed'], true)) { $w = 'sw.status=?'; $bind[] = $st; }
-    $q = $pdo->prepare("SELECT sw.*, ms.opened_at ms_opened, ms.clicked_at ms_clicked, ms.unsub_at ms_unsub $join WHERE $w AND $mw ORDER BY sw.id DESC LIMIT 200"); $q->execute($bind);
-    $rows = array_map(function ($r) { $r['opened_at'] = $r['ms_opened']; $r['clicked_at'] = $r['ms_clicked']; $r['unsub_at'] = $r['ms_unsub']; unset($r['ms_opened'], $r['ms_clicked'], $r['ms_unsub']); return $r; }, $q->fetchAll(PDO::FETCH_ASSOC));
-    $counts = $pdo->query("SELECT sw.status, COUNT(*) n FROM sales_welcome sw WHERE $mw GROUP BY sw.status")->fetchAll(PDO::FETCH_KEY_PAIR);
-    $t = $pdo->query("SELECT COUNT(*) sent, SUM(ms.opened_at IS NOT NULL) opened, SUM(ms.clicked_at IS NOT NULL) clicked, SUM(sw.replied_at IS NOT NULL) replied, SUM(ms.unsub_at IS NOT NULL) unsubs $join WHERE sw.sent_at IS NOT NULL AND $mw")->fetch(PDO::FETCH_ASSOC);
-    gOut(200, ['rows' => $rows, 'counts' => $counts, 'totals' => $t, 'cap' => $capN]);
+    $mw = $mk !== '' ? "market=" . $pdo->quote($mk) : '1=1';
+    if (in_array($st, ['pending', 'approved', 'rejected', 'failed'], true)) { $w = 'status=?'; $bind[] = $st; }
+    $q = $pdo->prepare("SELECT * FROM sales_welcome WHERE $w AND $mw ORDER BY id DESC LIMIT 200"); $q->execute($bind);
+    $rows = $q->fetchAll(PDO::FETCH_ASSOC);
+    $sentRows = $pdo->query("SELECT id, to_email, market, replied_at FROM sales_welcome WHERE sent_at IS NOT NULL AND $mw LIMIT 5000")->fetchAll(PDO::FETCH_ASSOC);
+    $trk = swTracking($pdo, array_merge($rows, $sentRows));
+    foreach ($rows as &$r) { $r = array_merge($r, $trk[$r['id']] ?? ['opened_at' => null, 'clicked_at' => null, 'unsub_at' => null]); } unset($r);
+    $counts = $pdo->query("SELECT status, COUNT(*) n FROM sales_welcome WHERE $mw GROUP BY status")->fetchAll(PDO::FETCH_KEY_PAIR);
+    $tot = ['sent' => count($sentRows), 'opened' => 0, 'clicked' => 0, 'replied' => 0, 'unsubs' => 0];
+    foreach ($sentRows as $r) { $x = $trk[$r['id']] ?? []; if (!empty($x['opened_at'])) $tot['opened']++; if (!empty($x['clicked_at'])) $tot['clicked']++; if (!empty($x['unsub_at'])) $tot['unsubs']++; if (!empty($r['replied_at'])) $tot['replied']++; }
+    gOut(200, ['rows' => $rows, 'counts' => $counts, 'totals' => $tot, 'cap' => $capN]);
+}
+case 'welcome_report': {
+    // Full view of one introduction email: every email sent, what the mail provider says about delivery, opens, clicks, replies, unsubscribes.
+    require_once __DIR__ . '/sales-welcome-lib.php';
+    $mk = in_array($_GET['market'] ?? '', ['gulf', 'egypt'], true) ? $_GET['market'] : '';
+    $mw = $mk !== '' ? "market=" . $pdo->quote($mk) : '1=1';
+    $rows = $pdo->query("SELECT * FROM sales_welcome WHERE sent_at IS NOT NULL AND $mw ORDER BY sent_at DESC LIMIT 500")->fetchAll(PDO::FETCH_ASSOC);
+    $trk = swTracking($pdo, $rows); $ev = swResendEvents();
+    $k = ['sent' => count($rows), 'delivered' => 0, 'bounced' => 0, 'complained' => 0, 'opened' => 0, 'clicked' => 0, 'replied' => 0, 'unsub' => 0, 'unknown' => 0];
+    $days = []; for ($i = 13; $i >= 0; $i--) $days[date('Y-m-d', strtotime("-$i days"))] = ['d' => date('Y-m-d', strtotime("-$i days")), 'sent' => 0, 'opened' => 0, 'clicked' => 0];
+    $out = [];
+    foreach ($rows as $r) {
+        $t = $trk[$r['id']] ?? []; $e = $ev[$r['provider_id'] ?? ''] ?? null; $opened = !empty($t['opened_at']); $clicked = !empty($t['clicked_at']);
+        if ($e === null && !$opened && !$clicked) $k['unknown']++;
+        if (in_array($e, ['bounced', 'failed', 'suppressed'], true)) $k['bounced']++;
+        elseif ($e === 'complained') $k['complained']++;
+        elseif (in_array($e, ['delivered', 'opened', 'clicked'], true) || $opened || $clicked) $k['delivered']++;
+        if ($opened) $k['opened']++; if ($clicked) $k['clicked']++; if (!empty($r['replied_at'])) $k['replied']++; if (!empty($t['unsub_at'])) $k['unsub']++;
+        $d = substr((string)$r['sent_at'], 0, 10); if (isset($days[$d])) { $days[$d]['sent']++; if ($opened) $days[$d]['opened']++; if ($clicked) $days[$d]['clicked']++; }
+        $out[] = ['id' => $r['id'], 'company' => $r['company'], 'to_name' => $r['to_name'], 'to_email' => $r['to_email'], 'market' => $r['market'], 'subject' => $r['subject'], 'sent_at' => $r['sent_at'],
+            'delivery' => $e ?: ($clicked ? 'clicked' : ($opened ? 'opened' : null)), 'opened_at' => $t['opened_at'] ?? null, 'clicked_at' => $t['clicked_at'] ?? null, 'unsub_at' => $t['unsub_at'] ?? null,
+            'replied_at' => $r['replied_at'], 'feedback' => $r['feedback']];
+    }
+    gOut(200, ['rows' => $out, 'kpis' => $k, 'by_day' => array_values($days), 'provider_checked' => (bool)$ev]);
 }
 case 'welcome_preview': {
     require_once __DIR__ . '/sales-welcome-lib.php';
@@ -266,5 +292,5 @@ default: gOut(400, ['error' => 'Unknown action']);
 }
 } catch (PDOException $e) {
     if (str_contains($e->getMessage(), "doesn't exist")) gOut(500, ['error' => 'Run migration-marketing.sql and migration-sales-welcome.sql first', 'setup' => true]);
-    error_log('[sales-agent] ' . $e->getMessage()); gOut(500, ['error' => 'Database error']);
+    error_log('[sales-agent] ' . $e->getMessage()); gOut(500, ['error' => 'Database error: ' . mb_substr(preg_replace('/\s+/', ' ', $e->getMessage()), 0, 220)]);
 }

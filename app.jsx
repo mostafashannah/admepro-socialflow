@@ -35178,12 +35178,54 @@ function SalesAgentPage({setPage, embedded}) {
     </div>);
 }
 
+function WelcomeReport({rep,onMark,onPreview}) {
+  const [flt,setFlt]=useState("all");
+  if(!rep) return <div style={{fontSize:12,color:"var(--text3)",padding:10}}>Loading the report…</div>;
+  const k=rep.kpis||{}; const sent=+k.sent||0; const pct=(n)=>sent?Math.round((+n||0)*100/sent)+"%":"—";
+  const DEL={delivered:["Delivered","#16a34a"],opened:["Opened","#0d9488"],clicked:["Clicked","#0d9488"],bounced:["Bounced","#dc2626"],failed:["Failed","#dc2626"],suppressed:["Suppressed","#dc2626"],complained:["Spam complaint","#dc2626"],delivery_delayed:["Delayed","#d97706"],sent:["Sent","#6b7280"],queued:["Queued","#6b7280"]};
+  const bad=r=>["bounced","failed","suppressed","complained"].includes(r.delivery);
+  const FLT=[["all","All"],["delivered","Delivered"],["problem","Bounced / spam"],["opened","Opened"],["clicked","Clicked"],["replied","Replied"],["unopened","Not opened"]];
+  const rows=(rep.rows||[]).filter(r=>flt==="all"||(flt==="delivered"&&["delivered","opened","clicked"].includes(r.delivery))||(flt==="problem"&&bad(r))||(flt==="opened"&&r.opened_at)||(flt==="clicked"&&r.clicked_at)||(flt==="replied"&&r.replied_at)||(flt==="unopened"&&!r.opened_at&&!r.clicked_at));
+  const dmax=Math.max(1,...(rep.by_day||[]).map(d=>d.sent));
+  const cell={padding:"7px 8px",borderBottom:"1px solid var(--border)",fontSize:12,verticalAlign:"top"};
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(104px,1fr))",gap:8}}>
+        {[["Sent",sent,"",""],["Delivered",k.delivered,pct(k.delivered),"#16a34a"],["Bounced",k.bounced,pct(k.bounced),k.bounced>0?"#dc2626":""],["Spam complaints",k.complained,pct(k.complained),k.complained>0?"#dc2626":""],["Opened",k.opened,pct(k.opened),""],["Clicked",k.clicked,pct(k.clicked),""],["Replied",k.replied,pct(k.replied),""],["Unsubscribed",k.unsub,pct(k.unsub),k.unsub>0?"#d97706":""]].map(([l,v,p,c])=>
+          <div key={l} style={{border:"1px solid var(--border)",borderRadius:10,padding:"8px 10px"}}><div style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>{l}</div><div style={{fontSize:20,fontWeight:800,color:c||"inherit"}}>{v||0} <span style={{fontSize:11,fontWeight:600,color:"var(--text3)"}}>{p}</span></div></div>)}
+      </div>
+      {!rep.provider_checked&&<div style={{fontSize:11,color:"#b45309"}}>Delivery status could not be read from the mail provider right now, so "Delivered" counts only emails that were opened or clicked.</div>}
+      {(k.unknown>0&&rep.provider_checked)&&<div style={{fontSize:11,color:"var(--text3)"}}>{k.unknown} older email{k.unknown===1?"":"s"} no longer show a delivery status (the provider only keeps the most recent).</div>}
+      <div>
+        <div style={{fontSize:11,color:"var(--text3)",fontWeight:700,marginBottom:4}}>LAST 14 DAYS · sent (dark), opened and clicked</div>
+        <div style={{display:"flex",alignItems:"flex-end",gap:4,height:64}}>
+          {(rep.by_day||[]).map(d=><div key={d.d} title={d.d+": "+d.sent+" sent, "+d.opened+" opened, "+d.clicked+" clicked"} style={{flex:1,display:"flex",flexDirection:"column",justifyContent:"flex-end",height:"100%"}}>
+            <div style={{height:Math.max(d.sent?4:1,Math.round(d.sent*52/dmax)),background:d.sent?"var(--text2)":"var(--border)",borderRadius:3,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",left:0,right:0,bottom:0,height:d.sent?Math.round(100*d.opened/d.sent)+"%":0,background:"#16a34a"}}/></div>
+            <div style={{fontSize:9,color:"var(--text3)",textAlign:"center",marginTop:2}}>{d.d.slice(8)}</div></div>)}
+        </div>
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{FLT.map(([v,l])=><button key={v} style={gPill(flt===v)} onClick={()=>setFlt(v)}>{l}</button>)}<span style={{fontSize:12,color:"var(--text3)",alignSelf:"center"}}>{rows.length} of {sent}</span></div>
+      {rows.length===0&&<div style={{textAlign:"center",color:"var(--text2)",fontSize:13,padding:16}}>Nothing in this view.</div>}
+      {rows.length>0&&<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:720}}>
+        <thead><tr style={{textAlign:"left",color:"var(--text3)",fontSize:11,textTransform:"uppercase"}}>{["Contact","Sent","Delivery","Opened","Clicked","Replied","Note",""].map(h=><th key={h} style={{padding:"6px 8px",borderBottom:"1px solid var(--border)"}}>{h}</th>)}</tr></thead>
+        <tbody>{rows.map(r=>{ const d=DEL[r.delivery]; return <tr key={r.id}>
+          <td style={cell}><b>{r.company||r.to_email}</b><div style={{color:"var(--text3)"}}>{r.to_name?r.to_name+" · ":""}{r.to_email}</div></td>
+          <td style={{...cell,whiteSpace:"nowrap"}}>{String(r.sent_at).slice(0,16)}</td>
+          <td style={cell}>{d?<span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:999,background:d[1]+"22",color:d[1]}}>{d[0]}</span>:<span style={{color:"var(--text3)"}}>—</span>}{r.unsub_at&&<div style={{fontSize:11,color:"#d97706",marginTop:3}}>Unsubscribed</div>}</td>
+          <td style={{...cell,whiteSpace:"nowrap",color:r.opened_at?"#16a34a":"var(--text3)"}}>{r.opened_at?String(r.opened_at).slice(5,16):"—"}</td>
+          <td style={{...cell,whiteSpace:"nowrap",color:r.clicked_at?"#16a34a":"var(--text3)"}}>{r.clicked_at?String(r.clicked_at).slice(5,16):"—"}</td>
+          <td style={cell}><input type="checkbox" checked={!!r.replied_at} onChange={e=>onMark("welcome_mark",{id:r.id,replied:e.target.checked,feedback:r.feedback||""})}/></td>
+          <td style={cell}><input defaultValue={r.feedback||""} onBlur={e=>{ if(e.target.value!==(r.feedback||"")) onMark("welcome_mark",{id:r.id,replied:!!r.replied_at,feedback:e.target.value}); }} placeholder="Feedback note" style={{...inputSt,minWidth:150,fontSize:12,padding:"5px 8px"}}/></td>
+          <td style={cell}><button style={wBtn(false)} onClick={()=>onPreview(r)}>View</button></td></tr>; })}</tbody></table></div>}
+    </div>);
+}
+
 function WelcomeEmailsPanel({market,campaign,onEdit}) {
   const WK="sf_welcome_open_"+(market||"all");
   const [open,setOpen]=useState(()=>{ try{ return localStorage.getItem(WK)==="1"; }catch(e){ return false; } });
   const [st,setSt]=useState("pending"); const [d,setD]=useState(null); const [err,setErr]=useState(""); const [msg,setMsg]=useState("");
-  const [prev,setPrev]=useState(null); const [busy,setBusy]=useState("");
-  const load=()=>sApi.get("welcome_list",{status:st,market:market||""}).then(x=>{setD(x);setErr("");}).catch(e=>setErr(e.message));
+  const [prev,setPrev]=useState(null); const [busy,setBusy]=useState(""); const [rep,setRep]=useState(null);
+  const load=()=>{ sApi.get("welcome_list",{status:st,market:market||""}).then(x=>{setD(x);setErr("");}).catch(e=>setErr(e.message)); if(st==="approved") sApi.get("welcome_report",{market:market||""}).then(setRep).catch(e=>setErr(e.message)); };
   useEffect(()=>{ try{ localStorage.setItem(WK,open?"1":"0"); }catch(e){} if(open) load(); },[open,st]);
   const edit=(id,patch)=>setD(x=>({...x,rows:x.rows.map(r=>r.id===id?{...r,...patch}:r)}));
   const act=async(a,body,ok)=>{ setBusy(a+(body.id||"")); setMsg(""); try{ await sApi.post(a,body); if(ok) setMsg(ok); await load(); }catch(e){ setMsg(e.message); await load(); } setBusy(""); };
@@ -35209,13 +35251,14 @@ function WelcomeEmailsPanel({market,campaign,onEdit}) {
         </div>}
         <div style={{fontSize:11,color:"var(--text3)"}}>Opens are an estimate: some mail apps (Apple Mail) load the tracking image automatically, so treat "clicked" and "replied" as the real feedback. The campaign statistics are in the same numbers as every newsletter.</div>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-          {["pending","approved","rejected","failed"].map(k=><button key={k} style={gPill(st===k)} onClick={()=>setSt(k)}>{k==="approved"?"Sent":k[0].toUpperCase()+k.slice(1)}{counts[k]?" "+counts[k]:""}</button>)}
+          {["pending","approved","rejected","failed"].map(k=><button key={k} style={gPill(st===k)} onClick={()=>setSt(k)}>{k==="approved"?"Sent · Report":k[0].toUpperCase()+k.slice(1)}{counts[k]?" "+counts[k]:""}</button>)}
           <div style={{flex:1}}/>
           {st==="pending"&&pend.length>0&&<button style={wBtn(true)} disabled={!!busy} onClick={()=>send(pend.map(r=>r.id))}>Approve & send all ({pend.length})</button>}
           {campaign&&onEdit&&<button style={wBtn(false)} onClick={()=>onEdit(campaign)}>Open email in editor</button>}
         </div>
-        {d&&d.rows.length===0&&<div style={{textAlign:"center",color:"var(--text2)",fontSize:13,padding:20}}>Nothing here yet.</div>}
-        {(d?.rows||[]).map(r=><div key={r.id} style={{border:"1px solid var(--border)",borderRadius:12,padding:10,display:"flex",flexDirection:"column",gap:6}}>
+        {st==="approved"&&<WelcomeReport rep={rep} onMark={act} onPreview={preview}/>}
+        {st!=="approved"&&d&&d.rows.length===0&&<div style={{textAlign:"center",color:"var(--text2)",fontSize:13,padding:20}}>Nothing here yet.</div>}
+        {st!=="approved"&&(d?.rows||[]).map(r=><div key={r.id} style={{border:"1px solid var(--border)",borderRadius:12,padding:10,display:"flex",flexDirection:"column",gap:6}}>
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
             <b style={{fontSize:13}}>{r.company||r.to_email}</b><span style={{fontSize:12,color:"var(--text3)"}}>{r.to_name?r.to_name+" · ":""}{r.to_email}</span>
             <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:999,background:r.market==="gulf"?"#0ea5e922":"#f59e0b22",color:r.market==="gulf"?"#0369a1":"#b45309",textTransform:"capitalize"}}>{r.market}</span>
