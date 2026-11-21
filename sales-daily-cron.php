@@ -53,7 +53,7 @@ if ($S['enabled']) {
         if ($ok) { $pdo->prepare("UPDATE sales_prospects SET outreach=?, updated_at=? WHERE id=?")->execute([json_encode($out, JSON_UNESCAPED_UNICODE), gNow(), $p['id']]); $drafted++; }
     }
     $sum['drafted'] = $drafted;
-    // 3b) welcome emails: one pending draft (Gulf or Egypt template) per prospect with an email. The team reviews them in the app; nothing is sent from here.
+    // 3b) introduction emails: one pending draft (Gulf or Egypt template) per prospect with an email. The team reviews them in the app; nothing is sent from here.
     try {
         require_once __DIR__ . '/sales-welcome-lib.php';
         $sum['welcome'] = 0;
@@ -87,7 +87,7 @@ $lines = ["📈 *Sales machine — " . $cairo->format('D j M') . "*"];
 $lines[] = $S['enabled'] ? "New prospects: {$sum['found']} · approved {$sum['approved']} · drafted {$sum['drafted']} · emails sent {$sum['sent']}" . ($S['auto_send'] ? '' : ' (auto-send is off)') : 'The daily machine is switched off (Growth → Sales agent).';
 try {
     $w = $pdo->query("SELECT SUM(status='pending') pend, SUM(sent_at IS NOT NULL) sent, SUM(opened_at IS NOT NULL) opened, SUM(clicked_at IS NOT NULL) clicked, SUM(replied_at IS NOT NULL) replied FROM sales_welcome")->fetch(PDO::FETCH_ASSOC);
-    if ($w && ((int)$w['pend'] || (int)$w['sent'])) $lines[] = "✉️ Welcome emails: " . (int)$w['pend'] . " waiting for your review · sent {$w['sent']} · opened " . (int)$w['opened'] . " · clicked " . (int)$w['clicked'] . " · replied " . (int)$w['replied'];
+    if ($w && ((int)$w['pend'] || (int)$w['sent'])) $lines[] = "✉️ Introduction emails: " . (int)$w['pend'] . " waiting for your review · sent {$w['sent']} · opened " . (int)$w['opened'] . " · clicked " . (int)$w['clicked'] . " · replied " . (int)$w['replied'];
 } catch (Throwable $e) {}
 $lines[] = "Contacts synced from leads/clients: {$sum['synced']}";
 if (!empty($sum['error'])) $lines[] = "⚠️ Research problem: " . mb_substr($sum['error'], 0, 160);

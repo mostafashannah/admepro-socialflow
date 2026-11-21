@@ -34863,7 +34863,7 @@ function MktEditor({init,ov,onClose}) {
             {!tpl&&<button style={{...wBtn(false),alignSelf:"flex-start"}} onClick={()=>s("wa_params",[...f.wa_params,""])}>+ Variable</button>}
             {(tpl?.image_header||f.wa_header_image)&&<><span style={gLabel}>Header image URL</span><input value={f.wa_header_image||""} onChange={e=>s("wa_header_image",e.target.value)} placeholder="https://…jpg" style={inputSt}/></>}
           </div>}
-          {init.welcome?<div style={{...gCard,fontSize:12,color:"var(--text2)",background:"var(--accent)0d"}}>⚡ Automated welcome email. It is never sent as a bulk campaign: each new lead gets it after you approve it in Marketing → Campaigns. Use {"{{first_name}}"} and {"{{company}}"} to personalise. The social links and WhatsApp link in the footer come from the newsletter template.</div>:<MktAudience channel={f.channel} aud={f.audience} setAud={a=>s("audience",a)} ov={ov}/>}
+          {init.welcome?<div style={{...gCard,fontSize:12,color:"var(--text2)",background:"var(--accent)0d"}}>⚡ Automated introduction email. It is never sent as a bulk campaign: each new lead gets it after you approve it in Marketing → Campaigns. Use {"{{first_name}}"} and {"{{company}}"} to personalise. The social links and WhatsApp link in the footer come from the newsletter template.</div>:<MktAudience channel={f.channel} aud={f.audience} setAud={a=>s("audience",a)} ov={ov}/>}
           <div style={{...gCard,display:"flex",flexDirection:"column",gap:10}}>
             <b style={{fontSize:14}}>{init.welcome?"Test":"Test & send"}</b>
             <div style={{display:"flex",gap:6}}><input value={testTo} onChange={e=>setTestTo(e.target.value)} placeholder={isEmail?"Test email (default: yours)":"Test phone, e.g. +2010…"} style={{...inputSt,flex:1}}/><button style={wBtn(false)} onClick={test}>Send test</button></div>
@@ -35169,12 +35169,12 @@ function WelcomeEmailsPanel({market,campaign,onEdit}) {
   return (
     <div style={{...gCard,display:"flex",flexDirection:"column",gap:10}}>
       <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",cursor:"pointer"}} onClick={()=>setOpen(!open)}>
-        <b style={{fontSize:14}}>{market==="gulf"?"✉️ Gulf welcome email":market==="egypt"?"✉️ Egypt welcome email":"✉️ Welcome emails"}</b><span style={{fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:999,background:"var(--accent)1a",color:"var(--accent)"}}>Daily · automated</span>
+        <b style={{fontSize:14}}>{market==="gulf"?"✉️ Gulf introduction email":market==="egypt"?"✉️ Egypt introduction email":"✉️ Introduction emails"}</b><span style={{fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:999,background:"var(--accent)1a",color:"var(--accent)"}}>Daily · automated</span>
         {counts.pending>0&&<span style={{fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:999,background:"#f59e0b22",color:"#b45309"}}>{counts.pending} to review</span>}
         <div style={{flex:1}}/><span style={{fontSize:12,color:"var(--text3)"}}>{open?"Hide":"Open"}</span>
       </div>
       {open&&<>
-        <div style={{fontSize:12,color:"var(--text2)"}}>Every day the Sales agent drafts this welcome email for each new lead that has an email address{market==="gulf"?" in a Gulf country":market==="egypt"?" in Egypt (or any other country)":""}. Nothing is sent until you approve it here. The email itself is a normal newsletter: click "Open email in editor" to change its blocks, subject and preview, and send yourself a test.</div>
+        <div style={{fontSize:12,color:"var(--text2)"}}>Every day the Sales agent drafts this introduction email (it introduces admepro and what we do) for each new contact that has an email address{market==="gulf"?" in a Gulf country":market==="egypt"?" in Egypt (or any other country)":""}. Nothing is sent until you approve it here. The email itself is a normal newsletter: click "Open email in editor" to change its blocks, subject and preview, and send yourself a test.</div>
         {err&&<div style={{fontSize:12,color:"#dc2626"}}>{err}</div>}
         {msg&&<div style={{fontSize:12,color:/sent|saved|rejected/i.test(msg)?"#16a34a":"#dc2626"}}>{msg}</div>}
         {d&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:8}}>

@@ -32,8 +32,8 @@ function swDefaultCampaign(string $market): array {
             : 'If you would like ideas for {{company}}, just reply here or message us on WhatsApp and one of our team will contact you.'],
         ['type' => 'button', 'text' => 'Chat with us on WhatsApp', 'url' => 'https://wa.me/201000531842?text=Hi%20admepro%2C%20I%27m%20interested%20in%20your%20services'],
     ];
-    return ['name' => $market === 'gulf' ? 'Gulf welcome email' : 'Egypt welcome email',
-        'subject' => $market === 'gulf' ? 'Welcome to admepro, a creative team for {{company}}' : 'Hi {{first_name}}, meet admepro: marketing for {{company}}',
+    return ['name' => $market === 'gulf' ? 'Gulf introduction email' : 'Egypt introduction email',
+        'subject' => $market === 'gulf' ? 'Introducing admepro: a creative team for {{company}}' : 'Hi {{first_name}}, a quick introduction to admepro',
         'preheader' => 'Branding, social media, video and an AI platform under one roof.', 'blocks' => $blocks];
 }
 
@@ -51,6 +51,13 @@ function swCampaign(PDO $pdo, string $market): array {
                 json_encode(['auto' => 'welcome', 'market' => $market, 'consent' => ['opt_in', 'lead']]), gNow()]);
         $q = $pdo->prepare("SELECT * FROM mkt_campaigns WHERE id=?"); $q->execute([(int)$pdo->lastInsertId()]); $r = $q->fetch(PDO::FETCH_ASSOC);
     }
+    // Campaigns created before the rename: switch only names and subjects that are still the old defaults (never anything the team edited).
+    $upd = [];
+    $old = ['Gulf welcome email' => 'Gulf introduction email', 'Egypt welcome email' => 'Egypt introduction email'];
+    if (isset($old[$r['name']])) $upd['name'] = $old[$r['name']];
+    $oldSub = ['Welcome to admepro, a creative team for {{company}}' => 'Introducing admepro: a creative team for {{company}}', 'Hi {{first_name}}, meet admepro: marketing for {{company}}' => 'Hi {{first_name}}, a quick introduction to admepro'];
+    if (isset($oldSub[$r['subject']])) $upd['subject'] = $oldSub[$r['subject']];
+    if ($upd) { foreach ($upd as $k => $v) { $pdo->prepare("UPDATE mkt_campaigns SET $k=? WHERE id=?")->execute([$v, $r['id']]); $r[$k] = $v; } }
     return swCampRow($r);
 }
 
