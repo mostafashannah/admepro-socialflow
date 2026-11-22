@@ -68,11 +68,14 @@ if ($action === 'stats') {
         $leads = $q("SELECT id, name, company, phone, email, status, notes, created_at, assigned_to FROM leads WHERE source = 'website' ORDER BY created_at DESC LIMIT 100");
         $leadCount = (int)$one("SELECT COUNT(*) FROM leads WHERE source = 'website' AND DATE(created_at) BETWEEN ? AND ?", [$F, $T]);
     } catch (Throwable $e) {}
+    // A WhatsApp tap on the site counts as a lead too: one per visitor per day (repeat taps by the same person aren't double counted).
+    $waLeads = (int)$one("SELECT COUNT(*) FROM (SELECT DISTINCT visitor, day FROM site_events WHERE event='click' AND (title LIKE '%wa.me%' OR title LIKE '%whatsapp%') AND $range) x", [$F, $T]);
+    $formLeads = $leadCount; $leadCount += $waLeads;
     wOut(200, [
         'from' => $F, 'to' => $T, 'days' => $days,
         'totals' => ['views' => (int)$tot['views'], 'visitors' => (int)$tot['visitors'], 'avg_secs' => $avgSecs,
             'bounce' => $bounce['all_'] ? round($bounce['one'] / $bounce['all_'] * 100) : null,
-            'leads' => $leadCount, 'conversion' => $tot['visitors'] ? round($leadCount / $tot['visitors'] * 100, 2) : null,
+            'leads' => $leadCount, 'form_leads' => $formLeads, 'wa_leads' => $waLeads, 'conversion' => $tot['visitors'] ? round($leadCount / $tot['visitors'] * 100, 2) : null,
             'prev_views' => (int)$prev['views'], 'prev_visitors' => (int)$prev['visitors']],
         'series' => $series, 'pages' => $pages, 'sources' => $sources, 'campaigns' => $campaigns,
         'devices' => $devices, 'browsers' => $browsers, 'countries' => $countries, 'langs' => $langs, 'clicks' => $clicks,

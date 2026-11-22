@@ -34054,7 +34054,7 @@ function WebsiteOverview() {
         {kpi("Page views", T.views.toLocaleString(), "vs previous period", "#0ea5e9", delta(T.views,T.prev_views))}
         {kpi("Avg. time on page", wFmtSecs(T.avg_secs), "per visit", "#8b5cf6")}
         {kpi("Bounce rate", T.bounce==null?"—":T.bounce+"%", "saw one page only", T.bounce>70?"#ef4444":"#f59e0b")}
-        {kpi("Website leads", T.leads, "forms submitted", "#10b981")}
+        {kpi("Website leads", T.leads, `${T.wa_leads||0} WhatsApp · ${T.form_leads??T.leads} forms`, "#10b981")}
         {kpi("Conversion", T.conversion==null?"—":T.conversion+"%", "visitors → leads", "#d90b2c")}
       </div>
       <WebsiteLive site={d.site}/>
