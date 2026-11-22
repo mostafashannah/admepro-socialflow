@@ -17781,7 +17781,7 @@ function ClientPerformanceTrend({clientId, posts=[]}) {
             <button key={k} onClick={()=>setMetricMode(k)} style={{padding:isMobile?"6px 4px":"3px 12px",flex:isMobile?1:undefined,borderRadius:99,fontSize:11,fontWeight:700,border:"none",cursor:"pointer",background:metricMode===k?"var(--accent)":"transparent",color:metricMode===k?"#fff":"var(--text2)"}}>{l}</button>
           ))}
         </div>
-        <div style={{display:"flex",gap:isMobile?"6px 14px":12,flexWrap:"wrap",justifySelf:"end"}}>
+        <div style={isMobile?{display:"flex",gap:"6px 14px",flexWrap:"wrap"}:{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:5,justifySelf:"end",minWidth:0}}>
           {seriesList.map(s=>(
             <div key={s.platform} style={{display:"flex",alignItems:"center",gap:6}}>
               <span style={{width:9,height:9,borderRadius:"50%",background:s.color,flexShrink:0}}/>
