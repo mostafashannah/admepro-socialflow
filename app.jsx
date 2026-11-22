@@ -34307,7 +34307,8 @@ function WProjectsTable({keys, items, feat, pf, sf, onOpen, reload}) {
 // SIMPLE view: pick a place, tick the projects shown there, give each a NUMBER and Single / Double. One save for everything.
 function WProjectsSimple({keys, items, feat, onOpen, reload}) {
   const [place, setPlace] = useState("home"); const [prev, setPrev] = useState(false); const [imgs, setImgs] = useState(null); const [edits, setEdits] = useState({});
-  useEffect(()=>{ if(prev && imgs===null) { setImgs({}); wApi.get("site_images").then(d=>setImgs(d.images||{})).catch(()=>{}); } },[prev]); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(null);
+  const [imgNote, setImgNote] = useState("");
+  useEffect(()=>{ if(prev && imgs===null) { setImgs({}); setImgNote("Loading project images… the first time can take up to a minute."); wApi.get("site_images").then(d=>{ const m = d.images||{}; setImgs(m); setImgNote(d.error ? ("Images: "+d.error) : Object.keys(m).length ? "" : `No images found (the site returned ${d.projects||0} live projects).`); }).catch(err=>{ setImgs(null); setImgNote("Images failed to load: "+(err.message||err)+" — close and open Preview to retry."); }); } },[prev]); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(null);
   const allKeys = Object.keys(items).filter(k=>items[k].json);
   const base = k => { const f = feat[k] || {}; const fin = f.featuredIn || {}; return {fin, old:!!(f.featured && !fin.home)}; };
   const eff = k => { const b = base(k), e = edits[k] || {}; return {fin:e.fin||b.fin, old:e.old!==undefined?e.old:b.old}; };
@@ -34362,7 +34363,7 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
         </select>
         <button onClick={()=>setPrev(v=>!v)} style={{...gPillW(prev)}}>👁 Preview</button></div>
       {prev&&<div style={{border:"1px solid var(--border)",borderRadius:12,padding:12,background:"var(--surface)"}}>
-        <p style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>Simulation of <b>{(PL.find(x=>x[0]===place)||[])[1]}</b> with your changes (not saved yet). 3 columns; each card takes 1, 2 or 3 spots, in number order — an empty dashed spot means the row is not full.</p>
+        <p style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>Simulation of <b>{(PL.find(x=>x[0]===place)||[])[1]}</b> with your changes (not saved yet). 3 columns; each card takes 1, 2 or 3 spots, in number order.{imgNote&&<><br/><b style={{color:"#b45309"}}>{imgNote}</b></>}</p>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>
           {rows.filter(k=>state(k,place).on).flatMap(k=>{ const st = state(k,place); const lay = st.layout==="auto"?"triple":st.layout; const sp = lay==="single"?1:lay==="double"?2:3; const f = feat[k]||{};
             return [<div key={k} style={{gridColumn:`span ${sp}`,minHeight:sp===1?170:150,borderRadius:12,overflow:"hidden",position:"relative",background:"linear-gradient(135deg,#1f2937,#374151)",color:"#fff",display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>

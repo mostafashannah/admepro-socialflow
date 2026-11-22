@@ -317,11 +317,12 @@ if ($action === 'featured') {
 
 /* Thumbnails for the Projects preview: slug -> real image of each live project (same source the newsletter builder uses). */
 if ($action === 'site_images') {
+    @set_time_limit(150);
     require_once __DIR__ . '/growth-lib.php';
-    $c = gSiteContent();
+    try { $c = gSiteContent(); } catch (Throwable $e) { wOut(200, ['images' => new stdClass(), 'error' => 'Could not read the site: ' . $e->getMessage()]); }
     $map = [];
     foreach ($c['projects'] ?? [] as $p) if (!empty($p['slug']) && !empty($p['image'])) $map[$p['slug']] = $p['image'];
-    wOut(200, ['images' => $map, 'error' => $c['error'] ?? null]);
+    wOut(200, ['images' => (object)$map, 'error' => $c['error'] ?? null, 'projects' => count($c['projects'] ?? [])]);
 }
 
 if ($action === 'status') {
