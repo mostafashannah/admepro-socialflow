@@ -62,8 +62,7 @@ function fetch_one_platform_insights(PDO $pdo, array $post, string $platform, st
                 return $out;
             }
             if ($lc === 403 && (($lr['code'] ?? '') === 'missing_scope')) { $out['error'] = 'LinkedIn needs the analytics permission: reconnect LinkedIn in Zernio (' . ($lr['action'] ?? 'reconnect') . ')'; return $out; }
-            if ($lc === 404) { $out['error'] = 'LinkedIn: Zernio cannot find this post (' . $urn . '). For personal profiles only posts published through Zernio have numbers'; return $out; }
-            // anything else: try the generic call below
+            // 404 / invalid URN (e.g. the stored id is Zernio's own post id): the generic call below accepts that too
         }
         [$zc, $zr] = zernio_request('GET', '/analytics?' . http_build_query(['postId' => $postId]));
         if ($zc === 202) { $out['error'] = 'Zernio is still syncing this post — try again in an hour'; return $out; }
