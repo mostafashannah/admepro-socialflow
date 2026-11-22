@@ -34314,14 +34314,16 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
   const put = (k, fin, old) => setEdits(o => ({...o, [k]: {fin, old}}));
   const nextNo = p => 1 + allKeys.reduce((m,k)=>Math.max(m,(eff(k).fin[p]||{}).order||0), 0);
   const legacyRank = (() => { const ks = allKeys.filter(k=>{ const e = eff(k); return !e.fin.home && e.old; }).sort((a,b)=>(((feat[a]||{}).order??99)-((feat[b]||{}).order??99))||a.localeCompare(b)); const m = {}; ks.forEach((k,i)=>{ m[k]=i+1; }); return m; })();
-  const state = (k, p) => { const e = eff(k); if(e.fin[p]) return {on:true, order:e.fin[p].order, layout:e.fin[p].layout||"auto", legacy:false}; if(p==="home" && e.old) return {on:true, legacy:true, order:legacyRank[k], layout:"auto"};
+  // The old home grid is recreated exactly by these views in order (website recipe): D S | S S S | S D | S D | S S S.
+  const legacyLayOf = (k) => ["double","single","single","single","single","single","double","single","double","single","single","single"][((legacyRank[k]||1)-1)%12];
+  const state = (k, p) => { const e = eff(k); if(e.fin[p]) return {on:true, order:e.fin[p].order, layout:e.fin[p].layout||"auto", legacy:false}; if(p==="home" && e.old) return {on:true, legacy:true, order:legacyRank[k], layout:legacyLayOf(k)};
     // Portfolio pages: every project whose tags put it there is shown (numbered after the featured ones, shown as the site lays them out now: wide+small, small+wide) until you set its own number/view.
-    if(p!=="home" && wMember((feat[k]||{}).tags, p)) { const mem = allKeys.filter(x=>!eff(x).fin[p] && wMember((feat[x]||{}).tags, p)).sort((a,b)=>(((feat[a]||{}).order??99)-((feat[b]||{}).order??99))||a.localeCompare(b)); const top = allKeys.reduce((m,x)=>Math.max(m,(eff(x).fin[p]||{}).order||0), 0); const no = top+mem.indexOf(k)+1; return {on:true, tagOnly:true, order:no, layout:"auto"}; }
+    if(p!=="home" && wMember((feat[k]||{}).tags, p)) { const mem = allKeys.filter(x=>!eff(x).fin[p] && wMember((feat[x]||{}).tags, p)).sort((a,b)=>(((feat[a]||{}).order??99)-((feat[b]||{}).order??99))||a.localeCompare(b)); const top = allKeys.reduce((m,x)=>Math.max(m,(eff(x).fin[p]||{}).order||0), 0); const no = top+mem.indexOf(k)+1; return {on:true, tagOnly:true, order:no, layout:["double","single","single","double"][mem.indexOf(k)%4]}; }
     return {on:false}; };
   const toggle = (k, p, on) => { const e = eff(k); const fin = {...e.fin};
     if(on) { fin[p] = {order:nextNo(p), layout:"single"}; put(k, fin, p==="home" ? false : e.old); }
     else { delete fin[p]; put(k, fin, p==="home" ? false : e.old); } };
-  const setNo = (k, p, n) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {layout:"single", ...(fin[p]||{}), order:Math.max(1,Math.round(Number(n))||1)}; put(k, fin, p==="home" ? false : e.old); };
+  const setNo = (k, p, n) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {layout:(state(k,p).legacy||state(k,p).tagOnly)?state(k,p).layout:"single", ...(fin[p]||{}), order:Math.max(1,Math.round(Number(n))||1)}; put(k, fin, p==="home" ? false : e.old); };
   const setLay = (k, p, l) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {order:(state(k,p).legacy||state(k,p).tagOnly)?(state(k,p).order||nextNo(p)):nextNo(p), ...(fin[p]||{}), layout:l}; put(k, fin, p==="home" ? false : e.old); };
   // Quick layout: gives every project on this tab a number (1, 2, 3 …) and a view from a repeating pattern. You can still change any one after.
   // Drag & drop: moves a project to the place of another one and renumbers this tab 1, 2, 3 … (each project keeps its own view).
@@ -34374,7 +34376,7 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
         {place==="home"&&allKeys.some(k=>eff(k).fin.home)&&<button onClick={restoreOld} style={{...gPillW(false)}}>↩ Back to old home grid</button>}
         <button onClick={()=>setPrev(v=>!v)} style={{...gPillW(prev)}}>👁 Preview</button></div>
       {prev&&<div style={{border:"1px solid var(--border)",borderRadius:12,padding:12,background:"var(--surface)"}}>
-        <p style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>Simulation of <b>{(PL.find(x=>x[0]===place)||[])[1]}</b> with your changes (not saved yet). 3 columns: Single = 1, Double = 2, Triple = the whole row; no back-filling, so a card that does not fit starts the next row. <b>auto</b> = the site\'s own look (shown small).<br/><b>Drag a card onto another to change the order.</b></p>
+        <p style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>Simulation of <b>{(PL.find(x=>x[0]===place)||[])[1]}</b> with your changes (not saved yet). 3 columns: Single = 1, Double = 2, Triple = the whole row; no back-filling, so a card that does not fit starts the next row. <b>auto</b> = the site's own look (shown small).<br/><b>Drag a card onto another to change the order.</b></p>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>
           {rows.filter(k=>state(k,place).on).flatMap(k=>{ const st = state(k,place); const lay = (st.layout==="auto" && (st.legacy||st.tagOnly)) ? "auto" : (st.layout==="auto"?"single":st.layout); const sp = lay==="single"?1:lay==="double"?2:3; const f = feat[k]||{};
             return [<div key={k} draggable onDragStart={()=>{ dragRef.current = k; }} onDragOver={e=>e.preventDefault()} onDrop={e=>{ e.preventDefault(); reorder(dragRef.current, k); }} style={{cursor:"grab",gridColumn:`span ${sp}`,minHeight:sp===3?200:150,borderRadius:12,overflow:"hidden",position:"relative",background:"linear-gradient(135deg,#1f2937,#374151)",color:"#fff",display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
@@ -34383,7 +34385,7 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
               <div style={{position:"relative",padding:"10px 14px",display:"flex",flexDirection:"column"}}><span style={{fontSize:14,fontWeight:800}}>{f.title||k.replace(/-/g," ")}</span><span style={{fontSize:10,opacity:.8}}>#{st.order} · {lay}</span></div></div>]; })}
         </div>
       </div>}
-      <p style={{fontSize:12,color:"var(--text2)"}}>Tick the projects that should be shown on <b>{(PL.find(x=>x[0]===place)||[])[1]}</b>. <b>No.</b> is the order (1 comes first). Each row has <b>3 columns</b>: <b>Single</b> = takes 1, <b>Double</b> = takes 2, <b>Triple</b> = takes the whole row (e.g. Double + Single = one row). A project that does not fit moves to the next row. No view selected = the site\'s own look.</p>
+      <p style={{fontSize:12,color:"var(--text2)"}}>Tick the projects that should be shown on <b>{(PL.find(x=>x[0]===place)||[])[1]}</b>. <b>No.</b> is the order (1 comes first). Each row has <b>3 columns</b>: <b>Single</b> = takes 1, <b>Double</b> = takes 2, <b>Triple</b> = takes the whole row (e.g. Double + Single = one row). A project that does not fit moves to the next row. No view selected = the site's own look.</p>
       <div style={{display:"flex",flexDirection:"column"}}>
         {rows.map(k=>{ const s = state(k, place); const f = feat[k] || {}; const lay = (s.layout==="auto" && (s.legacy||s.tagOnly)) ? "auto" : (s.layout==="auto" ? "single" : s.layout); const rw = rowOf[k]; return (
           <React.Fragment key={k}>
