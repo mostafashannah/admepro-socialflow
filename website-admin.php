@@ -159,8 +159,38 @@ function safePath($p, $ROOT) {
 }
 $ghPath = fn($p) => implode('/', array_map('rawurlencode', explode('/', $p)));
 
-if (in_array($action, ['status', 'list', 'get', 'put', 'upload'], true) && (!$REPO || !$TOKEN)) {
+if (in_array($action, ['status', 'list', 'get', 'put', 'upload', 'featured'], true) && (!$REPO || !$TOKEN)) {
     wOut(200, ['connected' => false, 'error' => 'GitHub is not connected yet — add WEBSITE_GITHUB_REPO and WEBSITE_GITHUB_TOKEN to config.php.']);
+}
+
+/* Featured placements of every project (read-only): which projects are featured on the home page / the GCC, real estate and retail portfolios, with their position and view.
+ * Each project.json holds   "featuredIn": { "home": {"order": 1, "layout": "single|double|triple"}, "gcc": {...}, "real_estate": {...}, "retail": {...} }
+ * and, for older website code, "featured": true when it is featured on home. Cached for 3 minutes (cleared on every save). */
+if ($action === 'featured') {
+    $cache = sys_get_temp_dir() . '/sf-web-featured.json';
+    if (empty($_GET['refresh']) && is_file($cache) && time() - filemtime($cache) < 180) { $j = json_decode((string)file_get_contents($cache), true); if (is_array($j)) wOut(200, ['items' => $j]); }
+    [$c, $r] = gh('GET', "/repos/$REPO/git/trees/" . rawurlencode($BRANCH) . "?recursive=1", $TOKEN);
+    if ($c !== 200) wOut(502, ['error' => "GitHub HTTP $c"]);
+    $base = ($ROOT ? $ROOT . '/' : '') . 'projects/'; $files = [];
+    foreach ($r['tree'] ?? [] as $t) if ($t['type'] === 'blob' && strpos($t['path'], $base) === 0 && preg_match('#^([^/_][^/]*)/project\.json$#', substr($t['path'], strlen($base)), $m)) $files[$m[1]] = $t['path'];
+    $mh = curl_multi_init(); $hs = [];
+    foreach (array_slice($files, 0, 120, true) as $slug => $path) {
+        $ch = curl_init('https://api.github.com/repos/' . $REPO . '/contents/' . $ghPath($path) . '?ref=' . rawurlencode($BRANCH));
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 25, CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $TOKEN, 'Accept: application/vnd.github+json', 'X-GitHub-Api-Version: 2022-11-28', 'User-Agent: SocialFlow-Website-Tab']]);
+        curl_multi_add_handle($mh, $ch); $hs[$slug] = $ch;
+    }
+    do { $st = curl_multi_exec($mh, $run); if ($run) curl_multi_select($mh, 1.0); } while ($run && $st === CURLM_OK);
+    $items = [];
+    foreach ($hs as $slug => $ch) {
+        $res = json_decode((string)curl_multi_getcontent($ch), true); curl_multi_remove_handle($mh, $ch); curl_close($ch);
+        $j = json_decode((string)base64_decode((string)($res['content'] ?? '')), true); if (!is_array($j)) continue;
+        $fin = []; foreach (['home', 'gcc', 'real_estate', 'retail'] as $k) if (isset($j['featuredIn'][$k]) && is_array($j['featuredIn'][$k]))
+            $fin[$k] = ['order' => (int)($j['featuredIn'][$k]['order'] ?? 99), 'layout' => in_array($j['featuredIn'][$k]['layout'] ?? '', ['single', 'double', 'triple'], true) ? $j['featuredIn'][$k]['layout'] : 'double'];
+        $items[$slug] = ['title' => is_string($j['title'] ?? null) ? $j['title'] : $slug, 'published' => !array_key_exists('published', $j) || !empty($j['published']), 'featured' => !empty($j['featured']), 'order' => (int)($j['order'] ?? 99), 'featuredIn' => $fin];
+    }
+    curl_multi_close($mh);
+    if ($items) @file_put_contents($cache, json_encode($items, JSON_UNESCAPED_UNICODE));
+    wOut(200, ['items' => $items]);
 }
 
 if ($action === 'status') {
@@ -222,6 +252,7 @@ if (in_array($action, ['put', 'upload'], true)) {
     [$c, $r] = gh('PUT', "/repos/$REPO/contents/" . $ghPath($p), $TOKEN, $body);
     if ($c === 409) wOut(409, ['error' => 'Someone changed this file in the meantime — reload it and try again.']);
     if ($c !== 200 && $c !== 201) wOut(502, ['error' => "GitHub HTTP $c: " . ($r['message'] ?? '')]);
+    @unlink(sys_get_temp_dir() . '/sf-web-featured.json'); // featured placements may have changed
     try { $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), ?, 'website', ?, 'success', ?)")->execute(['website_' . $action, $p, $who]); } catch (Throwable $e) {}
     wOut(200, ['ok' => true, 'sha' => $r['content']['sha'] ?? null, 'commit' => substr($r['commit']['sha'] ?? '', 0, 7)]);
 }

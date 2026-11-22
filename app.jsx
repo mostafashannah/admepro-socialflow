@@ -34029,16 +34029,22 @@ function WebsiteOverview() {
 }
 
 // Generic list → editor shell for projects / posts / pages.
+// Where a project can be featured on the website, and how it is laid out there.
+const W_PLACE=[["home","Home page","Home"],["gcc","GCC & KSA portfolio","GCC"],["real_estate","Real estate portfolio","Real estate"],["retail","E-commerce & retail portfolio","Retail"]];
+const W_VIEW=[["single","Single · 1 per row"],["double","Double · 2 per row"],["triple","Triple · 3 per row"]];
 function WContentList({dir, onOpen, onNew, newLabel}) {
-  const [items, setItems] = useState(null); const [err, setErr] = useState(""); const [q, setQ] = useState("");
+  const [items, setItems] = useState(null); const [err, setErr] = useState(""); const [q, setQ] = useState(""); const [feat, setFeat] = useState({}); const [pf, setPf] = useState("all");
+  useEffect(()=>{ if(dir==="projects") wApi.get("featured").then(r=>setFeat(r.items||{})).catch(()=>{}); },[dir]);
   useEffect(()=>{ wApi.get("list",{dir}).then(r=>{ if(r.connected===false) setErr(r.error+" (see the Setup tab)"); else setItems(r.items||{}); }).catch(e=>setErr(e.message)); },[dir]);
   if(err) return <div style={wCard}><p style={{color:"#ef4444",fontSize:13}}>{err}</p></div>;
   if(!items) return <div style={{padding:40,display:"flex",justifyContent:"center"}}><Spinner size={20}/></div>;
-  const keys = Object.keys(items).filter(k=>items[k].json && (!q || k.includes(q.toLowerCase()))).sort();
+  const placeOf=(k,p)=>{ const f=feat[k]; if(!f) return null; if(f.featuredIn&&f.featuredIn[p]) return f.featuredIn[p]; return (p==="home"&&f.featured&&!(f.featuredIn&&f.featuredIn.home))?{order:f.order??99,layout:"double"}:null; };
+  const keys = Object.keys(items).filter(k=>items[k].json && (!q || k.includes(q.toLowerCase())) && (pf==="all"||placeOf(k,pf))).sort((a,b)=>pf==="all"?a.localeCompare(b):((placeOf(a,pf).order??99)-(placeOf(b,pf).order??99)));
   return (
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <input placeholder="Search…" value={q} onChange={e=>setQ(e.target.value)} style={{...wInput,maxWidth:280}}/>
+        {dir==="projects"&&<select value={pf} onChange={e=>setPf(e.target.value)} style={{...wInput,width:"auto"}}><option value="all">All projects</option>{W_PLACE.map(([k,,sh])=><option key={k} value={k}>★ Featured: {sh}</option>)}</select>}
         {onNew&&<button onClick={onNew} style={{...wBtn(true),marginLeft:"auto"}}>+ {newLabel}</button>}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:8}}>
@@ -34046,6 +34052,7 @@ function WContentList({dir, onOpen, onNew, newLabel}) {
           <button key={k} onClick={()=>onOpen(k, items[k])} style={{...wCard,padding:12,textAlign:"left",cursor:"pointer",display:"flex",flexDirection:"column",gap:3,color:"var(--text)"}}>
             <span style={{fontSize:13,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{k.replace(/-/g," ")}</span>
             <span style={{fontSize:11,color:"var(--text3)"}}>{dir==="projects"?`${(items[k].images||[]).length} images`:items[k].json.split("/").pop()}</span>
+            {dir==="projects"&&(()=>{ const ps=W_PLACE.map(([p,,sh])=>[sh,placeOf(k,p)]).filter(x=>x[1]); return ps.length>0&&<span style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:3}}>{ps.map(([sh,p])=><span key={sh} title={"Position "+p.order+" · "+p.layout} style={{fontSize:10,fontWeight:800,padding:"2px 7px",borderRadius:99,background:"#f59e0b22",color:"#b45309"}}>★ {sh} · {p.order}</span>)}</span>; })()}
           </button>))}
       </div>
       {!keys.length&&<p style={{fontSize:13,color:"var(--text3)"}}>Nothing found.</p>}
@@ -34119,6 +34126,9 @@ function WebsiteProjects({root}) {
     setUploading(false);
   };
   const cats = ["branding","creative","digital","production"];
+  // Featured placements: home page and the three portfolios, each with its own position and view. "featured" stays true when it is on home, for older website code.
+  const fin = {...(d.featured&&!(d.featuredIn&&d.featuredIn.home)?{home:{order:Math.max(1,d.order??1),layout:"double"}}:{}),...(d.featuredIn||{})};
+  const setPlace = (k,patch) => { const cur={...fin}; if(patch===null) delete cur[k]; else cur[k]={order:1,layout:"double",...(cur[k]||{}),...patch}; set("featuredIn",cur); set("featured",!!cur.home); };
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <WSaveBar dirty={dirty} saving={saving} onSave={save} onBack={()=>{ if(!dirty||window.confirm("Leave without saving?")) setOpen(null); }} msg={msg}
@@ -34146,8 +34156,18 @@ function WebsiteProjects({root}) {
           </div>
           <div style={{...wCard,display:"flex",flexDirection:"column",gap:10}}>
             <label style={{display:"flex",gap:8,alignItems:"center",fontSize:13,fontWeight:700}}><input type="checkbox" checked={!!d.published} onChange={e=>set("published",e.target.checked)}/> Published</label>
-            <label style={{display:"flex",gap:8,alignItems:"center",fontSize:13,fontWeight:700}}><input type="checkbox" checked={!!d.featured} onChange={e=>set("featured",e.target.checked)}/> Featured on home</label>
-            <div><span style={wLabel}>Order (lower = first)</span><input type="number" value={d.order??99} onChange={e=>set("order",Number(e.target.value))} style={wInput}/></div>
+            <div style={{display:"flex",flexDirection:"column",gap:8,padding:"10px 12px",border:"1px solid var(--border)",borderRadius:10}}>
+              <span style={wLabel}>★ Featured on</span>
+              {W_PLACE.map(([k,lb])=>{ const p=fin[k]; return <div key={k} style={{display:"flex",flexDirection:"column",gap:6}}>
+                <label style={{display:"flex",gap:8,alignItems:"center",fontSize:13,fontWeight:700,cursor:"pointer"}}><input type="checkbox" checked={!!p} onChange={e=>setPlace(k,e.target.checked?{}:null)}/> {lb}</label>
+                {p&&<div style={{display:"flex",gap:6,paddingLeft:24,alignItems:"center"}}>
+                  <input type="number" min="1" title="Position: 1 shows first" value={p.order??1} onChange={e=>setPlace(k,{order:Math.max(1,Math.round(Number(e.target.value))||1)})} style={{...wInput,width:64}}/>
+                  <select value={p.layout||"double"} onChange={e=>setPlace(k,{layout:e.target.value})} style={{...wInput,flex:1,minWidth:0}}>{W_VIEW.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>
+                </div>}
+              </div>; })}
+              <p style={{fontSize:11,color:"var(--text3)"}}>Position 1 shows first in that place. Single is one big card per row, double is two, triple is three. Press Save &amp; publish to apply.</p>
+            </div>
+            <div><span style={wLabel}>Order in the full portfolio (lower = first)</span><input type="number" value={d.order??99} onChange={e=>set("order",Number(e.target.value))} style={wInput}/></div>
             <div><span style={wLabel}>Date</span><input type="date" value={d.date||""} onChange={e=>set("date",e.target.value)} style={wInput}/></div>
             <div><span style={wLabel}>Categories</span><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{cats.map(c=>{ const on=(d.categories||[]).includes(c); return <button key={c} onClick={()=>set("categories", on?(d.categories||[]).filter(x=>x!==c):[...(d.categories||[]),c])} style={{...wBtn(on),borderRadius:99,padding:"5px 10px"}}>{c}</button>; })}</div></div>
             <div><span style={wLabel}>Tags (comma separated)</span><input value={(d.tags||[]).join(", ")} onChange={e=>set("tags",e.target.value.split(",").map(x=>x.trim()).filter(Boolean))} style={wInput}/></div>
