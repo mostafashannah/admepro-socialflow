@@ -50,6 +50,21 @@ function fetch_one_platform_insights(PDO $pdo, array $post, string $platform, st
     // $postId is the platform's own post id (what Zernio returned as platformPostId); Zernio accepts it directly.
     if ($access_token === 'zernio') {
         require_once __DIR__ . '/zernio-lib.php';
+        // LinkedIn has its own endpoint (account id + the post's URN). Works for personal profiles and company pages; falls back to the generic call.
+        if ($platform === 'linkedin' && !empty($creds['page_id'])) {
+            $urn = strpos($postId, 'urn:') === 0 ? $postId : (ctype_digit($postId) ? 'urn:li:share:' . $postId : $postId);
+            [$lc, $lr] = zernio_request('GET', '/accounts/' . rawurlencode($creds['page_id']) . '/linkedin-post-analytics?' . http_build_query(['urn' => $urn]));
+            if ($lc === 200 && !empty($lr['analytics'])) {
+                $la = $lr['analytics'];
+                $out['likes'] = (int)($la['likes'] ?? 0); $out['comments'] = (int)($la['comments'] ?? 0); $out['shares'] = (int)($la['shares'] ?? 0);
+                $r2 = (int)($la['reach'] ?? 0); $i2 = (int)($la['impressions'] ?? 0);
+                $out['reach'] = $r2 > 0 ? $r2 : ($i2 > 0 ? $i2 : (int)($la['views'] ?? 0));
+                return $out;
+            }
+            if ($lc === 403 && (($lr['code'] ?? '') === 'missing_scope')) { $out['error'] = 'LinkedIn needs the analytics permission: reconnect LinkedIn in Zernio (' . ($lr['action'] ?? 'reconnect') . ')'; return $out; }
+            if ($lc === 404) { $out['error'] = 'LinkedIn: Zernio cannot find this post (' . $urn . '). For personal profiles only posts published through Zernio have numbers'; return $out; }
+            // anything else: try the generic call below
+        }
         [$zc, $zr] = zernio_request('GET', '/analytics?' . http_build_query(['postId' => $postId]));
         if ($zc === 202) { $out['error'] = 'Zernio is still syncing this post — try again in an hour'; return $out; }
         if ($zc !== 200) { $out['error'] = 'Zernio: ' . ($zr['error'] ?? ('HTTP ' . $zc)); return $out; }
