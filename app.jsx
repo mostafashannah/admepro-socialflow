@@ -34091,7 +34091,7 @@ function WProjectsTable({keys, items, feat, pf, sf, onOpen, reload}) {
       <div className="wproj-wrap"><table style={{width:"100%",borderCollapse:"collapse",minWidth:980}}>
         <thead><tr>
           <th style={{...th,width:pf==="all"?10:64}}>{pf==="all"?"":"Move"}</th><th style={th}>Project</th><th style={th}>Status</th>
-          {W_PLACE.map(([p,,sh])=><th key={p} style={{...th,background:pf===p?"var(--accent)14":"transparent"}}>★ {sh}</th>)}<th style={th}/>
+          {W_PLACE.map(([p,,sh])=><th key={p} style={{...th,boxShadow:pf===p?"inset 0 -3px 0 var(--accent)":"none",color:pf===p?"var(--accent)":"var(--text3)"}}>★ {sh}</th>)}<th style={th}/>
         </tr></thead>
         <tbody>{rows.map((k,idx)=>{ const e = eff(k); const changed = !!edits[k]; return (
           <tr key={k} onDragOver={ev=>{ if(dragK){ ev.preventDefault(); if(overK!==k) setOverK(k); } }} onDrop={ev=>{ ev.preventDefault(); if(dragK) move(dragK,k); setDragK(null); setOverK(null); }}
