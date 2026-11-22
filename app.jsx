@@ -17916,7 +17916,7 @@ const INSIGHTS_DATE_RANGES = [
 // publish-date range — for the dedicated "Best Performing Posts" sub-tab
 // (the plain BestPerformingPosts above stays as the unfiltered top-5 used
 // on dashboard/overview summaries).
-function BestPerformingPostsFull({posts, client, onOpen}) {
+function BestPerformingPostsFull({posts, client, onOpen, only}) {
   const [platform, setPlatform] = useState("all");
   const [range, setRange] = useState("last_month");
   const [customFrom, setCustomFrom] = useState("");
@@ -17933,9 +17933,14 @@ function BestPerformingPostsFull({posts, client, onOpen}) {
 
   const platformsAvailable = [...new Set((posts||[]).map(p=>p.platform).filter(Boolean))];
 
-  const filtered = (posts||[])
-    .filter(p=>p.stage==="published" && (p.insight_likes!=null||p.insight_comments!=null||p.insight_shares!=null||p.insight_reach!=null))
-    .filter(p=>platform==="all" || p.platform===platform)
+  // On a single platform's sub-tab (only) use THAT platform's own numbers (insights_by_platform), never the legacy single set,
+  // which belongs to whichever platform the post was recorded under (e.g. Instagram).
+  const numsOf = p => { if(!only) return {likes:p.insight_likes, comments:p.insight_comments, shares:p.insight_shares, reach:p.insight_reach};
+    const by = (p.insights_by_platform && typeof p.insights_by_platform==="object") ? p.insights_by_platform : parseJ(p.insights_by_platform||"{}"); const o = by?.[only];
+    return o ? {likes:o.likes, comments:o.comments, shares:o.shares, reach:o.reach} : {likes:null, comments:null, shares:null, reach:null}; };
+  const filtered = (posts||[]).map(p=>({...p, _n:numsOf(p)}))
+    .filter(p=>p.stage==="published" && (p._n.likes!=null||p._n.comments!=null||p._n.shares!=null||p._n.reach!=null))
+    .filter(p=>only || platform==="all" || p.platform===platform)
     .filter(p=>{
       const d = p.published_at || p.scheduled_date;
       if(!d) return range==="custom" ? false : true; // no date to compare against — only exclude it under a custom range where we can't tell if it's in-window
@@ -17947,17 +17952,17 @@ function BestPerformingPostsFull({posts, client, onOpen}) {
       const start = rangeStart();
       return !start || dt >= start;
     })
-    .map(p=>({...p, score:(p.insight_likes||0)+(p.insight_comments||0)*2+(p.insight_shares||0)*3}))
+    .map(p=>({...p, score:(p._n.likes||0)+(p._n.comments||0)*2+(p._n.shares||0)*3}))
     .sort((a,b)=>b.score-a.score);
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-        <select value={platform} onChange={e=>setPlatform(e.target.value)}
+        {!only&&<select value={platform} onChange={e=>setPlatform(e.target.value)}
           style={{height:36,padding:"0 10px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)",fontSize:13,fontWeight:600}}>
           <option value="all">All Platforms</option>
           {platformsAvailable.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
-        </select>
+        </select>}
         <select value={range} onChange={e=>setRange(e.target.value)}
           style={{height:36,padding:"0 10px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)",fontSize:13,fontWeight:600}}>
           {INSIGHTS_DATE_RANGES.map(([k,l])=><option key={k} value={k}>{l}</option>)}
@@ -17981,15 +17986,15 @@ function BestPerformingPostsFull({posts, client, onOpen}) {
                 <div style={{minWidth:0,flex:1}}>
                   <p style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</p>
                   <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3}}>
-                    <PChip platform={p.platform} xs/>
+                    <PChip platform={only||p.platform} xs/>
                     <span style={{fontSize:11,color:"var(--text3)"}}>{(p.published_at||p.scheduled_date)?new Date(p.published_at||p.scheduled_date).toLocaleDateString():""}</span>
                   </div>
                 </div>
                 <div style={{display:"flex",gap:14,flexShrink:0,fontSize:12,color:"var(--text2)",whiteSpace:"nowrap"}}>
-                  <span><strong style={{color:"var(--text)"}}>{p.insight_likes??0}</strong> Likes</span>
-                  <span><strong style={{color:"var(--text)"}}>{p.insight_comments??0}</strong> Comments</span>
-                  <span><strong style={{color:"var(--text)"}}>{p.insight_shares??"—"}</strong> Shares</span>
-                  <span><strong style={{color:"var(--text)"}}>{p.insight_reach??"—"}</strong> Reach</span>
+                  <span><strong style={{color:"var(--text)"}}>{p._n.likes??0}</strong> Likes</span>
+                  <span><strong style={{color:"var(--text)"}}>{p._n.comments??0}</strong> Comments</span>
+                  <span><strong style={{color:"var(--text)"}}>{p._n.shares??"—"}</strong> Shares</span>
+                  <span><strong style={{color:"var(--text)"}}>{p._n.reach??"—"}</strong> Reach</span>
                 </div>
               </div>
             ))}
@@ -18623,7 +18628,7 @@ function InsightsTab({client, integrations, posts, onOpenPost}) {
       {connectedPlatforms.includes(sub) && !isMetaPlatform(sub) && <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",fontSize:12,color:"var(--text3)"}}>
         <button onClick={()=>syncPlatform(sub,true)} disabled={syncing} style={{padding:"5px 12px",borderRadius:99,border:"1px solid var(--border2)",background:"transparent",color:"var(--text2)",fontSize:12,fontWeight:700,cursor:syncing?"default":"pointer"}}>{syncing?"Fetching…":"↻ Fetch latest numbers"}</button>
         <span>{syncNote}</span></div>}
-      {connectedPlatforms.includes(sub) && !isMetaPlatform(sub) && <BestPerformingPostsFull key={sub} posts={livePosts.filter(p=>onPlatform(p,sub))} client={client} onOpen={onOpenPost}/>}
+      {connectedPlatforms.includes(sub) && !isMetaPlatform(sub) && <BestPerformingPostsFull key={sub} only={sub} posts={livePosts.filter(p=>onPlatform(p,sub))} client={client} onOpen={onOpenPost}/>}
       {sub==="best" && <BestPerformingPostsFull posts={livePosts} client={client} onOpen={onOpenPost}/>}
     </div>
   );
