@@ -205,7 +205,9 @@ if ($action === 'set_project_fields') {
     if (array_key_exists('featuredIn', $in) && is_array($in['featuredIn'])) {
         $fin = [];
         foreach (['home', 'gcc', 'real_estate', 'retail'] as $k) if (isset($in['featuredIn'][$k]) && is_array($in['featuredIn'][$k]))
-            $fin[$k] = ['order' => max(1, min(999, (int)($in['featuredIn'][$k]['order'] ?? 1))), 'layout' => in_array($in['featuredIn'][$k]['layout'] ?? '', ['auto', 'single', 'double', 'triple'], true) ? $in['featuredIn'][$k]['layout'] : 'auto'];
+            { $fin[$k] = ['order' => max(1, min(999, (int)($in['featuredIn'][$k]['order'] ?? 1)))];
+                if (in_array($in['featuredIn'][$k]['layout'] ?? '', ['single', 'double', 'triple'], true)) $fin[$k]['layout'] = $in['featuredIn'][$k]['layout'];   // "auto" = no layout key: the website uses its own default
+            }
         $j->featuredIn = (object)$fin; $j->featured = isset($fin['home']);   // "featured" stays true when it is on home, for older website code
     }
     $new = json_encode($j, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
