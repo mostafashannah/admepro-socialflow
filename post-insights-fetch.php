@@ -51,7 +51,7 @@ $result = refresh_post_insights_all_platforms($pdo, $post);
 if (!$result['ok']) {
     http_response_code(502);
     $errors = $result['errors'] ?? [];
-    echo json_encode(["error" => $errors ? ("Platform error: " . implode('; ', array_map(fn($p,$e)=>"{$p}: {$e}", array_keys($errors), $errors))) : "Platform returned no data — the post may be too new, deleted, or the token may have expired"]);
+    echo json_encode(["errors" => $errors, "error" => $errors ? ("Platform error: " . implode('; ', array_map(fn($p,$e)=>"{$p}: {$e}", array_keys($errors), $errors))) : "Platform returned no data — the post may be too new, deleted, or the token may have expired"]);
     exit;
 }
 

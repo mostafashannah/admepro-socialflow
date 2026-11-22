@@ -18584,7 +18584,7 @@ function InsightsTab({client, integrations, posts, onOpenPost}) {
         const res = await fetch("/post-insights-fetch.php", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({post_id:p.id})});
         const j = await res.json().catch(()=>({}));
         if(res.ok && !j.error) { ok++; setFresh(f=>({...f, [p.id]:{insight_likes:j.likes, insight_comments:j.comments, insight_shares:j.shares, insight_reach:j.reach, insight_fetched_at:j.fetched_at, insights_by_platform:j.by_platform||{}}})); const e = (j.errors||{})[pf]; if(e && !firstErr) firstErr = e; }
-        else if(!firstErr) firstErr = j.error || "Fetch failed";
+        else if(!firstErr) firstErr = (j.errors||{})[pf] || j.error || "Fetch failed";
       } catch(e) { if(!firstErr) firstErr = "Connection problem"; }
     }
     setSyncing(false); setSyncNote(ok ? `Updated ${ok} of ${todo.length} post${todo.length===1?"":"s"}.${firstErr?" "+firstErr:""}` : (firstErr || "No numbers returned yet — a very new post can take an hour or more."));

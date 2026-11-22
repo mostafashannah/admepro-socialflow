@@ -20,6 +20,26 @@ if (!function_exists('graph_get')) {
     }
 }
 
+/** Finds the Zernio post (its own _id, which Zernio's analytics always accepts) for a SocialFlow post: by the stored platform id, else by caption. */
+function zernio_find_post_id(PDO $pdo, array $post, string $platform, string $accountId, string $storedId): ?string {
+    try {
+        $st = $pdo->prepare("SELECT caption, published_at, scheduled_date FROM posts WHERE id = :id"); $st->execute([':id' => $post['id']]); $r = $st->fetch(PDO::FETCH_ASSOC) ?: [];
+    } catch (Throwable $e) { $r = []; }
+    $norm = fn($t) => mb_strtolower(preg_replace('/\s+/u', ' ', trim(strip_tags((string)$t))));
+    $cap = mb_substr($norm($r['caption'] ?? ''), 0, 60);
+    $from = date('Y-m-d', strtotime((($r['published_at'] ?? '') ?: ($r['scheduled_date'] ?? 'now')) . ' -3 days'));
+    $q = ['platform' => $platform, 'limit' => 50, 'fromDate' => $from]; if ($accountId !== '') $q['accountId'] = $accountId;
+    [$c, $resp] = zernio_request('GET', '/posts?' . http_build_query($q));
+    if ($c !== 200 || empty($resp['posts']) || !is_array($resp['posts'])) return null;
+    $byContent = null;
+    foreach ($resp['posts'] as $zp) foreach (($zp['platforms'] ?? []) as $pl) {
+        if (($pl['platform'] ?? '') !== $platform) continue;
+        if ($storedId !== '' && (($pl['platformPostId'] ?? '') === $storedId || ($pl['platformPostUrl'] ?? '') === $storedId)) return $zp['_id'] ?? null;
+        if ($cap !== '' && !$byContent && mb_substr($norm($zp['content'] ?? ''), 0, 60) === $cap) $byContent = $zp['_id'] ?? null;
+    }
+    return $byContent;
+}
+
 /**
  * Fetches one platform's engagement for one post.
  * Returns ['likes'=>?int,'comments'=>?int,'shares'=>?int,'reach'=>?int,
@@ -44,14 +64,20 @@ function fetch_one_platform_insights(PDO $pdo, array $post, string $platform, st
         $access_token = tiktok_get_fresh_token($pdo, $integ['id'], $creds) ?? $access_token;
     }
     if (!$access_token) { $out['error'] = "Integration has no access token"; return $out; }
-    if (!$postId) { $out['error'] = "No external post ID recorded for {$platform}"; return $out; }
+    if (!$postId && $access_token !== 'zernio') { $out['error'] = "No external post ID recorded for {$platform}"; return $out; }
 
     // Account connected through Zernio: read the post's numbers from Zernio's analytics API (included in the plan).
     // $postId is the platform's own post id (what Zernio returned as platformPostId); Zernio accepts it directly.
     if ($access_token === 'zernio') {
         require_once __DIR__ . '/zernio-lib.php';
+        $zAcc = (string)($creds['page_id'] ?? '');
+        if ($postId === '') {   // nothing recorded at publish time (older posts): ask Zernio which post this is
+            $found = zernio_find_post_id($pdo, $post, $platform, $zAcc, '');
+            if (!$found) { $out['error'] = "No external post ID recorded for {$platform}, and Zernio has no matching post"; return $out; }
+            $postId = $found; $out['resolved_post_id'] = $found;
+        }
         // LinkedIn has its own endpoint (account id + the post's URN). Works for personal profiles and company pages; falls back to the generic call.
-        if ($platform === 'linkedin' && !empty($creds['page_id'])) {
+        if ($platform === 'linkedin' && !empty($creds['page_id']) && (strpos($postId, 'urn:') === 0 || ctype_digit($postId))) {
             $urn = strpos($postId, 'urn:') === 0 ? $postId : (ctype_digit($postId) ? 'urn:li:share:' . $postId : $postId);
             [$lc, $lr] = zernio_request('GET', '/accounts/' . rawurlencode($creds['page_id']) . '/linkedin-post-analytics?' . http_build_query(['urn' => $urn]));
             if ($lc === 200 && !empty($lr['analytics'])) {
@@ -65,6 +91,10 @@ function fetch_one_platform_insights(PDO $pdo, array $post, string $platform, st
             // 404 / invalid URN (e.g. the stored id is Zernio's own post id): the generic call below accepts that too
         }
         [$zc, $zr] = zernio_request('GET', '/analytics?' . http_build_query(['postId' => $postId]));
+        if ($zc === 404 && !$out['resolved_post_id']) {   // the stored id is not one Zernio knows: find the post in Zernio and use its own id
+            $found = zernio_find_post_id($pdo, $post, $platform, $zAcc, (string)$postId);
+            if ($found && $found !== $postId) { $postId = $found; $out['resolved_post_id'] = $found; [$zc, $zr] = zernio_request('GET', '/analytics?' . http_build_query(['postId' => $postId])); }
+        }
         if ($zc === 202) { $out['error'] = 'Zernio is still syncing this post — try again in an hour'; return $out; }
         if ($zc !== 200) {
             $ze = $zr['error'] ?? ($zr['message'] ?? null); if (is_array($ze)) $ze = $ze['message'] ?? json_encode($ze, JSON_UNESCAPED_UNICODE);
@@ -121,6 +151,11 @@ function fetch_one_platform_insights(PDO $pdo, array $post, string $platform, st
             $out['shares'] = $isVideo ? null : ($resp['shares']['count'] ?? 0);
         } else {
             $graphError = $resp['error']['message'] ?? null;
+            // A video/reel node has no "shares" field and a plain request for it fails: retry with likes + comments only.
+            if (!$isVideo && stripos((string)$graphError, 'nonexisting field') !== false) {
+                [$code, $resp] = graph_get("https://graph.facebook.com/{$v}/{$postId}", ["fields" => "likes.summary(true),comments.summary(true)", "access_token" => $access_token]);
+                if ($code === 200) { $out['likes'] = $resp['likes']['summary']['total_count'] ?? null; $out['comments'] = $resp['comments']['summary']['total_count'] ?? null; $out['shares'] = null; $graphError = null; $isVideo = true; }
+            }
         }
         if ($isVideo) {
             // A Facebook Reel's video-node id doesn't expose the /insights
