@@ -67,7 +67,11 @@ function fetch_one_platform_insights(PDO $pdo, array $post, string $platform, st
         }
         [$zc, $zr] = zernio_request('GET', '/analytics?' . http_build_query(['postId' => $postId]));
         if ($zc === 202) { $out['error'] = 'Zernio is still syncing this post — try again in an hour'; return $out; }
-        if ($zc !== 200) { $out['error'] = 'Zernio: ' . ($zr['error'] ?? ('HTTP ' . $zc)); return $out; }
+        if ($zc !== 200) {
+            $ze = $zr['error'] ?? ($zr['message'] ?? null); if (is_array($ze)) $ze = $ze['message'] ?? json_encode($ze, JSON_UNESCAPED_UNICODE);
+            $out['error'] = 'Zernio' . ($platform === 'twitter' ? ' (X)' : '') . ': ' . ($ze ?: ('HTTP ' . $zc)) . ($zc === 402 || $zc === 403 ? ' — the X/LinkedIn analytics may need the Analytics add-on or a reconnect in Zernio' : '');
+            return $out;
+        }
         $pa = null;
         foreach (($zr['platformAnalytics'] ?? []) as $x) { if (($x['platform'] ?? '') === ($platform === 'twitter' ? 'twitter' : $platform)) { $pa = $x['analytics'] ?? null; break; } }
         $a = $pa ?? ($zr['analytics'] ?? null);
