@@ -26525,6 +26525,9 @@ const MAX_CV_MB = 5;
 const MAX_PORTFOLIO_MB = 15;
 const ADMEPRO_LOGO_WHITE = "https://admepro.com/assets/img/brand/wordmark-light.webp"; // the live site's logo files (the old /wp-content/ uploads no longer exist)
 const ADMEPRO_LOGO_BLACK = "https://admepro.com/assets/img/brand/wordmark.webp";
+// The main site header uses the small "p." mark (dark for light mode, light for dark mode).
+const ADMEPRO_MARK_DARK = "https://admepro.com/assets/img/brand/mark-dark.webp";
+const ADMEPRO_MARK_LIGHT = "https://admepro.com/assets/img/brand/mark-light.webp";
 const SOCIAL_LINKS = [
   {label:"Fb.", url:"https://fb.com/admepro"},
   {label:"Ig.", url:"https://instagram.com/admeproagency"},
@@ -26545,7 +26548,7 @@ function CareersChrome({isDark, setIsDark, children}) {
       <GStyle wallpaper={isDark?"dark":"light"} accentColor="#d90b2c" photoIsDark={isDark}/>
       <div style={{position:"fixed",top:20,left:20,zIndex:10}}>
         <a href="https://admepro.com" style={{display:"block"}}>
-          <img src={isDark?ADMEPRO_LOGO_WHITE:ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:36,width:"auto",objectFit:"contain"}}/>
+          <img src={isDark?ADMEPRO_MARK_LIGHT:ADMEPRO_MARK_DARK} alt="Admepro" style={{height:34,width:"auto",objectFit:"contain"}}/>
         </a>
       </div>
       <div style={{position:"fixed",top:20,right:20,zIndex:20}}>
