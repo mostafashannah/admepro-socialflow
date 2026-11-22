@@ -34313,11 +34313,13 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
   const put = (k, fin, old) => setEdits(o => ({...o, [k]: {fin, old}}));
   const nextNo = p => 1 + allKeys.reduce((m,k)=>Math.max(m,(eff(k).fin[p]||{}).order||0), 0);
   const legacyRank = (() => { const ks = allKeys.filter(k=>{ const e = eff(k); return !e.fin.home && e.old; }).sort((a,b)=>(((feat[a]||{}).order??99)-((feat[b]||{}).order??99))||a.localeCompare(b)); const m = {}; ks.forEach((k,i)=>{ m[k]=i+1; }); return m; })();
-  const state = (k, p) => { const e = eff(k); if(e.fin[p]) return {on:true, order:e.fin[p].order, layout:e.fin[p].layout||"auto", legacy:false}; if(p==="home" && e.old) return {on:true, legacy:true, order:legacyRank[k], layout:"triple"}; return {on:false}; };
+  // What the live home grid shows today: rows of 2, 3, 2, 2, 3 … (read from the site: Darjan+Cote, Kohi+MCM+Zen, Golds+Asus, TMG+Autogate, Skycorp+Elle+Moltobella).
+  const legacyLayOf = (k) => { const n = legacyRank[k]||1; const seq = [2,3,2,2,3]; let c = 0, gi = 0; while(c + seq[gi%seq.length] < n) { c += seq[gi%seq.length]; gi++; } return seq[gi%seq.length]===3 ? "triple" : "double"; };
+  const state = (k, p) => { const e = eff(k); if(e.fin[p]) return {on:true, order:e.fin[p].order, layout:e.fin[p].layout||"auto", legacy:false}; if(p==="home" && e.old) return {on:true, legacy:true, order:legacyRank[k], layout:legacyLayOf(k)}; return {on:false}; };
   const toggle = (k, p, on) => { const e = eff(k); const fin = {...e.fin};
     if(on) { fin[p] = {order:nextNo(p), layout:"double"}; put(k, fin, p==="home" ? false : e.old); }
     else { delete fin[p]; put(k, fin, p==="home" ? false : e.old); } };
-  const setNo = (k, p, n) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {layout:state(k,p).legacy?"triple":"double", ...(fin[p]||{}), order:Math.max(1,Math.round(Number(n))||1)}; put(k, fin, p==="home" ? false : e.old); };
+  const setNo = (k, p, n) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {layout:state(k,p).legacy?state(k,p).layout:"double", ...(fin[p]||{}), order:Math.max(1,Math.round(Number(n))||1)}; put(k, fin, p==="home" ? false : e.old); };
   const setLay = (k, p, l) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {order:state(k,p).legacy?(state(k,p).order||nextNo(p)):nextNo(p), ...(fin[p]||{}), layout:l}; put(k, fin, p==="home" ? false : e.old); };
   const nEdits = Object.keys(edits).length;
   const PL = [["home","Home page"],["gcc","GCC & KSA"],["real_estate","Real estate"],["retail","Retail"]];
