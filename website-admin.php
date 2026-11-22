@@ -315,27 +315,52 @@ if ($action === 'featured') {
     wOut(200, ['items' => $items]);
 }
 
-/* One project's picture, streamed straight from the website repo (its own images folder) — used by the Projects preview. */
+/* One project's picture, streamed straight from the website repo — used by the Projects preview.
+ * Finds the picture the project.json points at (cover / image / thumbnail / images[0] / any image path inside it) by file name anywhere in the repo,
+ * then falls back to the first file in the project's own images folder. Add &debug=1 to see what was found. */
 if ($action === 'project_img') {
+    @set_time_limit(90);
     $slug = preg_replace('/[^A-Za-z0-9._-]/', '', (string)($_GET['slug'] ?? ''));
     if ($slug === '') wOut(400, ['error' => 'slug?']);
-    $cache = sys_get_temp_dir() . '/sf-web-imgtree.json'; $map = null;
-    if (is_file($cache) && time() - filemtime($cache) < 300) $map = json_decode((string)file_get_contents($cache), true);
-    if (!is_array($map)) {
+    $cache = sys_get_temp_dir() . '/sf-web-imgtree2.json'; $T = null;
+    if (is_file($cache) && time() - filemtime($cache) < 300) $T = json_decode((string)file_get_contents($cache), true);
+    if (!is_array($T) || empty($T['by'])) {
         [$c, $r] = gh('GET', "/repos/$REPO/git/trees/" . rawurlencode($BRANCH) . "?recursive=1", $TOKEN);
         if ($c !== 200) wOut(502, ['error' => "GitHub HTTP $c"]);
-        $base = ($ROOT ? $ROOT . '/' : '') . 'projects/'; $map = [];
+        $T = ['by' => [], 'json' => []];
+        $pbase = ($ROOT ? $ROOT . '/' : '') . 'projects/';
         foreach ($r['tree'] ?? [] as $t) {
-            if ($t['type'] !== 'blob' || strpos($t['path'], $base) !== 0) continue;
-            if (preg_match('#^([^/_][^/]*)/images/(.+\.(?:jpe?g|png|webp|gif))$#i', substr($t['path'], strlen($base)), $m)) $map[$m[1]][] = ['p' => $t['path'], 's' => (int)($t['size'] ?? 0)];
+            if ($t['type'] !== 'blob') continue;
+            if (preg_match('#\.(jpe?g|png|webp|gif)$#i', $t['path'])) $T['by'][strtolower(basename($t['path']))][] = ['p' => $t['path'], 's' => (int)($t['size'] ?? 0)];
+            if (strpos($t['path'], $pbase) === 0 && preg_match('#^([^/_][^/]*)/project\.json$#', substr($t['path'], strlen($pbase)), $m)) $T['json'][$m[1]] = $t['path'];
         }
-        @file_put_contents($cache, json_encode($map));
+        @file_put_contents($cache, json_encode($T));
     }
-    $list = $map[$slug] ?? [];
-    if (!$list) { http_response_code(404); exit; }
-    usort($list, fn($a, $b) => strnatcasecmp($a['p'], $b['p']));
-    $pick = null; foreach ($list as $f) if (preg_match('#/(cover|thumb|thumbnail|hero|main|banner)[^/]*$#i', $f['p'])) { $pick = $f; break; }
-    $pick = $pick ?: $list[0];
+    $cands = [];
+    if (!empty($T['json'][$slug])) {
+        [$cj, $rj] = gh('GET', "/repos/$REPO/contents/" . $ghPath($T['json'][$slug]) . "?ref=" . rawurlencode($BRANCH), $TOKEN);
+        $pj = $cj === 200 ? json_decode((string)base64_decode((string)($rj['content'] ?? '')), true) : null;
+        if (is_array($pj)) {
+            foreach (['cover', 'image', 'thumbnail', 'thumb', 'hero', 'banner', 'poster', 'og', 'ogImage'] as $k) if (isset($pj[$k])) $cands[] = $pj[$k];
+            if (isset($pj['images']) && is_array($pj['images'])) foreach ($pj['images'] as $im) $cands[] = $im;
+            array_walk_recursive($pj, function ($v) use (&$cands) { if (is_string($v) && preg_match('#\.(jpe?g|png|webp|gif)(\?.*)?$#i', $v)) $cands[] = $v; });
+        }
+    }
+    $pick = null; $tried = [];
+    foreach ($cands as $cnd) {
+        if (is_array($cnd)) $cnd = $cnd['src'] ?? $cnd['url'] ?? $cnd['image'] ?? '';
+        if (!is_string($cnd) || $cnd === '') continue;
+        $bn = strtolower(basename(parse_url($cnd, PHP_URL_PATH) ?: $cnd)); $tried[] = $bn;
+        $hits = $T['by'][$bn] ?? [];
+        if (!$hits) continue;
+        usort($hits, fn($a, $b) => (strpos($b['p'], "/$slug/") !== false) <=> (strpos($a['p'], "/$slug/") !== false));
+        $pick = $hits[0]; break;
+    }
+    if (!$pick) {   // fallback: any picture inside the project's own folder
+        foreach ($T['by'] as $bn => $list) foreach ($list as $f) if (strpos($f['p'], "/projects/$slug/") !== false) { $pick = $f; break 2; }
+    }
+    if (!empty($_GET['debug'])) wOut(200, ['slug' => $slug, 'has_json' => !empty($T['json'][$slug]), 'candidates' => $tried, 'picked' => $pick['p'] ?? null, 'images_in_repo' => count($T['by'])]);
+    if (!$pick) { http_response_code(404); exit; }
     if ($pick['s'] > 12 * 1024 * 1024) { http_response_code(413); exit; }
     $types = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp', 'gif' => 'image/gif'];
     header_remove('Content-Type'); header('Content-Type: ' . ($types[strtolower(pathinfo($pick['p'], PATHINFO_EXTENSION))] ?? 'application/octet-stream')); header('Cache-Control: private, max-age=3600'); header('X-Content-Type-Options: nosniff');
