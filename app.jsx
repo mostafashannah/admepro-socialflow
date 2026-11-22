@@ -34161,9 +34161,66 @@ function WProjectsTable({keys, items, feat, pf, sf, onOpen, reload}) {
     </div>);
 }
 
+// SIMPLE view: pick a place, tick the projects shown there, give each a NUMBER and Single / Double. One save for everything.
+function WProjectsSimple({keys, items, feat, onOpen, reload}) {
+  const [place, setPlace] = useState("home"); const [edits, setEdits] = useState({}); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(null);
+  const allKeys = Object.keys(items).filter(k=>items[k].json);
+  const base = k => { const f = feat[k] || {}; const fin = f.featuredIn || {}; return {fin, old:!!(f.featured && !fin.home)}; };
+  const eff = k => { const b = base(k), e = edits[k] || {}; return {fin:e.fin||b.fin, old:e.old!==undefined?e.old:b.old}; };
+  const put = (k, fin, old) => setEdits(o => ({...o, [k]: {fin, old}}));
+  const nextNo = p => 1 + allKeys.reduce((m,k)=>Math.max(m,(eff(k).fin[p]||{}).order||0), 0);
+  const state = (k, p) => { const e = eff(k); if(e.fin[p]) return {on:true, order:e.fin[p].order, layout:e.fin[p].layout||"auto", legacy:false}; if(p==="home" && e.old) return {on:true, legacy:true}; return {on:false}; };
+  const toggle = (k, p, on) => { const e = eff(k); const fin = {...e.fin};
+    if(on) { fin[p] = {order:nextNo(p), layout:"double"}; put(k, fin, p==="home" ? false : e.old); }
+    else { delete fin[p]; put(k, fin, p==="home" ? false : e.old); } };
+  const setNo = (k, p, n) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {layout:"double", ...(fin[p]||{}), order:Math.max(1,Math.round(Number(n))||1)}; put(k, fin, p==="home" ? false : e.old); };
+  const setLay = (k, p, l) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {order:nextNo(p), ...(fin[p]||{}), layout:l}; put(k, fin, p==="home" ? false : e.old); };
+  const nEdits = Object.keys(edits).length;
+  const PL = [["home","Home page"],["gcc","GCC & KSA"],["real_estate","Real estate"],["retail","Retail"]];
+  const count = p => allKeys.filter(k=>state(k,p).on).length;
+  const rank = k => { const s = state(k, place); return s.on ? (s.legacy ? 1000 + ((feat[k]||{}).order??99) : (s.order??99)) : 100000; };
+  const rows = keys.filter(k=>items[k].json).sort((a,b)=>(rank(a)-rank(b)) || a.localeCompare(b));
+  const saveAll = async () => {
+    setBusy(true); setMsg(null); const out = [];
+    for(const k of Object.keys(edits)) { const g = eff(k); out.push({path:items[k].json, featuredIn:g.fin, featured:!!(g.fin.home||g.old)}); }
+    try { const r = await wApi.post("set_projects_batch", {items:out}); setMsg({t:`Saved ${r.changed ?? out.length} project${(r.changed ?? out.length)===1?"":"s"} — live in ~1–2 min`}); setEdits({}); }
+    catch(err) { setMsg({err:true,t:err.message}); }
+    setBusy(false); reload && reload();
+  };
+  const seg = (on) => ({padding:"5px 11px",fontSize:12,fontWeight:700,border:"1px solid "+(on?"var(--accent)":"var(--border2)"),background:on?"var(--accent)":"transparent",color:on?"#fff":"var(--text2)",cursor:"pointer"});
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {(nEdits>0||msg)&&<div style={{position:"sticky",top:0,zIndex:6,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",padding:"9px 12px",borderRadius:10,background:"var(--surface)",border:"1px solid "+(msg&&msg.err?"#ef4444":"var(--accent)")}}>
+        <span style={{fontSize:13,fontWeight:700,color:msg&&msg.err?"#ef4444":"var(--text)"}}>{msg ? msg.t : `${nEdits} project${nEdits===1?"":"s"} changed`}</span><span style={{flex:1}}/>
+        {nEdits>0&&<><button onClick={()=>{ setEdits({}); setMsg(null); }} disabled={busy} style={wBtn(false)}>Discard</button><button onClick={saveAll} disabled={busy} style={wBtn(true)}>{busy?"Saving…":"Save & publish"}</button></>}
+        {nEdits===0&&msg&&<button onClick={()=>setMsg(null)} style={wBtn(false)}>OK</button>}
+      </div>}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{PL.map(([p,lb])=><button key={p} onClick={()=>setPlace(p)} style={{...gPillW(place===p)}}>{lb} <span style={{opacity:.7}}>· {count(p)}</span></button>)}</div>
+      <p style={{fontSize:12,color:"var(--text2)"}}>Tick the projects that should be shown on <b>{(PL.find(x=>x[0]===place)||[])[1]}</b>. <b>No.</b> is the order (1 comes first). <b>Single</b> = one big card per row, <b>Double</b> = two per row.</p>
+      <div style={{display:"flex",flexDirection:"column"}}>
+        {rows.map(k=>{ const s = state(k, place); const f = feat[k] || {}; const lay = s.layout==="auto" ? "triple" : s.layout; return (
+          <div key={k} style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",padding:"9px 6px",borderBottom:"1px solid var(--border)",opacity:s.on?1:0.6,background:s.on?"transparent":"transparent"}}>
+            <input type="checkbox" checked={s.on} onChange={e=>toggle(k,place,e.target.checked)} style={{width:18,height:18,cursor:"pointer"}}/>
+            <input type="number" min="1" placeholder="–" disabled={!s.on} value={s.on&&!s.legacy?(s.order??""):""} onChange={e=>setNo(k,place,e.target.value)} title="Number (1 = first)" style={{...wInput,width:62,padding:"6px 8px",textAlign:"center",fontWeight:800}}/>
+            <div style={{display:"flex",opacity:s.on?1:0.4}}>
+              <button disabled={!s.on} onClick={()=>setLay(k,place,"single")} style={{...seg(s.on&&!s.legacy&&lay==="single"),borderRadius:"9px 0 0 9px"}}>Single</button>
+              <button disabled={!s.on} onClick={()=>setLay(k,place,"double")} style={{...seg(s.on&&!s.legacy&&lay==="double"),borderLeft:"none",borderRadius:0}}>Double</button>
+              <button disabled={!s.on} onClick={()=>setLay(k,place,"triple")} style={{...seg(s.on&&!s.legacy&&lay==="triple"),borderLeft:"none",borderRadius:"0 9px 9px 0"}}>Triple</button>
+            </div>
+            <div style={{flex:"1 1 160px",minWidth:0}}><span style={{fontSize:13,fontWeight:800}}>{f.title||k.replace(/-/g," ")}</span>
+              {f.published===false&&<span style={{marginLeft:8,fontSize:10,fontWeight:800,padding:"2px 7px",borderRadius:99,background:"#6b728033",color:"var(--text2)"}}>Draft</span>}
+              {s.legacy&&<span title="Shown on the old home grid. Set a number or a view to move it to the top featured grid." style={{marginLeft:8,fontSize:10,fontWeight:800,padding:"2px 7px",borderRadius:99,background:"#f59e0b22",color:"#b45309"}}>old home grid</span>}</div>
+            <button onClick={()=>onOpen(k, items[k])} style={{...wBtn(false),padding:"4px 10px",fontSize:11}}>Open</button>
+          </div>); })}
+      </div>
+      {rows.length===0&&<p style={{fontSize:13,color:"var(--text3)"}}>Nothing found.</p>}
+    </div>);
+}
+const gPillW=(on)=>({padding:"7px 14px",borderRadius:999,fontSize:13,fontWeight:700,border:"1px solid "+(on?"var(--accent)":"var(--border2)"),background:on?"var(--accent)":"transparent",color:on?"#fff":"var(--text2)",cursor:"pointer"});
+
 function WContentList({dir, onOpen, onNew, newLabel}) {
-  const [items, setItems] = useState(null); const [err, setErr] = useState(""); const [q, setQ] = useState(""); const [feat, setFeat] = useState({}); const [pf, setPf] = useState("all"); const [sf, setSf] = useState("all"); const [pubBusy, setPubBusy] = useState(""); const [view, setViewS] = useState(()=>{ try{ return localStorage.getItem("sf_proj_view")||"list"; }catch(e){ return "list"; } });
-  const setView = v => { setViewS(v); try{ localStorage.setItem("sf_proj_view",v); }catch(e){} };
+  const [items, setItems] = useState(null); const [err, setErr] = useState(""); const [q, setQ] = useState(""); const [feat, setFeat] = useState({}); const [pf, setPf] = useState("all"); const [sf, setSf] = useState("all"); const [pubBusy, setPubBusy] = useState(""); const [view, setViewS] = useState(()=>{ try{ return localStorage.getItem("sf_proj_view2")||"simple"; }catch(e){ return "simple"; } });
+  const setView = v => { setViewS(v); try{ localStorage.setItem("sf_proj_view2",v); }catch(e){} };
   const reloadFeat = () => wApi.get("featured",{refresh:1}).then(r=>setFeat(r.items||{})).catch(()=>{});
   useEffect(()=>{ if(dir==="projects") wApi.get("featured").then(r=>setFeat(r.items||{})).catch(()=>{}); },[dir]);
   useEffect(()=>{ wApi.get("list",{dir}).then(r=>{ if(r.connected===false) setErr(r.error+" (see the Setup tab)"); else setItems(r.items||{}); }).catch(e=>setErr(e.message)); },[dir]);
@@ -34175,19 +34232,20 @@ function WContentList({dir, onOpen, onNew, newLabel}) {
     setPubBusy(k); try{ await wApi.post("set_published",{path:items[k].json,published:to}); setFeat(f=>({...f,[k]:{...(f[k]||{}),published:to}})); }catch(e){ window.alert(e.message); } setPubBusy(""); };
   const nDraft=Object.keys(items).filter(k=>items[k].json&&!isPub(k)).length;
   const baseKeys = Object.keys(items).filter(k=>items[k].json && (!q || k.includes(q.toLowerCase())));
-  const showTable = dir==="projects" && view==="list";
+  const showTable = dir==="projects" && view==="list"; const showSimple = dir==="projects" && view==="simple";
   const keys = Object.keys(items).filter(k=>items[k].json && (!q || k.includes(q.toLowerCase())) && (pf==="all"||(pf.indexOf("in:")===0?wMember((feat[k]||{}).tags,pf.slice(3)):placeOf(k,pf))) && (sf==="all"||(sf==="draft"?!isPub(k):isPub(k)))).sort((a,b)=>(pf==="all"||pf.indexOf("in:")===0)?a.localeCompare(b):((placeOf(a,pf).order??99)-(placeOf(b,pf).order??99))||a.localeCompare(b));
   return (
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <input placeholder="Search…" value={q} onChange={e=>setQ(e.target.value)} style={{...wInput,maxWidth:280}}/>
-        {dir==="projects"&&<div style={{display:"flex",gap:0}}>{[["list","☰ List"],["cards","▦ Cards"]].map(([v,l])=><button key={v} onClick={()=>setView(v)} style={{...wBtn(view===v),borderRadius:v==="list"?"9px 0 0 9px":"0 9px 9px 0"}}>{l}</button>)}</div>}
-        {dir==="projects"&&<select value={sf} onChange={e=>setSf(e.target.value)} style={{...wInput,width:"auto"}}><option value="all">All statuses</option><option value="published">Published</option><option value="draft">Drafts{nDraft?" ("+nDraft+")":""}</option></select>}
-        {dir==="projects"&&<select value={pf} onChange={e=>setPf(e.target.value)} style={{...wInput,width:"auto"}}><option value="all">All projects</option><optgroup label="Featured first">{W_PLACE.map(([k,,sh])=><option key={k} value={k}>★ {sh}</option>)}</optgroup><optgroup label="In the portfolio (by tag)">{W_PORT.map(([k,sh])=><option key={k} value={"in:"+k}>{sh}</option>)}</optgroup></select>}
+        {dir==="projects"&&<div style={{display:"flex",gap:0}}>{[["simple","Simple"],["list","Advanced"],["cards","▦ Cards"]].map(([v,l],i)=><button key={v} onClick={()=>setView(v)} style={{...wBtn(view===v),borderRadius:i===0?"9px 0 0 9px":i===2?"0 9px 9px 0":0}}>{l}</button>)}</div>}
+        {dir==="projects"&&!showSimple&&<select value={sf} onChange={e=>setSf(e.target.value)} style={{...wInput,width:"auto"}}><option value="all">All statuses</option><option value="published">Published</option><option value="draft">Drafts{nDraft?" ("+nDraft+")":""}</option></select>}
+        {dir==="projects"&&!showSimple&&<select value={pf} onChange={e=>setPf(e.target.value)} style={{...wInput,width:"auto"}}><option value="all">All projects</option><optgroup label="Featured first">{W_PLACE.map(([k,,sh])=><option key={k} value={k}>★ {sh}</option>)}</optgroup><optgroup label="In the portfolio (by tag)">{W_PORT.map(([k,sh])=><option key={k} value={"in:"+k}>{sh}</option>)}</optgroup></select>}
         {onNew&&<button onClick={onNew} style={{...wBtn(true),marginLeft:"auto"}}>+ {newLabel}</button>}
       </div>
+      {showSimple&&<WProjectsSimple keys={baseKeys} items={items} feat={feat} onOpen={onOpen} reload={reloadFeat}/>}
       {showTable&&<WProjectsTable keys={baseKeys} items={items} feat={feat} pf={pf} sf={sf} onOpen={onOpen} reload={reloadFeat}/>}
-      {!showTable&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:8}}>
+      {!showTable&&!showSimple&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:8}}>
         {keys.map(k=>(
           <div key={k} role="button" tabIndex={0} onClick={()=>onOpen(k, items[k])} onKeyDown={e=>{ if(e.key==="Enter") onOpen(k, items[k]); }} style={{...wCard,padding:12,textAlign:"left",cursor:"pointer",display:"flex",flexDirection:"column",gap:3,color:"var(--text)",opacity:dir==="projects"&&!isPub(k)?0.7:1}}>
             <span style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:13,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{k.replace(/-/g," ")}</span>{dir==="projects"&&!isPub(k)&&<span style={{fontSize:10,fontWeight:800,padding:"2px 7px",borderRadius:99,background:"#6b728033",color:"var(--text2)"}}>Draft</span>}</span>
@@ -34196,7 +34254,7 @@ function WContentList({dir, onOpen, onNew, newLabel}) {
             {dir==="projects"&&feat[k]&&<button disabled={pubBusy===k} onClick={e=>{ e.stopPropagation(); togglePub(k); }} style={{...wBtn(false),marginTop:6,padding:"4px 10px",fontSize:11,alignSelf:"flex-start",color:isPub(k)?"var(--text2)":"#16a34a"}}>{pubBusy===k?"Saving…":isPub(k)?"Move to draft":"Publish"}</button>}
           </div>))}
       </div>}
-      {!showTable&&!keys.length&&<p style={{fontSize:13,color:"var(--text3)"}}>Nothing found.</p>}
+      {!showTable&&!showSimple&&!keys.length&&<p style={{fontSize:13,color:"var(--text3)"}}>Nothing found.</p>}
     </div>);
 }
 
