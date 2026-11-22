@@ -34031,71 +34031,72 @@ function WebsiteOverview() {
 // Generic list → editor shell for projects / posts / pages.
 // Where a project can be featured on the website, and how it is laid out there.
 const W_PLACE=[["home","Home page","Home"],["gcc","GCC & KSA portfolio","GCC"],["real_estate","Real estate portfolio","Real estate"],["retail","E-commerce & retail portfolio","Retail"]];
-const W_VIEW=[["auto","Auto · website decides"],["single","Single · 1 per row"],["double","Double · 2 per row"],["triple","Triple · 3 per row"]];
-// The projects page as one easy table: status switch + the four featured places (position and view) on each row, drag to re-arrange inside a place, then save everything at once.
+const W_VIEW=[["auto","Auto · Triple (website default)"],["single","Single · 1 per row"],["double","Double · 2 per row"],["triple","Triple · 3 per row"]];
+// Portfolio pages on the website are decided by TAGS: GCC = gcc, Real estate = real-estate, Retail = retail or e-commerce, AI content = ai-video-production.
+const W_PORT=[["gcc","GCC"],["real_estate","Real estate"],["retail","Retail"],["ai","AI content"]];
+const wMember=(tags,p)=>{ const t=(tags||[]).map(x=>String(x).toLowerCase()); return p==="gcc"?t.includes("gcc"):p==="real_estate"?t.includes("real-estate"):p==="retail"?(t.includes("retail")||t.includes("e-commerce")):p==="ai"?t.includes("ai-video-production"):false; };
+const W_TAGS={gcc:["gcc"],real_estate:["real-estate"],retail:["retail"],ai:["ai-video-production"]};
+
+// The projects page as one easy table. Two different things per place:
+//   ● In portfolio  = the project already appears on that website page (its tag decides). Click to add or remove the tag.
+//   ★ Featured first = shown at the top of that page / the home page in its own grid, with a position and a view.
+// Everything is saved together as ONE update, so the website builds once.
 function WProjectsTable({keys, items, feat, pf, sf, onOpen, reload}) {
   const [edits, setEdits] = useState({}); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(null);
   const [dragK, setDragK] = useState(null); const [overK, setOverK] = useState(null);
   const loaded = Object.keys(feat).length > 0;
-  const eff = k => { const f = feat[k] || {}; const e = edits[k] || {};
-    const legacy = (f.featured && !(f.featuredIn && f.featuredIn.home)) ? {home:{order:Math.max(1,f.order??1),layout:"auto"}} : {};
-    return {published: e.published!==undefined ? e.published : f.published!==false, fin: e.fin || {...legacy, ...(f.featuredIn||{})}, title: f.title}; };
+  const allKeys = Object.keys(items).filter(k=>items[k].json);
+  const base = k => { const f = feat[k] || {}; const fin = f.featuredIn || {};
+    return {published:f.published!==false, fin, old:!!(f.featured && !fin.home), mem:{gcc:wMember(f.tags,"gcc"),real_estate:wMember(f.tags,"real_estate"),retail:wMember(f.tags,"retail"),ai:wMember(f.tags,"ai")}}; };
+  const eff = k => { const b = base(k), e = edits[k] || {};
+    return {published:e.published!==undefined?e.published:b.published, fin:e.fin||b.fin, old:e.old!==undefined?e.old:b.old, mem:{...b.mem,...(e.mem||{})}, title:(feat[k]||{}).title}; };
   const edit = (k, patch) => setEdits(o => ({...o, [k]: {...(o[k]||{}), ...patch}}));
-  const setPlace = (k, p, val) => { const cur = {...eff(k).fin}; if(val===null) delete cur[p]; else cur[p] = {order:1,layout:"auto",...(cur[p]||{}),...val}; edit(k,{fin:cur}); };
-  const rows = keys.filter(k => (pf==="all" || eff(k).fin[pf]) && (sf==="all" || (sf==="draft" ? !eff(k).published : eff(k).published)))
-    .sort((a,b) => pf==="all" ? a.localeCompare(b) : ((eff(a).fin[pf].order??99) - (eff(b).fin[pf].order??99)) || a.localeCompare(b));
+  const nextPos = p => 1 + allKeys.reduce((m,k)=>Math.max(m,(eff(k).fin[p]||{}).order||0), 0);
+  const setPlace = (k, p, val) => { const cur = {...eff(k).fin}; if(val===null) delete cur[p]; else cur[p] = {order:nextPos(p),layout:"auto",...(cur[p]||{}),...val}; edit(k,{fin:cur}); };
+  // Home has three states: new featured grid (featuredIn.home), the old home grid (featured: true only) or not on home.
+  const homeTo = (k, st) => { const cur = {...eff(k).fin}; if(st==="new") cur.home = {order:nextPos("home"),layout:"auto",...(cur.home||{})}; else delete cur.home; edit(k,{fin:cur,old:st==="old"}); };
+  const toggleMem = (k, p) => edit(k,{mem:{...((edits[k]&&edits[k].mem)||{}),[p]:!eff(k).mem[p]}});
   const nEdits = Object.keys(edits).length;
-  const move = (from, to) => { if(from===to) return; const arr = [...rows]; const i = arr.indexOf(from), j = arr.indexOf(to); if(i<0||j<0) return; arr.splice(j,0,arr.splice(i,1)[0]);
-    arr.forEach((kk,n) => { const cur = {...eff(kk).fin}; if(cur[pf] && cur[pf].order !== n+1) { cur[pf] = {...cur[pf], order:n+1}; edit(kk,{fin:cur}); } }); };
-  // ---- Quick setup: read the portfolios from the tags each project already has, and set the views for every place at once ----
-  const GCCW = new Set(["gcc","ksa","uae","saudi","dubai","riyadh","jeddah","kuwait","qatar","doha","bahrain","oman","muscat","gulf","emirates","dhabi"]);
-  const detect = k => { const t = [...((feat[k]||{}).categories||[]), ...((feat[k]||{}).tags||[])].join(" ").toLowerCase(); const out = [];
-    if(t.split(/[^a-z0-9]+/).some(w=>GCCW.has(w))) out.push("gcc");
-    if(/real-?estate|propert(y|ies)|developer|compound|villa|residential|apartment|tower|communit/.test(t)) out.push("real_estate");
-    if(/retail|e-?commerce|fashion|boutique|jewel|cosmetic|apparel|cloth|furniture|supermarket|skincare|beauty|grocery|fmcg/.test(t)) out.push("retail");
-    return out; };
+  const inMode = pf.indexOf("in:")===0, place = inMode ? pf.slice(3) : pf, featMode = pf!=="all" && !inMode;
+  const hasFeat = (k,p) => { const e = eff(k); return p==="home" ? (e.fin.home||e.old) : e.fin[p]; };
+  const pos = (k,p) => { const e = eff(k); return e.fin[p] ? (e.fin[p].order??99) : 1000 + ((feat[k]||{}).order??99); };
+  const rows = keys.filter(k => { const e = eff(k);
+      const okP = pf==="all" || (inMode ? e.mem[place] : hasFeat(k,place));
+      return okP && (sf==="all" || (sf==="draft" ? !e.published : e.published)); })
+    .sort((a,b) => featMode ? (pos(a,place)-pos(b,place)) || a.localeCompare(b) : a.localeCompare(b));
+  const movable = featMode ? rows.filter(k=>eff(k).fin[place]) : [];   // only projects in the new featured grid can be re-ordered
+  const move = (from, to) => { if(from===to) return; const arr = [...movable]; const i = arr.indexOf(from), j = arr.indexOf(to); if(i<0||j<0) return; arr.splice(j,0,arr.splice(i,1)[0]);
+    arr.forEach((kk,n) => { const cur = {...eff(kk).fin}; if(cur[place] && cur[place].order !== n+1) { cur[place] = {...cur[place], order:n+1}; edit(kk,{fin:cur}); } }); };
   const layoutsFor = (n, v) => { const NAME = {1:"single",2:"double",3:"triple"}; if(v.indexOf("p:")!==0) return Array(n).fill(v);
     const seq = v.slice(2).split(",").map(Number); const out = []; let gi = 0, left = seq[0]; for(let i=0;i<n;i++){ if(left===0){ gi=(gi+1)%seq.length; left=seq[gi]; } out.push(NAME[seq[gi]]); left--; } return out; };
-  const allKeys = Object.keys(items).filter(k=>items[k].json);
-  const fillFromTags = () => {
-    const per = {gcc:[],real_estate:[],retail:[]};
-    allKeys.forEach(k => detect(k).forEach(p => { if(!eff(k).fin[p]) per[p].push(k); }));
-    const ord = k => (feat[k] && feat[k].order!=null) ? feat[k].order : 99; const next = {}; const sum = [];
-    ["gcc","real_estate","retail"].forEach(p => {
-      const start = allKeys.reduce((m,k)=>Math.max(m, (eff(k).fin[p]||{}).order||0), 0);
-      const list = [...per[p]].sort((a,b)=>ord(a)-ord(b)||a.localeCompare(b)); const lays = layoutsFor(list.length, "p:2,3");
-      list.forEach((k,i) => { next[k] = next[k] || {...eff(k).fin}; next[k][p] = {order:start+i+1, layout:lays[i]}; });
-      sum.push(list.length+" "+(W_PLACE.find(x=>x[0]===p)||[])[2]); });
-    const n = Object.keys(next).length;
-    if(!n) { setMsg({err:true,t:"Nothing to fill: no project has a tag like gcc, ksa, real-estate, retail or e-commerce (or they are already set)."}); return; }
-    Object.keys(next).forEach(k => edit(k, {fin:next[k]}));
-    setMsg({t:`Filled from tags: ${sum.join(", ")}. Check them, then press Save & publish all.`});
-  };
-  const applyAll = v => { if(!v) return; const next = {};
-    W_PLACE.forEach(([p]) => { const list = allKeys.filter(k=>eff(k).fin[p]).sort((a,b)=>((eff(a).fin[p].order??99)-(eff(b).fin[p].order??99))||a.localeCompare(b)); const lays = layoutsFor(list.length, v);
+  // Same view for a whole list, or a repeating pattern of rows (2 then 3 …). Only projects already featured first are touched.
+  const applyViews = (v, places) => { if(!v) return; const next = {};
+    places.forEach(p => { const list = allKeys.filter(k=>eff(k).fin[p]).sort((a,b)=>((eff(a).fin[p].order??99)-(eff(b).fin[p].order??99))||a.localeCompare(b)); const lays = layoutsFor(list.length, v);
       list.forEach((k,i) => { next[k] = next[k] || {...eff(k).fin}; next[k][p] = {...next[k][p], layout:lays[i]}; }); });
-    Object.keys(next).forEach(k => edit(k, {fin:next[k]})); };
-  // Same view for the whole list, or a repeating pattern of rows (for example 2 then 3), following the current order.
-  const applyView = v => { if(!v||pf==="all") return; const NAME={1:"single",2:"double",3:"triple"};
-    let seq=null; if(v.indexOf("p:")===0){ seq=v.slice(2).split(",").map(Number); } let gi=0, left=seq?seq[0]:0;
-    rows.forEach(kk=>{ let lay=v; if(seq){ if(left===0){ gi=(gi+1)%seq.length; left=seq[gi]; } lay=NAME[seq[gi]]; left--; }
-      const cur={...eff(kk).fin}; if(cur[pf]&&cur[pf].layout!==lay){ cur[pf]={...cur[pf],layout:lay}; edit(kk,{fin:cur}); } }); };
+    Object.keys(next).forEach(k => edit(k,{fin:next[k]})); };
   const saveAll = async () => {
-    setBusy(true); setMsg(null); let ok = 0; const bad = [];
-    for(const k of Object.keys(edits)) {
-      const e = edits[k]; const f = feat[k] || {}; const body = {path: items[k].json};
-      if(e.published !== undefined && e.published !== (f.published!==false)) body.published = e.published;
-      if(e.fin) body.featuredIn = e.fin;
-      if(body.published===undefined && body.featuredIn===undefined) { ok++; continue; }
-      try { await wApi.post("set_project_fields", body); ok++; } catch(err) { bad.push(k.replace(/-/g," ")+": "+err.message); }
-    }
-    setBusy(false);
-    if(bad.length) setMsg({err:true,t:`Saved ${ok}, failed ${bad.length} — ${bad.join(" · ")}`});
-    else { setMsg({t:`Saved ${ok} project${ok===1?"":"s"} — live in ~1–2 min`}); setEdits({}); }
-    reload && reload();
+    setBusy(true); setMsg(null); const out = [];
+    for(const k of Object.keys(edits)) { const e = edits[k], b = base(k), g = eff(k); const it = {path: items[k].json};
+      if(e.published !== undefined && e.published !== b.published) it.published = e.published;
+      if(e.fin !== undefined || e.old !== undefined) { it.featuredIn = g.fin; it.featured = !!(g.fin.home || g.old); }
+      const add = [], rem = []; ["gcc","real_estate","retail","ai"].forEach(p => { if(g.mem[p] !== b.mem[p]) { if(g.mem[p]) add.push(...W_TAGS[p]); else { rem.push(...W_TAGS[p]); if(p==="retail") rem.push("e-commerce"); } } });
+      if(add.length) it.tagsAdd = add; if(rem.length) it.tagsRemove = rem;
+      if(Object.keys(it).length > 1) out.push(it); }
+    if(!out.length) { setEdits({}); setBusy(false); return; }
+    try { const r = await wApi.post("set_projects_batch", {items: out}); setMsg({t:`Saved ${r.changed ?? out.length} project${(r.changed ?? out.length)===1?"":"s"} in one update — live in ~1–2 min`}); setEdits({}); }
+    catch(err) { setMsg({err:true,t:err.message}); }
+    setBusy(false); reload && reload();
   };
   const th = {textAlign:"left",fontSize:11,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".04em",padding:"10px 8px",borderBottom:"2px solid var(--border2)",whiteSpace:"nowrap",position:"sticky",top:(nEdits>0||msg)?50:0,zIndex:4,background:"var(--surface)"};
-  const td = {padding:"8px 8px",borderBottom:"1px solid var(--border)",verticalAlign:"middle",fontSize:12};
+  const td = {padding:"8px 8px",borderBottom:"1px solid var(--border)",verticalAlign:"top",fontSize:12};
+  const smallBtn = {fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:99,border:"1px dashed var(--border2)",color:"var(--text3)",background:"transparent",cursor:"pointer",whiteSpace:"nowrap"};
+  const posView = (k,p) => { const pl = eff(k).fin[p]; return <div style={{display:"flex",gap:4,alignItems:"center"}}>
+    <input type="number" min="1" title="Position (1 = first)" value={pl.order??1} onChange={ev=>setPlace(k,p,{order:Math.max(1,Math.round(Number(ev.target.value))||1)})} style={{...wInput,width:46,padding:"4px 6px",fontSize:12}}/>
+    <select title="View" value={pl.layout||"auto"} onChange={ev=>setPlace(k,p,{layout:ev.target.value})} style={{...wInput,width:"auto",padding:"4px 4px",fontSize:12}}>{[["auto","Auto"],["single","Single"],["double","Double"],["triple","Triple"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>
+    {p!=="home"&&<button title="Remove from featured first" onClick={()=>setPlace(k,p,null)} style={{fontSize:12,color:"#dc2626",padding:"0 3px"}}>✕</button>}</div>; };
+  const memChip = (k,p) => { const on = eff(k).mem[p]; return <button onClick={()=>toggleMem(k,p)} title={on?`In the ${p} portfolio (tag: ${W_TAGS[p][0]}). Click to remove the tag.`:`Not in this portfolio. Click to add the tag ${W_TAGS[p][0]}.`}
+    style={{fontSize:11,fontWeight:800,padding:"3px 9px",borderRadius:99,border:"none",cursor:"pointer",background:on?"#16a34a22":"#6b728022",color:on?"#16a34a":"var(--text3)",alignSelf:"flex-start"}}>{on?"● In portfolio":"○ Not in"}</button>; };
+  const colHead = (p,sh) => <th key={p} style={{...th,boxShadow:place===p?"inset 0 -3px 0 var(--accent)":"none",color:place===p?"var(--accent)":"var(--text3)"}}>{sh}</th>;
   return (
     <div style={{display:"flex",flexDirection:"column",gap:8}}>
       {(nEdits>0||msg)&&<div style={{position:"sticky",top:0,zIndex:6,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",padding:"9px 12px",borderRadius:10,background:"var(--surface)",border:"1px solid "+(msg&&msg.err?"#ef4444":"var(--accent)")}}>
@@ -34104,50 +34105,55 @@ function WProjectsTable({keys, items, feat, pf, sf, onOpen, reload}) {
         {nEdits>0&&<><button onClick={()=>{ setEdits({}); setMsg(null); }} disabled={busy} style={wBtn(false)}>Discard</button><button onClick={saveAll} disabled={busy} style={wBtn(true)}>{busy?"Saving…":"Save & publish all"}</button></>}
         {nEdits===0&&msg&&<button onClick={()=>setMsg(null)} style={wBtn(false)}>OK</button>}
       </div>}
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",padding:"9px 12px",border:"1px dashed var(--border2)",borderRadius:10}}>
-        <span style={{fontSize:12,fontWeight:800}}>Quick setup</span>
-        <button onClick={fillFromTags} disabled={!loaded} style={wBtn(true)}>✨ Fill portfolios from tags</button>
-        <select value="" onChange={ev=>{ applyAll(ev.target.value); ev.target.value=""; }} disabled={!loaded} style={{...wInput,width:"auto"}}>
-          <option value="">Set the view for ALL places…</option>
-          <option value="p:2,3">Pattern: rows of 2, then 3 (like the home page)</option><option value="p:3,2">Pattern: rows of 3, then 2</option><option value="p:1,2">Pattern: 1 big, then 2</option><option value="p:1,3">Pattern: 1 big, then 3</option><option value="p:1,2,3">Pattern: 1, then 2, then 3</option>
-          <option value="single">Everything Single</option><option value="double">Everything Double</option><option value="triple">Everything Triple</option><option value="auto">Everything Auto (website decides)</option>
+      <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6,padding:"8px 12px",border:"1px solid var(--border)",borderRadius:10}}>
+        <b>● In portfolio</b> = the project already appears on that website page (its tag decides: gcc, real-estate, retail / e-commerce, ai-video-production). Click it to add or remove the tag.
+        <br/><b>★ Featured first</b> = shown at the top of that page (or of the home page) in its own grid, with a <b>position</b> and a <b>view</b>. <b>Auto</b> view = Triple (a third of the row), the website's default.
+        <br/><b>Home:</b> projects on the <b>old home grid</b> keep their current look (some are wide cards) until you press <b>→ Top</b>.
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",padding:"8px 12px",border:"1px dashed var(--border2)",borderRadius:10}}>
+        <span style={{fontSize:12,fontWeight:800}}>Views of everything featured first</span>
+        <select value="" onChange={ev=>{ applyViews(ev.target.value, W_PLACE.map(x=>x[0])); ev.target.value=""; }} disabled={!loaded} style={{...wInput,width:"auto"}}>
+          <option value="">All places…</option>
+          <option value="p:2,3">Pattern: rows of 2, then 3, then 2…</option><option value="p:3,2">Pattern: rows of 3, then 2</option><option value="p:1,2">Pattern: 1 big, then 2</option><option value="p:1,3">Pattern: 1 big, then 3</option><option value="p:1,2,3">Pattern: 1, then 2, then 3</option>
+          <option value="single">All Single</option><option value="double">All Double</option><option value="triple">All Triple</option><option value="auto">All Auto (= Triple)</option>
         </select>
-        <span style={{fontSize:11,color:"var(--text3)"}}>Nothing is saved until you press Save &amp; publish all.</span>
+        {featMode&&<select value="" onChange={ev=>{ applyViews(ev.target.value, [place]); ev.target.value=""; }} style={{...wInput,width:"auto"}}>
+          <option value="">Only {(W_PLACE.find(x=>x[0]===place)||[])[2]}…</option>
+          <option value="p:2,3">Pattern: rows of 2, then 3, then 2…</option><option value="p:3,2">Pattern: rows of 3, then 2</option><option value="p:1,2">Pattern: 1 big, then 2</option><option value="p:1,3">Pattern: 1 big, then 3</option><option value="p:1,2,3">Pattern: 1, then 2, then 3</option>
+          <option value="single">All Single</option><option value="double">All Double</option><option value="triple">All Triple</option><option value="auto">All Auto (= Triple)</option>
+        </select>}
+        <span style={{fontSize:11,color:"var(--text3)"}}>Rows of 2 then 3 fill the 6-column grid exactly. Nothing is saved until you press Save &amp; publish all.</span>
       </div>
       {!loaded&&<p style={{fontSize:12,color:"var(--text3)"}}>Reading project details…</p>}
-      {pf!=="all"&&rows.length>0&&<div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",padding:"8px 12px",border:"1px solid var(--border)",borderRadius:10}}>
-        <span style={{fontSize:12,fontWeight:800}}>Set the view for everything in this list:</span>
-        <select value="" onChange={ev=>{ applyView(ev.target.value); ev.target.value=""; }} style={{...wInput,width:"auto"}}>
-          <option value="">Choose…</option>
-          <option value="auto">All Auto (website decides)</option><option value="single">All Single</option><option value="double">All Double</option><option value="triple">All Triple</option>
-          <option value="p:2,3">Pattern: rows of 2, then 3, then 2…</option><option value="p:3,2">Pattern: rows of 3, then 2, then 3…</option><option value="p:1,2">Pattern: 1 big, then 2, then 1…</option><option value="p:1,3">Pattern: 1 big, then 3, then 1…</option><option value="p:1,2,3">Pattern: 1, then 2, then 3, repeating</option>
-        </select>
-        <span style={{fontSize:11,color:"var(--text3)"}}>Follows the current order. You can still change any row after.</span>
-      </div>}
-      {pf!=="all"&&<p style={{fontSize:12,color:"var(--text2)"}}>Drag a row by its ⠿ handle, or use ▲ ▼, to change its position in <b>{(W_PLACE.find(x=>x[0]===pf)||[])[2]}</b>. Positions renumber automatically.</p>}
-      <style>{".wproj-wrap{overflow-x:auto}@media (min-width:1180px){.wproj-wrap{overflow:visible}}"}</style>
-      <div className="wproj-wrap"><table style={{width:"100%",borderCollapse:"collapse",minWidth:980}}>
+      {featMode&&<p style={{fontSize:12,color:"var(--text2)"}}>Drag a row by its ⠿ handle, or use ▲ ▼, to change its position in <b>{(W_PLACE.find(x=>x[0]===place)||[])[2]}</b>. Positions renumber automatically.</p>}
+      <style>{".wproj-wrap{overflow-x:auto}@media (min-width:1280px){.wproj-wrap{overflow:visible}}"}</style>
+      <div className="wproj-wrap"><table style={{width:"100%",borderCollapse:"collapse",minWidth:1060}}>
         <thead><tr>
-          <th style={{...th,width:pf==="all"?10:64}}>{pf==="all"?"":"Move"}</th><th style={th}>Project</th><th style={th}>Status</th>
-          {W_PLACE.map(([p,,sh])=><th key={p} style={{...th,boxShadow:pf===p?"inset 0 -3px 0 var(--accent)":"none",color:pf===p?"var(--accent)":"var(--text3)"}}>★ {sh}</th>)}<th style={th}/>
+          <th style={{...th,width:featMode?64:10}}>{featMode?"Move":""}</th><th style={th}>Project</th><th style={th}>Status</th>
+          {colHead("home","★ Home")}{colHead("gcc","GCC")}{colHead("real_estate","Real estate")}{colHead("retail","Retail")}{colHead("ai","AI content")}<th style={th}/>
         </tr></thead>
-        <tbody>{rows.map((k,idx)=>{ const e = eff(k); const changed = !!edits[k]; return (
-          <tr key={k} onDragOver={ev=>{ if(dragK){ ev.preventDefault(); if(overK!==k) setOverK(k); } }} onDrop={ev=>{ ev.preventDefault(); if(dragK) move(dragK,k); setDragK(null); setOverK(null); }}
+        <tbody>{rows.map((k,idx)=>{ const e = eff(k); const changed = !!edits[k]; const mi = movable.indexOf(k); return (
+          <tr key={k} onDragOver={ev=>{ if(dragK&&mi>=0){ ev.preventDefault(); if(overK!==k) setOverK(k); } }} onDrop={ev=>{ ev.preventDefault(); if(dragK) move(dragK,k); setDragK(null); setOverK(null); }}
             style={{opacity:dragK===k?0.45:(e.published?1:0.72),background:changed?"#f59e0b10":"transparent",boxShadow:overK===k&&dragK&&dragK!==k?"inset 0 3px 0 var(--accent)":"none"}}>
-            <td style={td}>{pf!=="all"&&<span style={{display:"inline-flex",alignItems:"center",gap:2}}>
+            <td style={td}>{featMode&&mi>=0&&<span style={{display:"inline-flex",alignItems:"center",gap:2}}>
               <span draggable title="Drag to move" onDragStart={ev=>{ setDragK(k); try{ ev.dataTransfer.effectAllowed="move"; ev.dataTransfer.setData("text/plain",k); const r=ev.currentTarget.closest("tr"); if(r) ev.dataTransfer.setDragImage(r,20,20); }catch(x){} }} onDragEnd={()=>{ setDragK(null); setOverK(null); }} style={{cursor:"grab",fontSize:16,color:"var(--text3)",padding:"0 3px",userSelect:"none"}}>⠿</span>
-              <button disabled={idx===0} onClick={()=>move(k,rows[idx-1])} style={{fontSize:10,padding:"1px 4px",opacity:idx===0?0.3:1}}>▲</button>
-              <button disabled={idx===rows.length-1} onClick={()=>move(k,rows[idx+1])} style={{fontSize:10,padding:"1px 4px",opacity:idx===rows.length-1?0.3:1}}>▼</button></span>}</td>
-            <td style={td}><div style={{fontSize:13,fontWeight:800}}>{e.title||k.replace(/-/g," ")}</div><div style={{fontSize:11,color:"var(--text3)"}}>{(items[k].images||[]).length} images{changed?" · unsaved":""}</div>{(((feat[k]||{}).categories||[]).length>0||((feat[k]||{}).tags||[]).length>0)&&<div style={{fontSize:10,color:"var(--text3)",marginTop:2,maxWidth:240,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={[...((feat[k]||{}).categories||[]),...((feat[k]||{}).tags||[])].join(", ")}>{[...((feat[k]||{}).categories||[]),...((feat[k]||{}).tags||[])].join(" · ")}</div>}</td>
+              <button disabled={mi===0} onClick={()=>move(k,movable[mi-1])} style={{fontSize:10,padding:"1px 4px",opacity:mi===0?0.3:1}}>▲</button>
+              <button disabled={mi===movable.length-1} onClick={()=>move(k,movable[mi+1])} style={{fontSize:10,padding:"1px 4px",opacity:mi===movable.length-1?0.3:1}}>▼</button></span>}</td>
+            <td style={td}><div style={{fontSize:13,fontWeight:800}}>{e.title||k.replace(/-/g," ")}</div><div style={{fontSize:11,color:"var(--text3)"}}>{(items[k].images||[]).length} images{changed?" · unsaved":""}</div>
+              {(((feat[k]||{}).tags||[]).length>0)&&<div style={{fontSize:10,color:"var(--text3)",marginTop:2,maxWidth:230,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={((feat[k]||{}).tags||[]).join(", ")}>{((feat[k]||{}).tags||[]).join(" · ")}</div>}</td>
             <td style={td}><button onClick={()=>edit(k,{published:!e.published})} title="Click to switch" style={{fontSize:11,fontWeight:800,padding:"4px 11px",borderRadius:99,border:"none",cursor:"pointer",background:e.published?"#16a34a22":"#6b728033",color:e.published?"#16a34a":"var(--text2)"}}>{e.published?"● Published":"○ Draft"}</button></td>
-            {W_PLACE.map(([p,,sh])=>{ const pl = e.fin[p]; return <td key={p} style={{...td,background:pf===p?"var(--accent)08":"transparent"}}>
-              {pl&&<div style={{fontSize:10,fontWeight:800,color:"#b45309",marginBottom:3}}>★ {sh}</div>}
-              {pl?<div style={{display:"flex",gap:4,alignItems:"center"}}>
-                <input type="number" min="1" title="Position (1 = first)" value={pl.order??1} onChange={ev=>setPlace(k,p,{order:Math.max(1,Math.round(Number(ev.target.value))||1)})} style={{...wInput,width:46,padding:"4px 6px",fontSize:12}}/>
-                <select title="View" value={pl.layout||"auto"} onChange={ev=>setPlace(k,p,{layout:ev.target.value})} style={{...wInput,width:"auto",padding:"4px 4px",fontSize:12}}>{[["auto","Auto"],["single","Single"],["double","Double"],["triple","Triple"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>
-                <button title="Remove from here" onClick={()=>setPlace(k,p,null)} style={{fontSize:12,color:"#dc2626",padding:"0 3px"}}>✕</button>
-              </div>:<button onClick={()=>setPlace(k,p,{})} style={{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:99,border:"1px dashed var(--border2)",color:"var(--text3)",background:"transparent",cursor:"pointer"}}>＋ {sh}</button>}
-            </td>; })}
+            <td style={{...td,background:place==="home"?"var(--accent)08":"transparent"}}>
+              {e.fin.home?<div style={{display:"flex",flexDirection:"column",gap:4}}><div style={{fontSize:10,fontWeight:800,color:"#b45309"}}>★ Featured on top</div>{posView(k,"home")}
+                  <div style={{display:"flex",gap:6}}><button onClick={()=>homeTo(k,"old")} style={smallBtn} title="Back to the old home grid">↩ old grid</button><button onClick={()=>homeTo(k,"none")} style={{...smallBtn,color:"#dc2626"}} title="Remove from the home page">✕ remove</button></div></div>
+              :e.old?<div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-start"}}><span style={{fontSize:11,fontWeight:800,padding:"3px 9px",borderRadius:99,background:"#6b728022",color:"var(--text2)"}}>Old home grid</span>
+                  <div style={{display:"flex",gap:6}}><button onClick={()=>homeTo(k,"new")} style={smallBtn}>→ Top</button><button onClick={()=>homeTo(k,"none")} style={{...smallBtn,color:"#dc2626"}} title="Remove from the home page">✕</button></div></div>
+              :<button onClick={()=>homeTo(k,"new")} style={smallBtn}>＋ Home</button>}
+            </td>
+            {W_PORT.slice(0,3).map(([p,sh])=><td key={p} style={{...td,background:place===p?"var(--accent)08":"transparent"}}>
+              <div style={{display:"flex",flexDirection:"column",gap:5}}>{memChip(k,p)}
+                {e.fin[p]?<div><div style={{fontSize:10,fontWeight:800,color:"#b45309",marginBottom:3}}>★ Featured first</div>{posView(k,p)}</div>:<button onClick={()=>setPlace(k,p,{})} style={smallBtn}>＋ Feature first</button>}</div>
+            </td>)}
+            <td style={{...td,background:place==="ai"?"var(--accent)08":"transparent"}}>{memChip(k,"ai")}</td>
             <td style={td}><button onClick={()=>onOpen(k, items[k])} style={{...wBtn(false),padding:"5px 12px",fontSize:12}}>Open</button></td>
           </tr>); })}</tbody>
       </table></div>
@@ -34170,14 +34176,14 @@ function WContentList({dir, onOpen, onNew, newLabel}) {
   const nDraft=Object.keys(items).filter(k=>items[k].json&&!isPub(k)).length;
   const baseKeys = Object.keys(items).filter(k=>items[k].json && (!q || k.includes(q.toLowerCase())));
   const showTable = dir==="projects" && view==="list";
-  const keys = Object.keys(items).filter(k=>items[k].json && (!q || k.includes(q.toLowerCase())) && (pf==="all"||placeOf(k,pf)) && (sf==="all"||(sf==="draft"?!isPub(k):isPub(k)))).sort((a,b)=>pf==="all"?a.localeCompare(b):((placeOf(a,pf).order??99)-(placeOf(b,pf).order??99)));
+  const keys = Object.keys(items).filter(k=>items[k].json && (!q || k.includes(q.toLowerCase())) && (pf==="all"||(pf.indexOf("in:")===0?wMember((feat[k]||{}).tags,pf.slice(3)):placeOf(k,pf))) && (sf==="all"||(sf==="draft"?!isPub(k):isPub(k)))).sort((a,b)=>(pf==="all"||pf.indexOf("in:")===0)?a.localeCompare(b):((placeOf(a,pf).order??99)-(placeOf(b,pf).order??99))||a.localeCompare(b));
   return (
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <input placeholder="Search…" value={q} onChange={e=>setQ(e.target.value)} style={{...wInput,maxWidth:280}}/>
         {dir==="projects"&&<div style={{display:"flex",gap:0}}>{[["list","☰ List"],["cards","▦ Cards"]].map(([v,l])=><button key={v} onClick={()=>setView(v)} style={{...wBtn(view===v),borderRadius:v==="list"?"9px 0 0 9px":"0 9px 9px 0"}}>{l}</button>)}</div>}
         {dir==="projects"&&<select value={sf} onChange={e=>setSf(e.target.value)} style={{...wInput,width:"auto"}}><option value="all">All statuses</option><option value="published">Published</option><option value="draft">Drafts{nDraft?" ("+nDraft+")":""}</option></select>}
-        {dir==="projects"&&<select value={pf} onChange={e=>setPf(e.target.value)} style={{...wInput,width:"auto"}}><option value="all">All projects</option>{W_PLACE.map(([k,,sh])=><option key={k} value={k}>★ Featured: {sh}</option>)}</select>}
+        {dir==="projects"&&<select value={pf} onChange={e=>setPf(e.target.value)} style={{...wInput,width:"auto"}}><option value="all">All projects</option><optgroup label="Featured first">{W_PLACE.map(([k,,sh])=><option key={k} value={k}>★ {sh}</option>)}</optgroup><optgroup label="In the portfolio (by tag)">{W_PORT.map(([k,sh])=><option key={k} value={"in:"+k}>{sh}</option>)}</optgroup></select>}
         {onNew&&<button onClick={onNew} style={{...wBtn(true),marginLeft:"auto"}}>+ {newLabel}</button>}
       </div>
       {showTable&&<WProjectsTable keys={baseKeys} items={items} feat={feat} pf={pf} sf={sf} onOpen={onOpen} reload={reloadFeat}/>}
@@ -34262,8 +34268,9 @@ function WebsiteProjects({root}) {
   };
   const cats = ["branding","creative","digital","production"];
   // Featured placements: home page and the three portfolios, each with its own position and view. "featured" stays true when it is on home, for older website code.
-  const fin = {...(d.featured&&!(d.featuredIn&&d.featuredIn.home)?{home:{order:Math.max(1,d.order??1),layout:"auto"}}:{}),...(d.featuredIn||{})};
-  const setPlace = (k,patch) => { const cur={...fin}; if(patch===null) delete cur[k]; else cur[k]={order:1,layout:"auto",...(cur[k]||{}),...patch}; set("featuredIn",cur); set("featured",!!cur.home); };
+  // featuredIn = the new featured grids. A project with "featured": true but no featuredIn.home is on the OLD home grid: leave it there unless asked.
+  const fin = d.featuredIn||{}; const oldHome = !!(d.featured && !fin.home);
+  const setPlace = (k,patch) => { const cur={...fin}; if(patch===null) delete cur[k]; else cur[k]={order:1,layout:"auto",...(cur[k]||{}),...patch}; set("featuredIn",cur); if(k==="home") set("featured",patch!==null); };
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <WSaveBar dirty={dirty} saving={saving} onSave={save} onBack={()=>{ if(!dirty||window.confirm("Leave without saving?")) setOpen(null); }} msg={msg}
@@ -34299,7 +34306,10 @@ function WebsiteProjects({root}) {
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:8,padding:"10px 12px",border:"1px solid var(--border)",borderRadius:10}}>
               <span style={wLabel}>★ Featured on</span>
-              {W_PLACE.map(([k,lb])=>{ const p=fin[k]; return <div key={k} style={{display:"flex",flexDirection:"column",gap:6}}>
+              {W_PLACE.map(([k,lb])=>{ const p=fin[k]; if(k==="home"&&oldHome) return <div key={k} style={{display:"flex",flexDirection:"column",gap:6}}>
+                <span style={{fontSize:13,fontWeight:700}}>{lb}: <span style={{fontSize:11,padding:"2px 8px",borderRadius:99,background:"#6b728022",color:"var(--text2)"}}>old home grid</span></span>
+                <div style={{display:"flex",gap:6,paddingLeft:2,flexWrap:"wrap"}}><button type="button" onClick={()=>setPlace("home",{})} style={wBtn(false)}>→ Feature on top</button><button type="button" onClick={()=>set("featured",false)} style={{...wBtn(false),color:"#dc2626"}}>Remove from home</button></div></div>;
+                return <div key={k} style={{display:"flex",flexDirection:"column",gap:6}}>
                 <label style={{display:"flex",gap:8,alignItems:"center",fontSize:13,fontWeight:700,cursor:"pointer"}}><input type="checkbox" checked={!!p} onChange={e=>setPlace(k,e.target.checked?{}:null)}/> {lb}</label>
                 {p&&<div style={{display:"flex",gap:6,paddingLeft:24,alignItems:"center"}}>
                   <input type="number" min="1" title="Position: 1 shows first" value={p.order??1} onChange={e=>setPlace(k,{order:Math.max(1,Math.round(Number(e.target.value))||1)})} style={{...wInput,width:64}}/>
@@ -34308,10 +34318,10 @@ function WebsiteProjects({root}) {
               </div>; })}
               <p style={{fontSize:11,color:"var(--text3)"}}>Position 1 shows first in that place. Auto lets the website decide. Single is one big card per row, double is two, triple is three. Press Save &amp; publish to apply.</p>
             </div>
-            <div><span style={wLabel}>Order in the full portfolio (lower = first)</span><input type="number" value={d.order??99} onChange={e=>set("order",Number(e.target.value))} style={wInput}/></div>
+            <div><span style={wLabel}>Global order (lower = first)</span><p style={{fontSize:10,color:"var(--text3)",marginBottom:3}}>Sorts the whole site (portfolio, prev/next, old home grid). Use the featured positions above for placement.</p><input type="number" value={d.order??99} onChange={e=>set("order",Number(e.target.value))} style={wInput}/></div>
             <div><span style={wLabel}>Date</span><input type="date" value={d.date||""} onChange={e=>set("date",e.target.value)} style={wInput}/></div>
             <div><span style={wLabel}>Categories</span><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{cats.map(c=>{ const on=(d.categories||[]).includes(c); return <button key={c} onClick={()=>set("categories", on?(d.categories||[]).filter(x=>x!==c):[...(d.categories||[]),c])} style={{...wBtn(on),borderRadius:99,padding:"5px 10px"}}>{c}</button>; })}</div></div>
-            <div><span style={wLabel}>Tags (comma separated)</span><input value={(d.tags||[]).join(", ")} onChange={e=>set("tags",e.target.value.split(",").map(x=>x.trim()).filter(Boolean))} style={wInput}/></div>
+            <div><span style={wLabel}>Tags (comma separated)</span><p style={{fontSize:10,color:"var(--text3)",marginBottom:3}}>Portfolio pages use: gcc · real-estate · retail / e-commerce · ai-video-production. A tag that does not exist on the website makes its build fail, so only use existing ones.</p><input value={(d.tags||[]).join(", ")} onChange={e=>set("tags",e.target.value.split(",").map(x=>x.trim()).filter(Boolean))} style={wInput}/></div>
           </div>
         </div>
       </div>
@@ -34916,7 +34926,7 @@ function MktEditor({init,ov,onClose}) {
       if(d.intro) addSection("intro",[{type:"text",text:W_INTRO[d.intro]||d.intro}]);
       if(d.services?.length) addSection("services",W_SERVICES.filter(sv=>d.services.includes(sv.k)).map(sv=>({type:"card",title:sv.title,text:sv.text,icon:sv.icon,image:"",url:"https://admepro.com",button:"Learn more"})));
       const hubs=W_HUBS.filter(h=>(d.hubs||[]).includes(h.k)&&/^https?:\/\//i.test(hubUrl[h.k]||""));
-      if(hubs.length) addSection("hubs",[{type:"heading",text:"Our work"},...hubs.map(h=>({type:"card",title:h.title,text:h.text,icon:h.icon,image:hubImg[h.k]||(site?.hub_images?.[h.k])||(siteItems.find(it=>it.image&&(it.groups||[]).includes(h.k))||{}).image||"",url:hubUrl[h.k].trim(),button:"See our work"}))]);
+      if(hubs.length) addSection("hubs",[{type:"heading",text:"Our work"},...hubs.map(h=>({type:"card",title:h.title,text:h.text,icon:h.icon,image:hubImg[h.k]||(siteItems.find(it=>it.image&&(it.groups||[]).includes(h.k))||{}).image||(site?.hub_images?.[h.k])||"",url:hubUrl[h.k].trim(),button:"See our work"}))]);
       const pr=(d.projects||[]).map(byUrl).filter(Boolean); if(pr.length) addSection("portfolio",[{type:"heading",text:"Recent projects"},...pr.map(card)]);
       setF(p=>({...p,subject:d.subject||p.subject,preheader:d.preheader||p.preheader}));
       setMsg("Sara built it: "+(d.note||"done")+" (not saved yet, check the preview, then Save draft)");
@@ -35020,7 +35030,7 @@ function MktEditor({init,ov,onClose}) {
                   </div>}
                 </div>)}
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  <button style={wBtn(true)} disabled={!W_HUBS.some(h=>hubPick.includes(h.k)&&/^https?:\/\//i.test(hubUrl[h.k]||""))} onClick={()=>addSection("hubs",[{type:"heading",text:"Our work"},...W_HUBS.filter(h=>hubPick.includes(h.k)&&/^https?:\/\//i.test(hubUrl[h.k]||"")).map(h=>({type:"card",title:h.title,text:h.text,icon:h.icon,image:hubImg[h.k]||(site?.hub_images?.[h.k])||(siteItems.find(it=>it.image&&(it.groups||[]).includes(h.k))||{}).image||"",url:hubUrl[h.k].trim(),button:"See our work"}))])}>{hasSection("hubs")?"Replace category links":"Add category links"}</button>
+                  <button style={wBtn(true)} disabled={!W_HUBS.some(h=>hubPick.includes(h.k)&&/^https?:\/\//i.test(hubUrl[h.k]||""))} onClick={()=>addSection("hubs",[{type:"heading",text:"Our work"},...W_HUBS.filter(h=>hubPick.includes(h.k)&&/^https?:\/\//i.test(hubUrl[h.k]||"")).map(h=>({type:"card",title:h.title,text:h.text,icon:h.icon,image:hubImg[h.k]||(siteItems.find(it=>it.image&&(it.groups||[]).includes(h.k))||{}).image||(site?.hub_images?.[h.k])||"",url:hubUrl[h.k].trim(),button:"See our work"}))])}>{hasSection("hubs")?"Replace category links":"Add category links"}</button>
                   {hasSection("hubs")&&<button style={{...gPill(false),color:"#dc2626"}} onClick={()=>addSection("hubs",[])}>Remove category links</button>}
                 </div>
               </div>

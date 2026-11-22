@@ -100,6 +100,18 @@ function gLoc($v): string {
 /** Text from the website, or '' when it is only the leftover word "Array" (a list that was read as text). */
 function gCleanText($s): string { $s = trim((string)$s); return $s === 'Array' ? '' : $s; }
 
+/** The website's own portfolio rules (from its build): GCC = tag gcc, Real estate = tag real-estate, Retail = tag retail or e-commerce, AI content = tag ai-video-production. */
+function gSiteGroupsFromTags(array $tags): array {
+    $t = array_map('strtolower', array_filter($tags, 'is_string')); $out = [];
+    if (in_array('gcc', $t, true)) $out[] = 'gcc';
+    if (in_array('real-estate', $t, true)) $out[] = 'real_estate';
+    if (in_array('retail', $t, true) || in_array('e-commerce', $t, true)) $out[] = 'retail';
+    if (in_array('ai-video-production', $t, true)) $out[] = 'ai';
+    if (in_array('food-and-beverage', $t, true)) $out[] = 'food';
+    if (in_array('automotive', $t, true)) $out[] = 'auto';
+    return $out;
+}
+
 /** Portfolio groups a website item belongs to (by keywords in its title, summary, category and tags): gcc | retail | ai | real_estate | food | auto. */
 function gSiteGroups(string $hay): array {
     $hay = strtolower($hay);
@@ -460,7 +472,7 @@ function gSiteContent($force = false) {
             $out[$kind][] = ['slug' => $slug, 'title' => (gLoc($j['title'] ?? '') ?: gLoc($j['name'] ?? '') ?: $slug), 'summary' => gCleanText(mb_substr(strip_tags(gLoc($j['description'] ?? '') ?: gLoc($j['summary'] ?? '') ?: gLoc($j['excerpt'] ?? '') ?: gLoc($j['seoDescription'] ?? '')), 0, 280)),
                 'image' => (string)$img, 'url' => $url, 'date' => (string)($j['date'] ?? ''), 'kind' => $kind === 'posts' ? 'article' : 'project',
                 'category' => mb_substr(is_scalar($j['category'] ?? null) ? (string)$j['category'] : (is_scalar($j['sector'] ?? null) ? (string)$j['sector'] : (is_scalar($j['industry'] ?? null) ? (string)$j['industry'] : '')), 0, 60),
-                'groups' => gSiteGroups(implode(' ', [$slug, gLoc($j['title'] ?? '') . ' ' . gLoc($j['name'] ?? ''), gLoc($j['description'] ?? '') . ' ' . gLoc($j['summary'] ?? '') . ' ' . gLoc($j['excerpt'] ?? ''), is_scalar($j['category'] ?? null) ? (string)$j['category'] : '', is_scalar($j['sector'] ?? null) ? (string)$j['sector'] : '', is_scalar($j['industry'] ?? null) ? (string)$j['industry'] : '', is_array($j['tags'] ?? null) ? implode(' ', array_filter($j['tags'], 'is_scalar')) : (is_scalar($j['tags'] ?? null) ? (string)$j['tags'] : ''), is_scalar($j['location'] ?? null) ? (string)$j['location'] : '', is_scalar($j['country'] ?? null) ? (string)$j['country'] : '']))];
+                'groups' => (is_array($j['tags'] ?? null) && $j['tags']) ? gSiteGroupsFromTags($j['tags']) : gSiteGroups(implode(' ', [$slug, (string)gLoc($j['title'] ?? ''), gLoc($j['summary'] ?? '')]))];
         }
     }
     // Thumbnails: ask each live page for the preview image it declares itself (og:image), which is always the real, working URL.
@@ -486,16 +498,8 @@ function gSiteContent($force = false) {
         }
         curl_multi_close($mh);
     }
-    // Portfolio hub pages (Real estate / E-commerce & retail / GCC & KSA / AI content): the shortest matching page in the sitemap, never an individual project.
-    $proj = array_flip(array_column(array_merge($out['projects'], $out['posts']), 'url'));
-    $hubRe = ['real_estate' => '#(^|[/-])real-?estate#i', 'retail' => '#e-?commerce|retail#i', 'gcc' => '#(^|[/-])(gcc|ksa|saudi|gulf)([/-]|$)#i', 'ai' => '#(^|[/-])ai([/-]|$)#i'];
-    $hubs = [];
-    foreach ($hubRe as $k => $re) {
-        $best = null;
-        foreach ($urls as $u) { if (strpos($u, '/ar/') !== false || isset($proj[$u])) continue; $p = trim((string)parse_url($u, PHP_URL_PATH), '/'); if ($p === '' || !preg_match($re, $p)) continue;
-            $d = substr_count($p, '/'); if (!$best || $d < $best[0] || ($d === $best[0] && strlen($p) < $best[1])) $best = [$d, strlen($p), $u]; }
-        $hubs[$k] = $best ? $best[2] : '';
-    }
+    // The four portfolio pages, exactly as the website builds them (English).
+    $hubs = ['real_estate' => $site . '/real-estate-marketing/', 'retail' => $site . '/e-commerce-retail-marketing/', 'gcc' => $site . '/gcc-ksa-ai-marketing-agency/', 'ai' => $site . '/ai-video-production/'];
     $out['hubs'] = $hubs;
     // The preview image each hub page declares itself (og:image), so category cards can show a real visual.
     $hubImg = [];
@@ -506,7 +510,7 @@ function gSiteContent($force = false) {
         if (preg_match('#<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)#i', $h, $m) || preg_match('#<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']#i', $h, $m)) {
             $im = html_entity_decode($m[1]); if (!preg_match('#^https?://#', $im)) $im = rtrim(strpos($im, '//') === 0 ? 'https:' . $im : $site . '/' . ltrim($im, '/'));
         }
-        $hubImg[$k] = $im;
+        $hubImg[$k] = (stripos($im, 'og-default') !== false) ? '' : $im;   // the site-wide default image is not a picture of that portfolio
     }
     $out['hub_images'] = $hubImg;
     @file_put_contents($cache, json_encode($out, JSON_UNESCAPED_UNICODE));

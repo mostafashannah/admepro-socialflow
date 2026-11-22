@@ -159,7 +159,7 @@ function safePath($p, $ROOT) {
 }
 $ghPath = fn($p) => implode('/', array_map('rawurlencode', explode('/', $p)));
 
-if (in_array($action, ['status', 'list', 'get', 'put', 'upload', 'featured', 'set_published', 'set_project_fields'], true) && (!$REPO || !$TOKEN)) {
+if (in_array($action, ['status', 'list', 'get', 'put', 'upload', 'featured', 'set_published', 'set_project_fields', 'set_projects_batch'], true) && (!$REPO || !$TOKEN)) {
     wOut(200, ['connected' => false, 'error' => 'GitHub is not connected yet — add WEBSITE_GITHUB_REPO and WEBSITE_GITHUB_TOKEN to config.php.']);
 }
 
@@ -189,6 +189,65 @@ if ($action === 'set_published') {
         wOut(200, ['ok' => true, 'published' => $want, 'commit' => substr($r2['commit']['sha'] ?? '', 0, 7)]);
     }
     wOut(200, ['ok' => true, 'published' => $want, 'unchanged' => true]);
+}
+
+/* Many projects in ONE commit (the project list's "Save & publish all"): every file is changed in a single Git commit, so the website builds ONCE.
+ * Body: {"items":[{"path":".../project.json","published":bool?,"featuredIn":{...}?,"featured":bool?,"tagsAdd":[..]?,"tagsRemove":[..]?}]}
+ * Only the website's own rules are written: places home|gcc|real_estate|retail, layout single|double|triple (or none), order a whole number, and for tags only
+ * the five portfolio tags that already exist on the site (a tag missing from the site's tags.json would fail its build). Everything else in each file is kept. */
+if ($action === 'set_projects_batch') {
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') wOut(405, ['error' => 'POST only']);
+    $in = json_decode((string)file_get_contents('php://input'), true) ?: [];
+    $list = array_slice((array)($in['items'] ?? []), 0, 80); if (!$list) wOut(400, ['error' => 'Nothing to save']);
+    $PORT_TAGS = ['gcc', 'real-estate', 'e-commerce', 'retail', 'ai-video-production'];
+    $files = []; $titles = [];
+    foreach ($list as $it) {
+        $p = safePath($it['path'] ?? '', $ROOT);
+        if (!$p || !preg_match('#(^|/)projects/[^/_][^/]*/project\.json$#', $p)) wOut(400, ['error' => 'Not a project file: ' . ($it['path'] ?? '')]);
+        [$c, $r] = gh('GET', "/repos/$REPO/contents/" . $ghPath($p) . "?ref=" . rawurlencode($BRANCH), $TOKEN);
+        if ($c !== 200) wOut(502, ['error' => "GitHub HTTP $c reading $p"]);
+        $raw = (string)base64_decode((string)($r['content'] ?? '')); $j = json_decode($raw);
+        if (!is_object($j)) wOut(400, ['error' => "$p is not valid JSON"]);
+        if (array_key_exists('published', $it)) $j->published = !empty($it['published']);
+        if (array_key_exists('featuredIn', $it) && is_array($it['featuredIn'])) {
+            $fin = [];
+            foreach (['home', 'gcc', 'real_estate', 'retail'] as $k) if (isset($it['featuredIn'][$k]) && is_array($it['featuredIn'][$k])) {
+                $fin[$k] = ['order' => max(1, min(999, (int)($it['featuredIn'][$k]['order'] ?? 1)))];
+                if (in_array($it['featuredIn'][$k]['layout'] ?? '', ['single', 'double', 'triple'], true)) $fin[$k]['layout'] = $it['featuredIn'][$k]['layout'];   // no layout = the website's default (triple)
+            }
+            if ($fin) $j->featuredIn = (object)$fin; else unset($j->featuredIn);
+        }
+        if (array_key_exists('featured', $it)) $j->featured = !empty($it['featured']);
+        if (!empty($it['tagsAdd']) || !empty($it['tagsRemove'])) {
+            $tags = is_array($j->tags ?? null) ? array_values($j->tags) : [];
+            foreach ((array)($it['tagsRemove'] ?? []) as $t) if (in_array($t, $PORT_TAGS, true)) $tags = array_values(array_filter($tags, fn($x) => $x !== $t));
+            foreach ((array)($it['tagsAdd'] ?? []) as $t) if (in_array($t, $PORT_TAGS, true) && !in_array($t, $tags, true)) $tags[] = $t;
+            $j->tags = $tags;
+        }
+        $new = json_encode($j, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $new = preg_replace_callback('/^( +)/m', fn($m) => str_repeat(' ', intdiv(strlen($m[1]), 2)), $new) . "\n";
+        if (trim($new) === trim($raw)) continue;
+        $files[$p] = $new; $titles[] = is_string($j->title ?? null) ? $j->title : basename(dirname($p));
+    }
+    if (!$files) wOut(200, ['ok' => true, 'unchanged' => true, 'changed' => 0]);
+    $who = $s['email'] ?? 'admin'; $err = '';
+    for ($try = 0; $try < 3; $try++) {                                   // re-read the branch tip each time: someone else may have pushed meanwhile
+        [$c1, $ref] = gh('GET', "/repos/$REPO/git/ref/heads/" . rawurlencode($BRANCH), $TOKEN); if ($c1 !== 200) { $err = "branch HTTP $c1"; break; }
+        $head = $ref['object']['sha'];
+        [$c2, $cm] = gh('GET', "/repos/$REPO/git/commits/$head", $TOKEN); if ($c2 !== 200) { $err = "commit HTTP $c2"; break; }
+        $tree = []; foreach ($files as $p => $content) $tree[] = ['path' => $p, 'mode' => '100644', 'type' => 'blob', 'content' => $content];
+        [$c3, $tr] = gh('POST', "/repos/$REPO/git/trees", $TOKEN, ['base_tree' => $cm['tree']['sha'], 'tree' => $tree]); if ($c3 !== 201) { $err = "tree HTTP $c3: " . ($tr['message'] ?? ''); break; }
+        $msg = 'Update ' . count($files) . ' project' . (count($files) === 1 ? '' : 's') . ' (featured, status, portfolios): ' . mb_substr(implode(', ', array_slice($titles, 0, 6)), 0, 120) . (count($titles) > 6 ? '…' : '') . "\n\nFrom SocialFlow Website tab by " . $who;
+        [$c4, $cn] = gh('POST', "/repos/$REPO/git/commits", $TOKEN, ['message' => $msg, 'tree' => $tr['sha'], 'parents' => [$head]]); if ($c4 !== 201) { $err = "commit HTTP $c4: " . ($cn['message'] ?? ''); break; }
+        [$c5, $up] = gh('PATCH', "/repos/$REPO/git/refs/heads/" . rawurlencode($BRANCH), $TOKEN, ['sha' => $cn['sha']]);
+        if ($c5 === 200) {
+            @unlink(sys_get_temp_dir() . '/sf-web-featured.json');
+            try { $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), 'website_projects_batch', 'website', ?, 'success', ?)")->execute([count($files) . ' projects: ' . mb_substr(implode(', ', $titles), 0, 300), $who]); } catch (Throwable $e) {}
+            wOut(200, ['ok' => true, 'changed' => count($files), 'commit' => substr($cn['sha'], 0, 7)]);
+        }
+        $err = "update HTTP $c5: " . ($up['message'] ?? ''); usleep(600000);
+    }
+    wOut(502, ['error' => 'Could not save: ' . $err . '. Nothing was changed — try again.']);
 }
 
 /* Several quick settings of one project in ONE commit (used by the project list): published and/or featuredIn. Everything else in the file is kept as it is. */
