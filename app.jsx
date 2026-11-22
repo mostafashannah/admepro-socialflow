@@ -6847,6 +6847,64 @@ function TaskLogView({postId, team=[]}) {
 
 // POST DETAIL MODAL
 // ════════════════════════════════════════════════════════════════
+// POST PREVIEW: always shows the final file(s) that will be posted, using the SAME rule the publisher uses:
+//   single post / video / reel = the last file added; carousel = every file except the "story" one, in the arranged order (numbered 1, 2, 3 …).
+function PostFinalPreview({post}) {
+  const [big, setBig] = useState(null);
+  const parse = v => Array.isArray(v) ? v : parseJ(v||"[]");
+  const urls = parse(post.design_urls), assets = parse(post.design_assets);
+  const isVid = (u,t) => String(t||"").startsWith("video") || /\.(mp4|mov|webm|m4v)(\?|$)/i.test(u||"");
+  const type = post.post_type || "image"; const isCar = type==="carousel"; const vertical = ["reel","story","video"].includes(type);
+  const all = assets.length ? assets : urls.map(url=>({url}));
+  const slides = isCar ? all.filter(a=>a&&a.kind!=="story").map(a=>({url:a.url||a.file_url,type:a.type,name:a.name})).filter(a=>a.url) : [];
+  const finalUrl = !isCar ? (urls[urls.length-1] || ((assets[assets.length-1]||{}).url) || "") : "";
+  const finalAsset = !isCar ? (assets.find(a=>(a.url||a.file_url)===finalUrl) || {}) : null;
+  const story = assets.find(a=>a&&a.kind==="story"&&(a.url||a.file_url));
+  const plats = (()=>{ const p = parse(post.platforms); return (p&&p.length?p:[post.platform]).filter(Boolean); })();
+  const cover = (type==="reel"||type==="video") ? (post.carousel_cover||"") : "";
+  const chip = {fontSize:10,fontWeight:800,padding:"2px 8px",borderRadius:99,background:"var(--surface2)",color:"var(--text2)",textTransform:"capitalize"};
+  const media = (url, t, style, controls) => isVid(url,t)
+    ? <video src={url} controls={!!controls} muted={!controls} playsInline preload="metadata" style={style}/>
+    : <img src={url} alt="" loading="lazy" style={style}/>;
+  const has = isCar ? slides.length>0 : !!finalUrl;
+  return (
+    <div style={{border:"2px solid var(--accent)",borderRadius:"var(--rs)",overflow:"hidden"}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",padding:"8px 14px",background:"var(--surface2)",borderBottom:"1px solid var(--border)"}}>
+        <span style={{fontSize:12,fontWeight:800}}>👁 Post preview</span>
+        <span style={chip}>{type}</span>
+        {isCar&&has&&<span style={chip}>{slides.length} slide{slides.length===1?"":"s"}</span>}
+        {plats.map(p=><span key={p} style={chip}>{p}</span>)}
+        <span style={{flex:1}}/><span style={{fontSize:11,color:"var(--text3)"}}>This is the final file that will be posted</span>
+      </div>
+      <div style={{padding:14}}>
+        {!has&&<div style={{padding:"22px 10px",textAlign:"center",border:"1px dashed var(--border2)",borderRadius:10,fontSize:12,color:"var(--text3)"}}>No final file yet. It appears here as soon as a design file is added.</div>}
+        {has&&isCar&&<>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10}}>
+            {slides.map((s,i)=><a key={i+s.url} href={s.url} target="_blank" rel="noreferrer" onClick={e=>{ e.preventDefault(); setBig(s); }} style={{position:"relative",display:"block",aspectRatio:"1/1",borderRadius:10,overflow:"hidden",background:"var(--surface2)",border:"1px solid var(--border)"}}>
+              {media(s.url,s.type,{width:"100%",height:"100%",objectFit:"cover",display:"block"},false)}
+              <span style={{position:"absolute",top:6,left:6,minWidth:24,height:24,padding:"0 7px",borderRadius:99,background:"var(--accent)",color:"#fff",fontSize:12,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 1px 4px rgba(0,0,0,.35)"}}>{i+1}</span>
+              {isVid(s.url,s.type)&&<span style={{position:"absolute",right:6,bottom:6,fontSize:10,fontWeight:800,padding:"2px 7px",borderRadius:99,background:"rgba(0,0,0,.6)",color:"#fff"}}>▶ video</span>}
+            </a>)}
+          </div>
+          <p style={{fontSize:11,color:"var(--text3)",marginTop:8}}>Posted in this order: {slides.slice(0,12).map((_,i)=>i+1).join(" → ")}{slides.length>12?" …":""}. The order is the arrangement in Attachments.</p>
+        </>}
+        {has&&!isCar&&<div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"flex-start"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {media(finalUrl,finalAsset.type,{maxWidth:"100%",maxHeight:vertical?460:420,width:vertical?"auto":"100%",aspectRatio:vertical?"9/16":"auto",objectFit:"contain",borderRadius:10,background:"#000",display:"block"},true)}
+            <a href={finalUrl} target="_blank" rel="noreferrer" style={{fontSize:11,fontWeight:700,color:"var(--accent)"}}>Open the file ↗</a>
+          </div>
+          {cover&&<div style={{display:"flex",flexDirection:"column",gap:4}}><span style={{fontSize:10,fontWeight:800,color:"var(--text3)",textTransform:"uppercase"}}>Cover</span><img src={cover} alt="" style={{width:90,borderRadius:8,display:"block"}}/></div>}
+        </div>}
+        {story&&<div style={{display:"flex",alignItems:"center",gap:10,marginTop:12,paddingTop:10,borderTop:"1px solid var(--border)"}}>
+          <div style={{width:44,aspectRatio:"9/16",borderRadius:6,overflow:"hidden",background:"var(--surface2)"}}>{media(story.url||story.file_url,story.type,{width:"100%",height:"100%",objectFit:"cover",display:"block"},false)}</div>
+          <span style={{fontSize:12,color:"var(--text2)"}}>Also posted as an <b>Instagram Story</b></span></div>}
+      </div>
+      {big&&<div onClick={()=>setBig(null)} style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,.85)",display:"flex",alignItems:"center",justifyContent:"center",padding:16,cursor:"zoom-out"}}>
+        {media(big.url,big.type,{maxWidth:"100%",maxHeight:"92vh",borderRadius:10},true)}</div>}
+    </div>
+  );
+}
+
 function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onUndoPush,onLeaderDecide,onAddComment,onDeleteComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[],allPosts=[],contactReports=[],onUpdatePlanItem,onSplitPlanItem}) {
   if(post?.is_plan_parent) {
     return (
@@ -7814,6 +7872,9 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
             move is now logged in the Activity feed instead (who moved it, to
             which stage, at what time, and who it landed with), so this stayed
             a duplicate of the log rather than a distinct source of truth. */}
+
+        {/* Post preview: always shows the final file(s) that will be posted; a carousel shows every slide, numbered in posting order. */}
+        {!editing&&post.stage!=="content_creation"&&<PostFinalPreview post={post}/>}
 
         {/* Caption + Media side by side on wide screens so the caption isn't
             squeezed into a tall narrow column above/below the image */}
