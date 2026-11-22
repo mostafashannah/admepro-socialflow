@@ -18565,9 +18565,35 @@ function InsightsTab({client, integrations, posts, onOpenPost}) {
   ];
   useEffect(()=>{ if(!subTabs.some(([k])=>k===sub)) setSub("all"); },[connectedPlatforms.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Like Facebook/Instagram (which load live when opened): opening a LinkedIn / X / TikTok sub-tab fetches the latest numbers
+  // for its recent published posts (those never fetched, or fetched more than 6 hours ago), so nobody has to press refresh per post.
+  const [fresh, setFresh] = useState({}); const [syncing, setSyncing] = useState(false); const [syncNote, setSyncNote] = useState(""); const syncedRef = useRef({});
+  const toArr = v => Array.isArray(v) ? v : parseJ(v||"[]");
+  const onPlatform = (p, pf) => { const l = toArr(p.platforms); return (l.length ? l : [p.platform]).includes(pf); };
+  const livePosts = (posts||[]).map(p=>fresh[p.id] ? {...p, ...fresh[p.id]} : p);
+  const syncPlatform = async (pf, force) => {
+    const cutoff = Date.now() - 90*86400000;
+    const todo = livePosts.filter(p=>p.stage==="published" && onPlatform(p,pf) && new Date(p.published_at||p.scheduled_date||0).getTime() >= cutoff).filter(p=>{
+      if(force) return true; const by = (p.insights_by_platform && typeof p.insights_by_platform==="object") ? p.insights_by_platform : parseJ(p.insights_by_platform||"{}"); const own = by?.[pf];
+      return !own || Date.now() - new Date(own.fetched_at||0).getTime() > 6*3600*1000; }).slice(0,20);
+    if(!todo.length) { setSyncNote(""); return; }
+    setSyncing(true); setSyncNote(`Fetching ${platformLabel(pf)} numbers for ${todo.length} post${todo.length===1?"":"s"}…`);
+    let ok = 0, firstErr = "";
+    for(const p of todo) {
+      try {
+        const res = await fetch("/post-insights-fetch.php", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({post_id:p.id})});
+        const j = await res.json().catch(()=>({}));
+        if(res.ok && !j.error) { ok++; setFresh(f=>({...f, [p.id]:{insight_likes:j.likes, insight_comments:j.comments, insight_shares:j.shares, insight_reach:j.reach, insight_fetched_at:j.fetched_at, insights_by_platform:j.by_platform||{}}})); const e = (j.errors||{})[pf]; if(e && !firstErr) firstErr = e; }
+        else if(!firstErr) firstErr = j.error || "Fetch failed";
+      } catch(e) { if(!firstErr) firstErr = "Connection problem"; }
+    }
+    setSyncing(false); setSyncNote(ok ? `Updated ${ok} of ${todo.length} post${todo.length===1?"":"s"}.${firstErr?" "+firstErr:""}` : (firstErr || "No numbers returned yet — a very new post can take an hour or more."));
+  };
+  useEffect(()=>{ if(connectedPlatforms.includes(sub) && !isMetaPlatform(sub) && !syncedRef.current[client.id+":"+sub]) { syncedRef.current[client.id+":"+sub] = true; syncPlatform(sub,false); } },[sub, client.id, connectedPlatforms.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleDownloadReport = async () => {
     setDownloadingReport(true);
-    try { await downloadInsightsReportPDF(client, posts, connectedPlatforms, reportRange); }
+    try { await downloadInsightsReportPDF(client, livePosts, connectedPlatforms, reportRange); }
     finally { setDownloadingReport(false); }
   };
 
@@ -18592,10 +18618,13 @@ function InsightsTab({client, integrations, posts, onOpenPost}) {
           </Btn>
         </div>
       </div>
-      {sub==="all" && <AllPlatformsSummaryTab posts={posts} connectedPlatforms={connectedPlatforms} onSelectPlatform={setSub}/>}
+      {sub==="all" && <AllPlatformsSummaryTab posts={livePosts} connectedPlatforms={connectedPlatforms} onSelectPlatform={setSub}/>}
       {connectedPlatforms.includes(sub) && isMetaPlatform(sub) && <MetaInsightsTab key={sub} client={client} integrations={integrations} platformFilter={sub}/>}
-      {connectedPlatforms.includes(sub) && !isMetaPlatform(sub) && <BestPerformingPostsFull key={sub} posts={posts.filter(p=>p.platform===sub)} client={client} onOpen={onOpenPost}/>}
-      {sub==="best" && <BestPerformingPostsFull posts={posts} client={client} onOpen={onOpenPost}/>}
+      {connectedPlatforms.includes(sub) && !isMetaPlatform(sub) && <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",fontSize:12,color:"var(--text3)"}}>
+        <button onClick={()=>syncPlatform(sub,true)} disabled={syncing} style={{padding:"5px 12px",borderRadius:99,border:"1px solid var(--border2)",background:"transparent",color:"var(--text2)",fontSize:12,fontWeight:700,cursor:syncing?"default":"pointer"}}>{syncing?"Fetching…":"↻ Fetch latest numbers"}</button>
+        <span>{syncNote}</span></div>}
+      {connectedPlatforms.includes(sub) && !isMetaPlatform(sub) && <BestPerformingPostsFull key={sub} posts={livePosts.filter(p=>onPlatform(p,sub))} client={client} onOpen={onOpenPost}/>}
+      {sub==="best" && <BestPerformingPostsFull posts={livePosts} client={client} onOpen={onOpenPost}/>}
     </div>
   );
 }
