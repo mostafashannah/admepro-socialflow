@@ -6905,7 +6905,7 @@ function PostFinalPreview({post}) {
   );
 }
 
-function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onUndoPush,onLeaderDecide,onAddComment,onDeleteComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[],allPosts=[],contactReports=[],onUpdatePlanItem,onSplitPlanItem}) {
+function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onUndoPush,onRunReview,onLeaderDecide,onAddComment,onDeleteComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[],allPosts=[],contactReports=[],onUpdatePlanItem,onSplitPlanItem}) {
   if(post?.is_plan_parent) {
     return (
       <Modal open onClose={onClose} title={post.title} subtitle={`${client?.name||post.client_name||""} · Calendar plan`} width={640}>
@@ -8623,10 +8623,10 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                 {internalComments.map((c,i)=>(
                   <div key={i} style={{display:"flex",gap:10}}>
                     <Avatar name={c.author_name||"S"} size={28} photoUrl={commentAvatarUrl(c, team)}/>
-                    <div style={{flex:1,background:c.type==="ai_reply"?"#10b98111":"var(--surface2)",borderRadius:"var(--rs)",padding:"9px 12px",border:`1px solid ${c.type==="ai_reply"?"#10b98155":"var(--border)"}`}}>
+                    <div style={{flex:1,background:c.type==="review_report"?"#f59e0b0d":c.type==="ai_reply"?"#10b98111":"var(--surface2)",borderRadius:"var(--rs)",padding:"9px 12px",border:`1px solid ${c.type==="ai_reply"?"#10b98155":"var(--border)"}`}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                         <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"System"}</span>
-                        {c.type==="ai_reply"?<Badge label="AI" color="#10b981" xs/>:c.type!=="comment"&&<Badge label={c.type} color={c.type==="rejection"?"#ef4444":c.type==="approval"?"#10b981":"#6b7280"} xs/>}
+                        {c.type==="review_report"?<Badge label="AI Review" color="#f59e0b" xs/>:c.type==="ai_reply"?<Badge label="AI" color="#10b981" xs/>:c.type!=="comment"&&<Badge label={c.type} color={c.type==="rejection"?"#ef4444":c.type==="approval"?"#10b981":"#6b7280"} xs/>}
                         <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date||c.created_at)}</span>
                         {/* Admin/AM only — moves an internal attachment into
                             the client-facing thread, e.g. sharing a finished
@@ -8648,7 +8648,9 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                           </button>
                         )}
                       </div>
-                      {c.type==="ai_reply"
+                      {c.type==="review_report"
+                        ? <ReviewReportCard c={c} canRecheck={!!onRunReview && ["admin","account_manager","account_director","account_executive"].includes(currentUser?.role) && ["internal_review","design_review"].includes(post.stage)} onRecheck={()=>onRunReview(post,{force:true})}/>
+                        : c.type==="ai_reply"
                         ? <div style={{fontSize:13,lineHeight:1.6}}>{renderChatMd(c.content)}</div>
                         : <div style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content, team)}</div>}
                       {c.file_url&&(
@@ -13814,6 +13816,84 @@ function ClientSkillsSection({client, clientMemory=[], onUpsert, onDelete}) {
   );
 }
 
+// ════════════════════════════════════════════════════════════════
+// MAI · REVIEW — the AI Account Executive's first check when a task reaches Review / Design Review.
+// Per client (stored in client_memory, type "review_cfg"): review_on / review_rules / review_auto.
+// Reports are saved as internal task comments of type "review_report" (JSON in content).
+// ════════════════════════════════════════════════════════════════
+const reviewCfg = (clientId, mem) => {
+  const g = k => String(((mem||[]).find(m=>m.client_id===clientId && m.key===k)||{}).value||"").trim();
+  return {on:g("review_on")==="1", auto:g("review_auto")==="1", rules:g("review_rules")};
+};
+const REVIEW_VERDICT = {clear:{label:"Clear",color:"#10b981"}, minor:{label:"Minor issues",color:"#f59e0b"}, fix:{label:"Needs fixes",color:"#ef4444"}};
+const parseReviewReport = (c) => { try { const j = JSON.parse(c.content||""); return j && typeof j==="object" ? j : null; } catch(e) { return null; } };
+
+function ReviewAgentSettings({client, clientMemory=[], onUpsert, currentUser}) {
+  const cfg = reviewCfg(client?.id, clientMemory);
+  const [rules, setRules] = useState(cfg.rules);
+  const [saved, setSaved] = useState(false);
+  useEffect(()=>{ setRules(cfg.rules); },[client?.id, cfg.rules]);
+  if(!client || !["admin","account_manager","account_director","account_executive"].includes(currentUser?.role)) return null;
+  const set = (k,v) => onUpsert(client.id, client.name, k, v, "review_cfg");
+  const sw = (on, onClick, disabled) => (
+    <button onClick={onClick} disabled={disabled} style={{width:40,height:22,borderRadius:99,border:"none",cursor:disabled?"not-allowed":"pointer",position:"relative",background:on?"var(--accent)":"var(--border2)",opacity:disabled?0.5:1,flexShrink:0}}>
+      <span style={{position:"absolute",top:2,left:on?20:2,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left .2s"}}/>
+    </button>);
+  return (
+    <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16,background:"var(--surface)",display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <div style={{flex:1}}>
+          <p style={{fontWeight:800,fontSize:14}}>Mai · Review agent</p>
+          <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>When a task reaches Review or Design Review, Mai checks the text and final design against this client's memory and the rules below, and posts a report on the task.</p>
+        </div>
+        {sw(cfg.on, ()=>set("review_on", cfg.on?"0":"1"))}
+      </div>
+      {cfg.on&&<>
+        <div>
+          <label style={{fontSize:11,fontWeight:700,color:"var(--text2)",display:"block",marginBottom:5}}>Review rules (Arabic or English, one rule per line)</label>
+          <textarea value={rules} onChange={e=>{ setRules(e.target.value); setSaved(false); }} rows={5} placeholder={"Never use the word \"cheap\"\nAlways write the branch name\nPhone number must be 0100…"} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13,resize:"vertical"}}/>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginTop:6}}>
+            <Btn size="sm" onClick={()=>{ set("review_rules", rules.trim()||" "); setSaved(true); }}>Save rules</Btn>
+            {saved&&<span style={{fontSize:12,color:"#10b981"}}>Saved</span>}
+            <span style={{fontSize:11,color:"var(--text3)"}}>Mai also reads this client's Brand voice, Do's/Don'ts, memory and published posts.</span>
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10,paddingTop:10,borderTop:"1px solid var(--border)"}}>
+          <div style={{flex:1}}>
+            <p style={{fontWeight:700,fontSize:13}}>Auto send-back</p>
+            <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>If Mai finds a serious, high-confidence mistake she sends the task back to the writer/designer herself (once per task, not counted as a revision). Keep this off until her reports have proved accurate.</p>
+          </div>
+          {sw(cfg.auto, ()=>set("review_auto", cfg.auto?"0":"1"))}
+        </div>
+      </>}
+    </div>);
+}
+
+function ReviewReportCard({c, onRecheck, canRecheck}) {
+  const r = parseReviewReport(c);
+  if(!r) return <div style={{fontSize:13}}>{String(c.content||"").slice(0,300)}</div>;
+  const v = REVIEW_VERDICT[r.verdict] || REVIEW_VERDICT.minor;
+  const sev = {high:"#ef4444", medium:"#f59e0b", low:"#6b7280"};
+  const issues = Array.isArray(r.issues) ? r.issues : [];
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+        <span style={{fontSize:11,fontWeight:800,padding:"3px 10px",borderRadius:99,background:v.color+"22",color:v.color}}>{v.label}</span>
+        <span style={{fontSize:11,color:"var(--text3)"}}>{r.stage==="design_review"?"Text + final design":"Text only"}{r.skipped?" · skipped":""}</span>
+        {canRecheck&&<button onClick={onRecheck} style={{marginLeft:"auto",fontSize:11,fontWeight:700,border:"1px solid var(--border2)",background:"transparent",color:"var(--text2)",borderRadius:99,padding:"3px 10px",cursor:"pointer"}}>Re-check</button>}
+      </div>
+      {r.summary&&<div style={{fontSize:13,lineHeight:1.5}}>{r.summary}</div>}
+      {issues.map((i,k)=>(
+        <div key={k} style={{borderLeft:`3px solid ${sev[i.severity]||"#6b7280"}`,paddingLeft:10,fontSize:12.5,lineHeight:1.5}}>
+          <div><b style={{color:sev[i.severity]||"#6b7280",textTransform:"capitalize"}}>{i.severity||"note"}</b>{i.where?<span style={{color:"var(--text3)"}}> · {i.where}</span>:null}</div>
+          {i.quote&&<div dir="auto" style={{background:"var(--surface)",borderRadius:6,padding:"3px 8px",margin:"3px 0",fontStyle:"italic"}}>"{i.quote}"</div>}
+          <div>{i.problem}</div>
+          {i.fix&&<div style={{color:"#10b981"}}>Fix: {i.fix}</div>}
+        </div>))}
+      {r.sent_back&&<div style={{fontSize:12,fontWeight:700,color:"#ef4444"}}>Sent back automatically to {r.sent_back}.</div>}
+    </div>);
+}
+
 function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUser}) {
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -13895,6 +13975,8 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
           <Ico d={Icons.plus} size={13}/>{adding?"Cancel":"Add Memory"}
         </Btn>
       </div>
+
+      <ReviewAgentSettings client={client} clientMemory={clientMemory} onUpsert={onUpsert} currentUser={currentUser}/>
 
       {/* Mai's latest daily report */}
       {(()=>{
@@ -56514,6 +56596,96 @@ Return ONLY valid JSON (no markdown, no explanation):
       setToast(" Sent back to keep working");
     }
   };
+  // ── Mai · Review: first-pass check when a task lands in Review / Design Review (per-client switch, see ReviewAgentSettings) ──
+  const runMaiReview = async (post, opts={}) => {
+    const stage = post.stage;
+    if(!["internal_review","design_review"].includes(stage) || !post.client_id) return;
+    const cfg = reviewCfg(post.client_id, window.__sfClientMemory || data.clientMemory || []);
+    if(!cfg.on) { if(opts.force) setToast("Turn on Mai · Review for this client first (Client → Memory)."); return; }
+    const W = (window.__sfReviewing = window.__sfReviewing || {});
+    if(W[post.id]) return;
+    if(!opts.force) {
+      const recent = (data.comments||[]).some(c=>c.post_id===post.id && c.type==="review_report" && Date.now()-new Date(c.created_date||0).getTime() < 10*60*1000 && (parseReviewReport(c)||{}).stage===stage);
+      if(recent) return;
+    }
+    W[post.id] = true;
+    const save = async (report, extra={}) => {
+      const payload = {post_id:post.id, content:JSON.stringify({...report, stage, at:new Date().toISOString()}), author_name:"Mai", author_email:"mai@ai.socialflow", type:"review_report", audience:"internal", ...extra};
+      const local = {...payload, id:uid(), created_date:new Date().toISOString()};
+      setData(d=>({...d, comments:[...(d.comments||[]), local]}));
+      try { const res = await ce("Comment",[payload]); const real = res.entities?.[0]; if(real?.id) setData(d=>({...d, comments:d.comments.map(c=>c.id===local.id?{...c,...real}:c)})); } catch(e) {}
+      return local;
+    };
+    try {
+      const brain = clientBrainBlock(post.client_id, post.client_name, `${post.title||""} ${post.description||""}`);
+      if(!cfg.rules && String(brain||"").length < 400) {
+        await save({verdict:"minor", skipped:true, summary:"Not enough client info to review this task: this client's Brand voice / memory is almost empty and there are no review rules. Add them (Client → Memory) and press Re-check.", issues:[]});
+        return;
+      }
+      const toList = v => Array.isArray(v) ? v : parseJ(v||"[]");
+      const urls = toList(post.design_urls), assets = toList(post.design_assets);
+      const all = assets.length ? assets : urls.map(url=>({url}));
+      let files;
+      if(post.post_type==="carousel") files = all.filter(a=>a&&a.kind!=="story").map(a=>({url:a.url||a.file_url, type:a.type})).filter(a=>a.url);
+      else { const last = urls[urls.length-1] || (assets[assets.length-1]||{}).url; files = last ? [{url:last, type:(assets.find(a=>(a.url||a.file_url)===last)||{}).type}] : []; }
+      const isImg = f => String(f.type||"").startsWith("image") || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(f.url||"");
+      const withDesign = stage==="design_review";
+      const imgs = withDesign ? files.filter(isImg).slice(0,8) : [];
+      const blocks = [];
+      for(let i=0;i<imgs.length;i++) {
+        try {
+          const blob = await (await fetchFileUrl(imgs[i].url)).blob();
+          if(blob.size > 4500000 || !/^image\/(jpeg|png|gif|webp)$/.test(blob.type)) continue;
+          const b64 = await new Promise((res,rej)=>{ const r = new FileReader(); r.onload = ()=>res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(blob); });
+          blocks.push({type:"text", text:`Final design file ${i+1} of ${imgs.length}${post.post_type==="carousel"?` (carousel slide ${i+1}, in posting order)`:""}:`});
+          blocks.push({type:"image", source:{type:"base64", media_type:blob.type, data:b64}});
+        } catch(e) {}
+      }
+      const nonImg = withDesign ? files.length - imgs.length : 0;
+      const prompt = `You are Mai, the agency's AI Account Executive, doing the FIRST-PASS QUALITY REVIEW of a task that was just pushed to ${withDesign?"Design Review":"Review"}. A human account manager makes the final decision, so be precise: report only real problems you can point at, never invent issues, and say "clear" when it is clear.
+
+${cfg.rules?`=== THIS CLIENT'S REVIEW RULES (strictest source — any breach is a high-severity issue) ===\n${cfg.rules}\n\n`:""}${brain||""}
+
+=== THE TASK ===
+Title: ${post.title||"-"}
+Client: ${post.client_name||"-"} | Platform: ${post.platform||"-"} | Type: ${post.post_type||"-"}
+Brief / description: ${post.description||"-"}
+Caption: ${post.caption||"(none)"}
+Hashtags: ${post.hashtags||"(none)"}
+${post.text_on_visual?`Text that should appear on the visual: ${post.text_on_visual}\n`:""}${withDesign?(blocks.length?"The final design file(s) are attached above — read every word on them.":"No inspectable image file is attached"+(nonImg?" (the file is a video/PDF, which you cannot inspect)":"")+" — review the text only and say so."):"This is the text stage — there is no design yet; review the text only."}
+
+CHECK: (1) spelling, grammar and typos in Arabic and English${withDesign?", including text printed ON the design":""}; (2) breaches of the client's review rules, do's/don'ts, tone and facts (phone numbers, branches, prices, dates, names) from the client info above; (3) caption vs brief mismatches; (4) hashtags and platform fit (length, format)${withDesign?"; (5) design vs caption/brief mismatches, missing required elements, carousel order that does not make sense":""}.
+Do NOT judge artistic taste. Quote the exact text you are flagging. Write summary/problem/fix in English.
+
+Return ONLY valid JSON (no markdown): {"verdict":"clear"|"minor"|"fix","summary":"1-2 sentences","issues":[{"severity":"high"|"medium"|"low","where":"caption | hashtags | slide 2 | design text …","quote":"exact text","problem":"what is wrong","fix":"suggested correction","confidence":0-100}]}
+Use "fix" only if there is at least one high-severity issue; "minor" for medium/low only; "clear" for none.`;
+      const raw = await agentAI("account_executive", `Review: ${post.title}`, prompt, 1500, null, blocks.length?blocks:null);
+      const m = String(raw||"").match(/\{[\s\S]*\}/);
+      let rep; try { rep = JSON.parse(m?m[0]:raw); } catch(e) { rep = null; }
+      if(!rep || !rep.verdict) { await save({verdict:"minor", skipped:true, summary:"Mai could not produce a review this time. Press Re-check to try again.", issues:[]}); return; }
+      rep.issues = (Array.isArray(rep.issues)?rep.issues:[]).slice(0,12);
+      const serious = rep.issues.filter(i=>i.severity==="high" && Number(i.confidence||0)>=80);
+      let sentBack = null;
+      const live = (data.posts||[]).find(p=>p.id===post.id) || post;
+      const alreadyBounced = (data.comments||[]).some(c=>c.post_id===post.id && c.type==="review_report" && (parseReviewReport(c)||{}).sent_back);
+      if(cfg.auto && opts.auto!==false && !opts.force && rep.verdict==="fix" && serious.length && !alreadyBounced && live.stage===stage) {
+        const back = stage==="internal_review" ? "Content" : "Design";
+        const owner = (stage==="internal_review" ? live.content_assigned_to : live.design_assigned_to) || live.assigned_to;
+        await undoPushToReview({...post, ...live, stage});
+        sentBack = back;
+        const member = (data.team||[]).find(t=>t.email===owner);
+        if(member) withLink(sfLink("task", post.id))("task_sent_back", owner,
+          `[SocialFlow] Sent back by Mai: ${post.title}`,
+          `<div style="font-family:sans-serif;font-size:14px;color:#111827;line-height:1.6"><p>Mai found mistakes in "${post.title}"${post.client_name?` (${post.client_name})`:""} and sent it back to ${back}:</p><ul>${serious.map(i=>`<li>${String(i.problem||"").replace(/</g,"&lt;")}${i.fix?` — <b>${String(i.fix).replace(/</g,"&lt;")}</b>`:""}</li>`).join("")}</ul><p>Log in to SocialFlow to see the details.</p></div>`,
+          getNotifPrefs(owner), member.whatsapp_number||null).catch(()=>{});
+        setToast(`Mai sent "${post.title}" back to ${back} — mistakes found`);
+      } else if(rep.verdict==="fix") setToast(`Mai found mistakes in "${post.title}" — see the report`);
+      await save({verdict:rep.verdict, summary:String(rep.summary||""), issues:rep.issues, ...(sentBack?{sent_back:sentBack}:{})});
+    } catch(e) {
+      try { await save({verdict:"minor", skipped:true, summary:"Mai's review failed: "+String(e.message||e).slice(0,120)+". Press Re-check to try again.", issues:[]}); } catch(e2) {}
+    } finally { delete W[post.id]; }
+  };
+
   const undoPushToReview = async (post) => {
     const back = post.stage==="internal_review" ? "content_creation" : post.stage==="design_review" ? "design" : null;
     if(!back) return;
@@ -56714,6 +56886,8 @@ Return ONLY valid JSON (no markdown, no explanation):
       published_at: newStage==="published" ? (post.published_at || new Date().toISOString()) : post.published_at,
     };
     setData(d=>({...d,posts:d.posts.map(p=>p.id===post.id?updatedPost:p)}));
+    // Mai · Review (per-client switch): first-pass check of the work that was just pushed into a review stage.
+    if(priorStage!==newStage && !["internal_review","design_review"].includes(priorStage) && ["internal_review","design_review"].includes(newStage) && !wentBackward) setTimeout(()=>runMaiReview(updatedPost),1500);
     // Task log: close the phase that just ended, open the next one for whoever now owns it.
     if(priorStage!==newStage) logTaskPhase({...post, assigned_to: data.posts.find(p=>p.id===post.id)?.assigned_to ?? post.assigned_to}, priorStage, newStage, updatedPost.assigned_to);
 
@@ -58348,6 +58522,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         onClose={()=>setSelectedPost(null)}
         onStageChange={handleStageChange}
         onUndoPush={undoPushToReview}
+        onRunReview={runMaiReview}
         onLeaderDecide={leaderDecide}
         onAddComment={handleAddComment}
         onDeleteComment={handleDeleteComment}
