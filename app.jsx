@@ -17698,7 +17698,7 @@ const OVERVIEW_TREND_METRICS = {
     instagram: {arrKey:"ig_insights", metric:"total_interactions"},
   },
 };
-function ClientPerformanceTrend({clientId}) {
+function ClientPerformanceTrend({clientId, posts=[]}) {
   const {isMobile} = useResponsive();
   const [snapshots,setSnapshots] = useState([]);
   const [loading,setLoading] = useState(true);
@@ -17728,12 +17728,24 @@ function ClientPerformanceTrend({clientId}) {
   const activeMetric = OVERVIEW_TREND_METRICS[metricMode];
   const platformsPresent = [...new Set(snapshots.map(s=>s.platform))].filter(p=>activeMetric[p]);
 
+  // LinkedIn / X / TikTok have no daily page-level history here, so their lines are built from the numbers fetched for each published post,
+  // placed on the day the post went out (Reach, Engagement). Followers has no per-day history for them, so only Facebook / Instagram show there.
+  const postSeries = metricMode==="followers" ? [] : ["linkedin","twitter","tiktok"].map(pf=>{
+    const byDay = {}; let any = false;
+    (posts||[]).forEach(p=>{
+      if(p.stage!=="published") return; const d = String(p.published_at||p.scheduled_date||"").slice(0,10); if(!last30.includes(d)) return;
+      const by = (p.insights_by_platform && typeof p.insights_by_platform==="object") ? p.insights_by_platform : parseJ(p.insights_by_platform||"{}"); const o = by?.[pf]; if(!o) return;
+      const v = metricMode==="reach" ? o.reach : ((o.likes||0)+(o.comments||0)+(o.shares||0)); if(v==null) return; any = true; byDay[d] = (byDay[d]||0) + Number(v);
+    });
+    return any ? {platform:pf, label:`${pf==="twitter"?"X":pf.charAt(0).toUpperCase()+pf.slice(1)} ${metricMode==="reach"?"Reach":"Engagement"} (by post day)`, color:PLT_COLOR[pf]||"#3b82f6", data:last30.map(date=>({date, value:byDay[date]||0}))} : null;
+  }).filter(Boolean);
+
   if(loading) return (
     <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"30px 20px",textAlign:"center",color:"var(--text3)",fontSize:13}}>
       <Spinner size={14}/> Loading 30-day trend…
     </div>
   );
-  if(platformsPresent.length===0) return (
+  if(platformsPresent.length===0 && postSeries.length===0) return (
     <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px"}}>
       <h4 style={{fontWeight:700,fontSize:14,marginBottom:6}}>30-Day Performance</h4>
       <p style={{fontSize:12,color:"var(--text3)"}}>No daily data yet — a snapshot is captured automatically once a day for each connected platform. Check back tomorrow.</p>
@@ -17758,7 +17770,7 @@ function ClientPerformanceTrend({clientId}) {
       color: PLT_COLOR[p]||"#3b82f6",
       data,
     };
-  });
+  }).concat(postSeries);
 
   return (
     <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px",display:"flex",flexDirection:"column",gap:14}}>
@@ -18702,7 +18714,7 @@ No markdown, no explanation, just the JSON array.`;
         {kpis.map(k=><StatCard key={k.label} label={k.label} value={k.value} color={k.color}/>)}
       </div>
 
-      <ClientPerformanceTrend clientId={client.id}/>
+      <ClientPerformanceTrend clientId={client.id} posts={cPosts}/>
 
       <BestPerformingPosts posts={cPosts} onOpen={onOpenPost}/>
 
@@ -25923,7 +25935,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
               </div>
             )}
 
-            {(integrations||[]).length>0&&<ClientPerformanceTrend clientId={client.id}/>}
+            {(integrations||[]).length>0&&<ClientPerformanceTrend clientId={client.id} posts={allCPosts}/>}
 
             <BestPerformingPosts posts={allCPosts} onOpen={setSel}/>
 
