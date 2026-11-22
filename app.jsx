@@ -29706,6 +29706,30 @@ function leadQual(lead){
   const mm = String((lead&&lead.notes)||"").match(/Qualification: [^\n]*?(\d+)\/100 — ([^\n]*)/);
   return {k, label:m.label, color:m.color, score:mm?+mm[1]:null, reason:mm?mm[2]:""};
 }
+// The WhatsApp / DM conversation behind a lead (customer_messages, matched by the lead's phone number).
+function LeadChat({lead}) {
+  const [msgs, setMsgs] = useState(null);
+  useEffect(()=>{ let live = true; setMsgs(null);
+    const d = String(lead.phone||"").replace(/\D/g,"");
+    const ids = [...new Set([d, "+"+d, d.replace(/^0+/,""), lead.phone].filter(x=>x && String(x).length>5))];
+    (async()=>{ let all = []; for(const id of ids) { try { const r = await qe("CustomerMessage",{customer_id:id},"created_at",500); all = all.concat(r?.entities||[]); } catch(e) {} }
+      const seen = {}; all = all.filter(m=>{ const k = m.id||(m.created_at+m.message_text); if(seen[k]) return false; seen[k] = 1; return true; })
+        .filter(m=>m.draft_status!=="pending_review" && m.draft_status!=="dismissed").sort((a,b)=>new Date(a.created_at||a.created_date||0)-new Date(b.created_at||b.created_date||0));
+      if(live) setMsgs(all); })();
+    return ()=>{ live = false; }; },[lead.id, lead.phone]);
+  if(msgs===null) return <p style={{fontSize:13,color:"var(--text3)"}}>Loading the chat…</p>;
+  if(!msgs.length) return <p style={{fontSize:13,color:"var(--text3)"}}>No chat found for {lead.phone||"this lead"}. Chats are matched by the lead's phone number, and only WhatsApp / DM conversations the bot or the team handled are saved here.</p>;
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:560,overflowY:"auto",padding:"4px 2px"}}>
+      {msgs.map((m,i)=>{ const out = m.direction==="out"; const pr = splitInboxImages(m.message_text); const who = out ? (m.sent_by==="bot"?"Bot":m.sent_by==="human"?"Team":"Us") : (m.customer_name||lead.name||"Customer");
+        return (<div key={m.id||i} style={{alignSelf:out?"flex-end":"flex-start",maxWidth:"82%"}}>
+          <div style={{fontSize:10,color:"var(--text3)",margin:"0 6px 2px",textAlign:out?"right":"left"}}>{who} · {new Date(m.created_at||m.created_date||0).toLocaleString([], {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</div>
+          <div dir="auto" style={{background:out?(m.sent_by==="bot"?"#10b98122":"var(--accent)"):"var(--surface2)",color:out&&m.sent_by!=="bot"?"#fff":"var(--text)",borderRadius:14,padding:"8px 12px",fontSize:13,lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
+            {pr.images.map(u=><img key={u} src={u} alt="" style={{display:"block",maxWidth:220,maxHeight:260,borderRadius:8,marginBottom:pr.text?6:0}}/>)}{pr.text}
+          </div></div>); })}
+    </div>);
+}
+
 function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivity, onConvert, currentUser, onDeleteLead}) {
   // Plain state, not persisted — opening any lead should always start on
   // Overview, not silently reopen to whatever tab was last viewed.
@@ -29780,12 +29804,13 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
 
         {/* Tabs */}
         <div style={{display:"flex",borderBottom:"1px solid var(--border)"}}>
-          {[["overview","Overview"],["activity","Activity"],["followup","Follow-up"]].map(([k,l])=>(
+          {[["overview","Overview"],["chat","Chat"],["activity","Activity"],["followup","Follow-up"]].map(([k,l])=>(
             <button key={k} onClick={()=>setTab(k)} style={{flex:1,padding:"10px 0",fontSize:12,fontWeight:700,borderBottom:`2px solid ${tab===k?"var(--accent)":"transparent"}`,color:tab===k?"var(--accent)":"var(--text3)",transition:"all 0.15s"}}>{l}</button>
           ))}
         </div>
 
         <div style={{flex:1,padding:20,display:"flex",flexDirection:"column",gap:14}}>
+          {tab==="chat"&&<LeadChat lead={lead}/>}
           {/* OVERVIEW */}
           {tab==="overview"&&(<>
             {/* Contact Info */}
