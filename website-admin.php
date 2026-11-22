@@ -315,6 +315,15 @@ if ($action === 'featured') {
     wOut(200, ['items' => $items]);
 }
 
+/* Thumbnails for the Projects preview: slug -> real image of each live project (same source the newsletter builder uses). */
+if ($action === 'site_images') {
+    require_once __DIR__ . '/growth-lib.php';
+    $c = gSiteContent();
+    $map = [];
+    foreach ($c['projects'] ?? [] as $p) if (!empty($p['slug']) && !empty($p['image'])) $map[$p['slug']] = $p['image'];
+    wOut(200, ['images' => $map, 'error' => $c['error'] ?? null]);
+}
+
 if ($action === 'status') {
     [$c, $r] = gh('GET', "/repos/$REPO", $TOKEN);
     if ($c !== 200) wOut(200, ['connected' => false, 'error' => "GitHub said HTTP $c — check the token and repo name.", 'repo' => $REPO]);
