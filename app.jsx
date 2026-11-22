@@ -34174,7 +34174,7 @@ function WebsiteOverview() {
 // Generic list → editor shell for projects / posts / pages.
 // Where a project can be featured on the website, and how it is laid out there.
 const W_PLACE=[["home","Home page","Home"],["gcc","GCC & KSA portfolio","GCC"],["real_estate","Real estate portfolio","Real estate"],["retail","E-commerce & retail portfolio","Retail"]];
-const W_VIEW=[["auto","Auto · Triple (website default)"],["single","Single · 1 per row"],["double","Double · 2 per row"],["triple","Triple · 3 per row"]];
+const W_VIEW=[["auto","Auto · Single (website default)"],["single","Single · 1 of 3 columns"],["double","Double · 2 of 3 columns"],["triple","Triple · full row"]];
 // Portfolio pages on the website are decided by TAGS: GCC = gcc, Real estate = real-estate, Retail = retail or e-commerce, AI content = ai-video-production.
 const W_PORT=[["gcc","GCC"],["real_estate","Real estate"],["retail","Retail"],["ai","AI content"]];
 const wMember=(tags,p)=>{ const t=(tags||[]).map(x=>String(x).toLowerCase()); return p==="gcc"?t.includes("gcc"):p==="real_estate"?t.includes("real-estate"):p==="retail"?(t.includes("retail")||t.includes("e-commerce")):p==="ai"?t.includes("ai-video-production"):false; };
@@ -34250,20 +34250,20 @@ function WProjectsTable({keys, items, feat, pf, sf, onOpen, reload}) {
       </div>}
       <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6,padding:"8px 12px",border:"1px solid var(--border)",borderRadius:10}}>
         <b>● In portfolio</b> = the project already appears on that website page (its tag decides: gcc, real-estate, retail / e-commerce, ai-video-production). Click it to add or remove the tag.
-        <br/><b>★ Featured first</b> = shown at the top of that page (or of the home page) in its own grid, with a <b>position</b> and a <b>view</b>. <b>Auto</b> view = Triple (a third of the row), the website's default.
+        <br/><b>★ Featured first</b> = shown at the top of that page (or of the home page) in its own grid, with a <b>position</b> and a <b>view</b>. <b>Auto</b> view = Single (one column of three), the website's default. Single = 1 of 3 columns, Double = 2 of 3, Triple = the whole row.
         <br/><b>Home:</b> projects on the <b>old home grid</b> keep their current look (some are wide cards) until you press <b>→ Top</b>.
       </div>
       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",padding:"8px 12px",border:"1px dashed var(--border2)",borderRadius:10}}>
         <span style={{fontSize:12,fontWeight:800}}>Views of everything featured first</span>
         <select value="" onChange={ev=>{ applyViews(ev.target.value, W_PLACE.map(x=>x[0])); ev.target.value=""; }} disabled={!loaded} style={{...wInput,width:"auto"}}>
           <option value="">All places…</option>
-          <option value="p:d,d,t,t,t">Pattern: 2 per row, then 3 per row</option><option value="p:s,d,d">Pattern: 1 big, then 2</option>
-          <option value="single">All Single</option><option value="double">All Double</option><option value="triple">All Triple</option><option value="auto">All Auto (= Triple)</option>
+          <option value="p:d,s,s,s,s,s,d,s,d,s,s,s">Pattern: the old home look (wide+small, 3 small…)</option><option value="p:d,s,s,d">Pattern: wide+small, small+wide</option><option value="p:t,d,s">Pattern: full row, then wide+small</option>
+          <option value="single">All Single</option><option value="double">All Double</option><option value="triple">All Triple</option><option value="auto">All Auto (= Single)</option>
         </select>
         {featMode&&<select value="" onChange={ev=>{ applyViews(ev.target.value, [place]); ev.target.value=""; }} style={{...wInput,width:"auto"}}>
           <option value="">Only {(W_PLACE.find(x=>x[0]===place)||[])[2]}…</option>
-          <option value="p:d,d,t,t,t">Pattern: 2 per row, then 3 per row</option><option value="p:s,d,d">Pattern: 1 big, then 2</option>
-          <option value="single">All Single</option><option value="double">All Double</option><option value="triple">All Triple</option><option value="auto">All Auto (= Triple)</option>
+          <option value="p:d,s,s,s,s,s,d,s,d,s,s,s">Pattern: the old home look (wide+small, 3 small…)</option><option value="p:d,s,s,d">Pattern: wide+small, small+wide</option><option value="p:t,d,s">Pattern: full row, then wide+small</option>
+          <option value="single">All Single</option><option value="double">All Double</option><option value="triple">All Triple</option><option value="auto">All Auto (= Single)</option>
         </select>}
         <span style={{fontSize:11,color:"var(--text3)"}}>Rows of 2 then 3 fill the 6-column grid exactly. Nothing is saved until you press Save &amp; publish all.</span>
       </div>
@@ -34319,9 +34319,9 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
     if(p!=="home" && wMember((feat[k]||{}).tags, p)) { const mem = allKeys.filter(x=>!eff(x).fin[p] && wMember((feat[x]||{}).tags, p)).sort((a,b)=>(((feat[a]||{}).order??99)-((feat[b]||{}).order??99))||a.localeCompare(b)); const top = allKeys.reduce((m,x)=>Math.max(m,(eff(x).fin[p]||{}).order||0), 0); const no = top+mem.indexOf(k)+1; return {on:true, tagOnly:true, order:no, layout:"auto"}; }
     return {on:false}; };
   const toggle = (k, p, on) => { const e = eff(k); const fin = {...e.fin};
-    if(on) { fin[p] = {order:nextNo(p), layout:"double"}; put(k, fin, p==="home" ? false : e.old); }
+    if(on) { fin[p] = {order:nextNo(p), layout:"single"}; put(k, fin, p==="home" ? false : e.old); }
     else { delete fin[p]; put(k, fin, p==="home" ? false : e.old); } };
-  const setNo = (k, p, n) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {layout:(state(k,p).legacy||state(k,p).tagOnly)?"triple":"double", ...(fin[p]||{}), order:Math.max(1,Math.round(Number(n))||1)}; put(k, fin, p==="home" ? false : e.old); };
+  const setNo = (k, p, n) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {layout:"single", ...(fin[p]||{}), order:Math.max(1,Math.round(Number(n))||1)}; put(k, fin, p==="home" ? false : e.old); };
   const setLay = (k, p, l) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {order:(state(k,p).legacy||state(k,p).tagOnly)?(state(k,p).order||nextNo(p)):nextNo(p), ...(fin[p]||{}), layout:l}; put(k, fin, p==="home" ? false : e.old); };
   // Quick layout: gives every project on this tab a number (1, 2, 3 …) and a view from a repeating pattern. You can still change any one after.
   // Drag & drop: moves a project to the place of another one and renumbers this tab 1, 2, 3 … (each project keeps its own view).
@@ -34342,12 +34342,11 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
   const count = p => allKeys.filter(k=>state(k,p).on).length;
   const rank = k => { const s = state(k, place); return s.on ? (s.legacy ? 1000 + ((feat[k]||{}).order??99) : (s.order??99)) : (place!=="home" && wMember((feat[k]||{}).tags, place) ? 50000 : 100000); };
   const rows = keys.filter(k=>items[k].json).sort((a,b)=>(rank(a)-rank(b)) || a.localeCompare(b));
-  // Rows (as the website lays them out): Single = 1 project per row (full width), Double = 2 per row, Triple = 3 per row. Projects with the site's own "auto" look are not grouped.
-  const rowOf = {}, rowFill = {}, rowCap = {}; { let cur = 0, lastLay = null, no = 0;
-    rows.forEach(k=>{ const s = state(k, place); if(!s.on) return; if(s.layout==="auto" && (s.legacy||s.tagOnly)) { cur = 0; lastLay = null; return; }
-      const lay = s.layout==="auto" ? "triple" : s.layout; const N = lay==="single" ? 1 : lay==="double" ? 2 : 3;
-      if(cur===0 || lastLay!==lay || cur>=N) { no++; cur = 0; lastLay = lay; }
-      rowOf[k] = {no, first:cur===0}; cur++; rowFill[no] = cur; rowCap[no] = N; }); }
+  // Rows as the website lays them out (3 columns): Single = 1 column, Double = 2, Triple = 3. Projects follow the order; one that does not fit moves to the next row and leaves an empty spot. "Auto" (the site's own look) is not grouped.
+  const rowOf = {}, rowFill = {}; { let cur = 0, no = 1;
+    rows.forEach(k=>{ const s = state(k, place); if(!s.on) return; if(s.layout==="auto" && (s.legacy||s.tagOnly)) { if(cur>0) { no++; cur = 0; } return; }
+      const lay = s.layout==="auto" ? "single" : s.layout; const sp = lay==="single" ? 1 : lay==="double" ? 2 : 3;
+      if(cur>0 && cur+sp>3) { no++; cur = 0; } rowOf[k] = {no, first:cur===0}; cur += sp; rowFill[no] = cur; if(cur>=3) { cur = 0; no++; } }); }
   const saveAll = async () => {
     setBusy(true); setMsg(null); const out = [];
     for(const k of Object.keys(edits)) { const g = eff(k); out.push({path:items[k].json, featuredIn:g.fin, featured:!!(g.fin.home||g.old)}); }
@@ -34366,29 +34365,29 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{PL.map(([p,lb])=><button key={p} onClick={()=>setPlace(p)} style={{...gPillW(place===p)}}>{lb} <span style={{opacity:.7}}>· {count(p)}</span></button>)}<span style={{flex:1}}/>
         <select value="" onChange={ev=>{ applyPat(ev.target.value); ev.target.value=""; }} style={{...wInput,width:"auto",padding:"6px 10px",fontSize:12}}>
           <option value="">Quick layout for this tab…</option>
-          <option value="d">All Double (2 per row)</option>
-          <option value="t">All Triple (3 per row)</option>
-          <option value="s">All Single (1 per row, full width)</option>
-          <option value="d,d,t,t,t">2 per row, then 3 per row</option>
-          <option value="s,d,d">1 big, then 2</option>
+          <option value="d,s,s,s,s,s,d,s,d,s,s,s">The old home look (wide + small, 3 small …)</option>
+          <option value="d,s,s,d">Wide + small, then small + wide</option>
+          <option value="t,d,s">Full row, then wide + small</option>
+          <option value="s">All Single (3 per row)</option>
+          <option value="t">All Triple (full row each)</option>
         </select>
         {place==="home"&&allKeys.some(k=>eff(k).fin.home)&&<button onClick={restoreOld} style={{...gPillW(false)}}>↩ Back to old home grid</button>}
         <button onClick={()=>setPrev(v=>!v)} style={{...gPillW(prev)}}>👁 Preview</button></div>
       {prev&&<div style={{border:"1px solid var(--border)",borderRadius:12,padding:12,background:"var(--surface)"}}>
-        <p style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>Simulation of <b>{(PL.find(x=>x[0]===place)||[])[1]}</b> with your changes (not saved yet), approximate: Single = one per row (full width), Double = two per row, Triple = three per row; <b>auto</b> = the site\'s own look (shown small).<br/><b>Drag a card onto another to change the order.</b></p>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(6,minmax(0,1fr))",gap:8}}>
-          {rows.filter(k=>state(k,place).on).flatMap(k=>{ const st = state(k,place); const lay = (st.layout==="auto" && (st.legacy||st.tagOnly)) ? "auto" : (st.layout==="auto"?"triple":st.layout); const sp = lay==="single"?6:lay==="double"?3:2; const f = feat[k]||{};
-            return [<div key={k} draggable onDragStart={()=>{ dragRef.current = k; }} onDragOver={e=>e.preventDefault()} onDrop={e=>{ e.preventDefault(); reorder(dragRef.current, k); }} style={{cursor:"grab",gridColumn:`span ${sp}`,minHeight:sp===6?200:150,borderRadius:12,overflow:"hidden",position:"relative",background:"linear-gradient(135deg,#1f2937,#374151)",color:"#fff",display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
+        <p style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>Simulation of <b>{(PL.find(x=>x[0]===place)||[])[1]}</b> with your changes (not saved yet). 3 columns: Single = 1, Double = 2, Triple = the whole row; no back-filling, so a card that does not fit starts the next row. <b>auto</b> = the site\'s own look (shown small).<br/><b>Drag a card onto another to change the order.</b></p>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>
+          {rows.filter(k=>state(k,place).on).flatMap(k=>{ const st = state(k,place); const lay = (st.layout==="auto" && (st.legacy||st.tagOnly)) ? "auto" : (st.layout==="auto"?"single":st.layout); const sp = lay==="single"?1:lay==="double"?2:3; const f = feat[k]||{};
+            return [<div key={k} draggable onDragStart={()=>{ dragRef.current = k; }} onDragOver={e=>e.preventDefault()} onDrop={e=>{ e.preventDefault(); reorder(dragRef.current, k); }} style={{cursor:"grab",gridColumn:`span ${sp}`,minHeight:sp===3?200:150,borderRadius:12,overflow:"hidden",position:"relative",background:"linear-gradient(135deg,#1f2937,#374151)",color:"#fff",display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
               <img src={`/website-admin.php?action=project_img&slug=${encodeURIComponent(k)}`} alt="" loading="lazy" draggable={false} onError={e=>{ e.currentTarget.style.display="none"; }} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
               <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,.65),rgba(0,0,0,0) 55%)"}}/>
               <div style={{position:"relative",padding:"10px 14px",display:"flex",flexDirection:"column"}}><span style={{fontSize:14,fontWeight:800}}>{f.title||k.replace(/-/g," ")}</span><span style={{fontSize:10,opacity:.8}}>#{st.order} · {lay}</span></div></div>]; })}
         </div>
       </div>}
-      <p style={{fontSize:12,color:"var(--text2)"}}>Tick the projects that should be shown on <b>{(PL.find(x=>x[0]===place)||[])[1]}</b>. <b>No.</b> is the order (1 comes first). <b>Single</b> = one project per row (full width), <b>Double</b> = two per row, <b>Triple</b> = three per row. Rows are made from projects that follow each other with the same view. No view selected = the site\'s own look.</p>
+      <p style={{fontSize:12,color:"var(--text2)"}}>Tick the projects that should be shown on <b>{(PL.find(x=>x[0]===place)||[])[1]}</b>. <b>No.</b> is the order (1 comes first). Each row has <b>3 columns</b>: <b>Single</b> = takes 1, <b>Double</b> = takes 2, <b>Triple</b> = takes the whole row (e.g. Double + Single = one row). A project that does not fit moves to the next row. No view selected = the site\'s own look.</p>
       <div style={{display:"flex",flexDirection:"column"}}>
-        {rows.map(k=>{ const s = state(k, place); const f = feat[k] || {}; const lay = (s.layout==="auto" && (s.legacy||s.tagOnly)) ? "auto" : (s.layout==="auto" ? "triple" : s.layout); const rw = rowOf[k]; return (
+        {rows.map(k=>{ const s = state(k, place); const f = feat[k] || {}; const lay = (s.layout==="auto" && (s.legacy||s.tagOnly)) ? "auto" : (s.layout==="auto" ? "single" : s.layout); const rw = rowOf[k]; return (
           <React.Fragment key={k}>
-          {rw&&rw.first&&<div draggable onDragStart={()=>{ dragRowRef.current = rw.no; dragRef.current = null; }} onDragOver={e=>e.preventDefault()} onDrop={e=>{ e.preventDefault(); if(dragRowRef.current!=null) reorderRows(dragRowRef.current, rw.no); dragRowRef.current = null; }} title="Drag this row (with all its projects) onto another row" style={{cursor:"grab",display:"flex",alignItems:"center",gap:8,padding:"10px 6px 2px",fontSize:11,fontWeight:800,letterSpacing:"0.06em",textTransform:"uppercase",color:rowFill[rw.no]===rowCap[rw.no]?"#10b981":"#f59e0b"}}><span style={{fontSize:15,color:"var(--text3)"}}>⠿</span>Row {rw.no} <span style={{fontWeight:700,textTransform:"none",letterSpacing:0,color:"var(--text3)"}}>· {rowFill[rw.no]} of {rowCap[rw.no]} project{rowCap[rw.no]===1?"":"s"}{rowFill[rw.no]===rowCap[rw.no]?"":" — row not full (add another project with the same view, or change the view)"}</span></div>}
+          {rw&&rw.first&&<div draggable onDragStart={()=>{ dragRowRef.current = rw.no; dragRef.current = null; }} onDragOver={e=>e.preventDefault()} onDrop={e=>{ e.preventDefault(); if(dragRowRef.current!=null) reorderRows(dragRowRef.current, rw.no); dragRowRef.current = null; }} title="Drag this row (with all its projects) onto another row" style={{cursor:"grab",display:"flex",alignItems:"center",gap:8,padding:"10px 6px 2px",fontSize:11,fontWeight:800,letterSpacing:"0.06em",textTransform:"uppercase",color:rowFill[rw.no]===3?"#10b981":"#f59e0b"}}><span style={{fontSize:15,color:"var(--text3)"}}>⠿</span>Row {rw.no} <span style={{fontWeight:700,textTransform:"none",letterSpacing:0,color:"var(--text3)"}}>· {rowFill[rw.no]} of 3 spots{rowFill[rw.no]===3?"":" — a spot is empty (add a Single next, or change the view)"}</span></div>}
           <div onDragOver={e=>{ if(s.on) e.preventDefault(); }} onDrop={e=>{ e.preventDefault(); if(!s.on) return; if(dragRowRef.current!=null) { reorderRows(dragRowRef.current, rw&&rw.no); dragRowRef.current = null; } else reorder(dragRef.current, k); }} style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",padding:"9px 6px",borderBottom:"1px solid var(--border)",opacity:s.on?1:0.6,background:s.on?"transparent":"transparent"}}>
             {s.on?<span draggable onDragStart={()=>{ dragRef.current = k; dragRowRef.current = null; }} title="Drag to change the order" style={{cursor:"grab",color:"var(--text3)",fontSize:16,userSelect:"none"}}>⠿</span>:<span style={{width:10}}/>}
             <input type="checkbox" checked={s.on} disabled={!!s.tagOnly} title={s.tagOnly?"In this portfolio because of its tags — remove the tag in the project to take it out":""} onChange={e=>toggle(k,place,e.target.checked)} style={{width:18,height:18,cursor:"pointer"}}/>
@@ -34566,7 +34565,7 @@ function WebsiteProjects({root}) {
                   <select value={p.layout||"auto"} onChange={e=>setPlace(k,{layout:e.target.value})} style={{...wInput,flex:1,minWidth:0}}>{W_VIEW.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>
                 </div>}
               </div>; })}
-              <p style={{fontSize:11,color:"var(--text3)"}}>Position 1 shows first in that place. Auto lets the website decide. Single = one per row (full width), double = two per row, triple = three per row. Press Save &amp; publish to apply.</p>
+              <p style={{fontSize:11,color:"var(--text3)"}}>Position 1 shows first in that place. Auto lets the website decide. Each row has 3 columns: single takes 1, double takes 2, triple takes the whole row; a project that does not fit moves to the next row. Press Save &amp; publish to apply.</p>
             </div>
             <div><span style={wLabel}>Global order (lower = first)</span><p style={{fontSize:10,color:"var(--text3)",marginBottom:3}}>Sorts the whole site (portfolio, prev/next, old home grid). Use the featured positions above for placement.</p><input type="number" value={d.order??99} onChange={e=>set("order",Number(e.target.value))} style={wInput}/></div>
             <div><span style={wLabel}>Date</span><input type="date" value={d.date||""} onChange={e=>set("date",e.target.value)} style={wInput}/></div>
