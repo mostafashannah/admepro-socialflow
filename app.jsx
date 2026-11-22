@@ -34317,8 +34317,8 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
   // What the live home grid shows today (3 spots per row): [wide+small] [small×3] [small+wide] [small+wide] [small×3].
   const legacyLayOf = (k) => ["double","single","single","single","single","single","double","single","double","single","single","single"][((legacyRank[k]||1)-1)%12];
   const state = (k, p) => { const e = eff(k); if(e.fin[p]) return {on:true, order:e.fin[p].order, layout:e.fin[p].layout||"auto", legacy:false}; if(p==="home" && e.old) return {on:true, legacy:true, order:legacyRank[k], layout:legacyLayOf(k)};
-    // Portfolio pages: every project whose tags put it there is shown (numbered after the featured ones, website default Triple) until you set its own number/view.
-    if(p!=="home" && wMember((feat[k]||{}).tags, p)) { const mem = allKeys.filter(x=>!eff(x).fin[p] && wMember((feat[x]||{}).tags, p)).sort((a,b)=>(((feat[a]||{}).order??99)-((feat[b]||{}).order??99))||a.localeCompare(b)); const top = allKeys.reduce((m,x)=>Math.max(m,(eff(x).fin[p]||{}).order||0), 0); return {on:true, tagOnly:true, order:top+mem.indexOf(k)+1, layout:"triple"}; }
+    // Portfolio pages: every project whose tags put it there is shown (numbered after the featured ones, shown as the site lays them out now: wide+small, small+wide) until you set its own number/view.
+    if(p!=="home" && wMember((feat[k]||{}).tags, p)) { const mem = allKeys.filter(x=>!eff(x).fin[p] && wMember((feat[x]||{}).tags, p)).sort((a,b)=>(((feat[a]||{}).order??99)-((feat[b]||{}).order??99))||a.localeCompare(b)); const top = allKeys.reduce((m,x)=>Math.max(m,(eff(x).fin[p]||{}).order||0), 0); const no = top+mem.indexOf(k)+1; return {on:true, tagOnly:true, order:no, layout:["double","single","single","double"][(mem.indexOf(k))%4]}; }
     return {on:false}; };
   const toggle = (k, p, on) => { const e = eff(k); const fin = {...e.fin};
     if(on) { fin[p] = {order:nextNo(p), layout:"double"}; put(k, fin, p==="home" ? false : e.old); }
