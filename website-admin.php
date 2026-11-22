@@ -205,7 +205,7 @@ if ($action === 'set_project_fields') {
     if (array_key_exists('featuredIn', $in) && is_array($in['featuredIn'])) {
         $fin = [];
         foreach (['home', 'gcc', 'real_estate', 'retail'] as $k) if (isset($in['featuredIn'][$k]) && is_array($in['featuredIn'][$k]))
-            $fin[$k] = ['order' => max(1, min(999, (int)($in['featuredIn'][$k]['order'] ?? 1))), 'layout' => in_array($in['featuredIn'][$k]['layout'] ?? '', ['single', 'double', 'triple'], true) ? $in['featuredIn'][$k]['layout'] : 'double'];
+            $fin[$k] = ['order' => max(1, min(999, (int)($in['featuredIn'][$k]['order'] ?? 1))), 'layout' => in_array($in['featuredIn'][$k]['layout'] ?? '', ['auto', 'single', 'double', 'triple'], true) ? $in['featuredIn'][$k]['layout'] : 'auto'];
         $j->featuredIn = (object)$fin; $j->featured = isset($fin['home']);   // "featured" stays true when it is on home, for older website code
     }
     $new = json_encode($j, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -221,7 +221,7 @@ if ($action === 'set_project_fields') {
 }
 
 /* Featured placements of every project (read-only): which projects are featured on the home page / the GCC, real estate and retail portfolios, with their position and view.
- * Each project.json holds   "featuredIn": { "home": {"order": 1, "layout": "single|double|triple"}, "gcc": {...}, "real_estate": {...}, "retail": {...} }
+ * Each project.json holds   "featuredIn": { "home": {"order": 1, "layout": "auto|single|double|triple"}, "gcc": {...}, "real_estate": {...}, "retail": {...} }
  * and, for older website code, "featured": true when it is featured on home. Cached for 3 minutes (cleared on every save). */
 if ($action === 'featured') {
     $cache = sys_get_temp_dir() . '/sf-web-featured.json';
@@ -242,8 +242,9 @@ if ($action === 'featured') {
         $res = json_decode((string)curl_multi_getcontent($ch), true); curl_multi_remove_handle($mh, $ch); curl_close($ch);
         $j = json_decode((string)base64_decode((string)($res['content'] ?? '')), true); if (!is_array($j)) continue;
         $fin = []; foreach (['home', 'gcc', 'real_estate', 'retail'] as $k) if (isset($j['featuredIn'][$k]) && is_array($j['featuredIn'][$k]))
-            $fin[$k] = ['order' => (int)($j['featuredIn'][$k]['order'] ?? 99), 'layout' => in_array($j['featuredIn'][$k]['layout'] ?? '', ['single', 'double', 'triple'], true) ? $j['featuredIn'][$k]['layout'] : 'double'];
-        $items[$slug] = ['title' => is_string($j['title'] ?? null) ? $j['title'] : $slug, 'published' => !array_key_exists('published', $j) || !empty($j['published']), 'featured' => !empty($j['featured']), 'order' => (int)($j['order'] ?? 99), 'featuredIn' => $fin];
+            $fin[$k] = ['order' => (int)($j['featuredIn'][$k]['order'] ?? 99), 'layout' => in_array($j['featuredIn'][$k]['layout'] ?? '', ['auto', 'single', 'double', 'triple'], true) ? $j['featuredIn'][$k]['layout'] : 'auto'];
+        $items[$slug] = ['title' => is_string($j['title'] ?? null) ? $j['title'] : $slug, 'published' => !array_key_exists('published', $j) || !empty($j['published']), 'featured' => !empty($j['featured']), 'order' => (int)($j['order'] ?? 99), 'featuredIn' => $fin,
+            'categories' => array_slice(array_values(array_filter((array)($j['categories'] ?? []), 'is_string')), 0, 5), 'tags' => array_slice(array_values(array_filter((array)($j['tags'] ?? []), 'is_string')), 0, 8)];
     }
     curl_multi_close($mh);
     if ($items) @file_put_contents($cache, json_encode($items, JSON_UNESCAPED_UNICODE));

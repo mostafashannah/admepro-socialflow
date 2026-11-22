@@ -34031,22 +34031,27 @@ function WebsiteOverview() {
 // Generic list → editor shell for projects / posts / pages.
 // Where a project can be featured on the website, and how it is laid out there.
 const W_PLACE=[["home","Home page","Home"],["gcc","GCC & KSA portfolio","GCC"],["real_estate","Real estate portfolio","Real estate"],["retail","E-commerce & retail portfolio","Retail"]];
-const W_VIEW=[["single","Single · 1 per row"],["double","Double · 2 per row"],["triple","Triple · 3 per row"]];
+const W_VIEW=[["auto","Auto · website decides"],["single","Single · 1 per row"],["double","Double · 2 per row"],["triple","Triple · 3 per row"]];
 // The projects page as one easy table: status switch + the four featured places (position and view) on each row, drag to re-arrange inside a place, then save everything at once.
 function WProjectsTable({keys, items, feat, pf, sf, onOpen, reload}) {
   const [edits, setEdits] = useState({}); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(null);
   const [dragK, setDragK] = useState(null); const [overK, setOverK] = useState(null);
   const loaded = Object.keys(feat).length > 0;
   const eff = k => { const f = feat[k] || {}; const e = edits[k] || {};
-    const legacy = (f.featured && !(f.featuredIn && f.featuredIn.home)) ? {home:{order:Math.max(1,f.order??1),layout:"double"}} : {};
+    const legacy = (f.featured && !(f.featuredIn && f.featuredIn.home)) ? {home:{order:Math.max(1,f.order??1),layout:"auto"}} : {};
     return {published: e.published!==undefined ? e.published : f.published!==false, fin: e.fin || {...legacy, ...(f.featuredIn||{})}, title: f.title}; };
   const edit = (k, patch) => setEdits(o => ({...o, [k]: {...(o[k]||{}), ...patch}}));
-  const setPlace = (k, p, val) => { const cur = {...eff(k).fin}; if(val===null) delete cur[p]; else cur[p] = {order:1,layout:"double",...(cur[p]||{}),...val}; edit(k,{fin:cur}); };
+  const setPlace = (k, p, val) => { const cur = {...eff(k).fin}; if(val===null) delete cur[p]; else cur[p] = {order:1,layout:"auto",...(cur[p]||{}),...val}; edit(k,{fin:cur}); };
   const rows = keys.filter(k => (pf==="all" || eff(k).fin[pf]) && (sf==="all" || (sf==="draft" ? !eff(k).published : eff(k).published)))
     .sort((a,b) => pf==="all" ? a.localeCompare(b) : ((eff(a).fin[pf].order??99) - (eff(b).fin[pf].order??99)) || a.localeCompare(b));
   const nEdits = Object.keys(edits).length;
   const move = (from, to) => { if(from===to) return; const arr = [...rows]; const i = arr.indexOf(from), j = arr.indexOf(to); if(i<0||j<0) return; arr.splice(j,0,arr.splice(i,1)[0]);
     arr.forEach((kk,n) => { const cur = {...eff(kk).fin}; if(cur[pf] && cur[pf].order !== n+1) { cur[pf] = {...cur[pf], order:n+1}; edit(kk,{fin:cur}); } }); };
+  // Same view for the whole list, or a repeating pattern of rows (for example 2 then 3), following the current order.
+  const applyView = v => { if(!v||pf==="all") return; const NAME={1:"single",2:"double",3:"triple"};
+    let seq=null; if(v.indexOf("p:")===0){ seq=v.slice(2).split(",").map(Number); } let gi=0, left=seq?seq[0]:0;
+    rows.forEach(kk=>{ let lay=v; if(seq){ if(left===0){ gi=(gi+1)%seq.length; left=seq[gi]; } lay=NAME[seq[gi]]; left--; }
+      const cur={...eff(kk).fin}; if(cur[pf]&&cur[pf].layout!==lay){ cur[pf]={...cur[pf],layout:lay}; edit(kk,{fin:cur}); } }); };
   const saveAll = async () => {
     setBusy(true); setMsg(null); let ok = 0; const bad = [];
     for(const k of Object.keys(edits)) {
@@ -34061,7 +34066,7 @@ function WProjectsTable({keys, items, feat, pf, sf, onOpen, reload}) {
     else { setMsg({t:`Saved ${ok} project${ok===1?"":"s"} — live in ~1–2 min`}); setEdits({}); }
     reload && reload();
   };
-  const th = {textAlign:"left",fontSize:11,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".04em",padding:"8px 8px",borderBottom:"1px solid var(--border)",whiteSpace:"nowrap"};
+  const th = {textAlign:"left",fontSize:11,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".04em",padding:"10px 8px",borderBottom:"2px solid var(--border2)",whiteSpace:"nowrap",position:"sticky",top:(nEdits>0||msg)?50:0,zIndex:4,background:"var(--surface)"};
   const td = {padding:"8px 8px",borderBottom:"1px solid var(--border)",verticalAlign:"middle",fontSize:12};
   return (
     <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -34072,8 +34077,18 @@ function WProjectsTable({keys, items, feat, pf, sf, onOpen, reload}) {
         {nEdits===0&&msg&&<button onClick={()=>setMsg(null)} style={wBtn(false)}>OK</button>}
       </div>}
       {!loaded&&<p style={{fontSize:12,color:"var(--text3)"}}>Reading project details…</p>}
+      {pf!=="all"&&rows.length>0&&<div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",padding:"8px 12px",border:"1px solid var(--border)",borderRadius:10}}>
+        <span style={{fontSize:12,fontWeight:800}}>Set the view for everything in this list:</span>
+        <select value="" onChange={ev=>{ applyView(ev.target.value); ev.target.value=""; }} style={{...wInput,width:"auto"}}>
+          <option value="">Choose…</option>
+          <option value="auto">All Auto (website decides)</option><option value="single">All Single</option><option value="double">All Double</option><option value="triple">All Triple</option>
+          <option value="p:2,3">Pattern: rows of 2, then 3, then 2…</option><option value="p:3,2">Pattern: rows of 3, then 2, then 3…</option><option value="p:1,2">Pattern: 1 big, then 2, then 1…</option><option value="p:1,3">Pattern: 1 big, then 3, then 1…</option><option value="p:1,2,3">Pattern: 1, then 2, then 3, repeating</option>
+        </select>
+        <span style={{fontSize:11,color:"var(--text3)"}}>Follows the current order. You can still change any row after.</span>
+      </div>}
       {pf!=="all"&&<p style={{fontSize:12,color:"var(--text2)"}}>Drag a row by its ⠿ handle, or use ▲ ▼, to change its position in <b>{(W_PLACE.find(x=>x[0]===pf)||[])[2]}</b>. Positions renumber automatically.</p>}
-      <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:980}}>
+      <style>{".wproj-wrap{overflow-x:auto}@media (min-width:1180px){.wproj-wrap{overflow:visible}}"}</style>
+      <div className="wproj-wrap"><table style={{width:"100%",borderCollapse:"collapse",minWidth:980}}>
         <thead><tr>
           <th style={{...th,width:pf==="all"?10:64}}>{pf==="all"?"":"Move"}</th><th style={th}>Project</th><th style={th}>Status</th>
           {W_PLACE.map(([p,,sh])=><th key={p} style={{...th,background:pf===p?"var(--accent)14":"transparent"}}>★ {sh}</th>)}<th style={th}/>
@@ -34085,14 +34100,15 @@ function WProjectsTable({keys, items, feat, pf, sf, onOpen, reload}) {
               <span draggable title="Drag to move" onDragStart={ev=>{ setDragK(k); try{ ev.dataTransfer.effectAllowed="move"; ev.dataTransfer.setData("text/plain",k); const r=ev.currentTarget.closest("tr"); if(r) ev.dataTransfer.setDragImage(r,20,20); }catch(x){} }} onDragEnd={()=>{ setDragK(null); setOverK(null); }} style={{cursor:"grab",fontSize:16,color:"var(--text3)",padding:"0 3px",userSelect:"none"}}>⠿</span>
               <button disabled={idx===0} onClick={()=>move(k,rows[idx-1])} style={{fontSize:10,padding:"1px 4px",opacity:idx===0?0.3:1}}>▲</button>
               <button disabled={idx===rows.length-1} onClick={()=>move(k,rows[idx+1])} style={{fontSize:10,padding:"1px 4px",opacity:idx===rows.length-1?0.3:1}}>▼</button></span>}</td>
-            <td style={td}><div style={{fontSize:13,fontWeight:800}}>{e.title||k.replace(/-/g," ")}</div><div style={{fontSize:11,color:"var(--text3)"}}>{(items[k].images||[]).length} images{changed?" · unsaved":""}</div></td>
+            <td style={td}><div style={{fontSize:13,fontWeight:800}}>{e.title||k.replace(/-/g," ")}</div><div style={{fontSize:11,color:"var(--text3)"}}>{(items[k].images||[]).length} images{changed?" · unsaved":""}</div>{(((feat[k]||{}).categories||[]).length>0||((feat[k]||{}).tags||[]).length>0)&&<div style={{fontSize:10,color:"var(--text3)",marginTop:2,maxWidth:240,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={[...((feat[k]||{}).categories||[]),...((feat[k]||{}).tags||[])].join(", ")}>{[...((feat[k]||{}).categories||[]),...((feat[k]||{}).tags||[])].join(" · ")}</div>}</td>
             <td style={td}><button onClick={()=>edit(k,{published:!e.published})} title="Click to switch" style={{fontSize:11,fontWeight:800,padding:"4px 11px",borderRadius:99,border:"none",cursor:"pointer",background:e.published?"#16a34a22":"#6b728033",color:e.published?"#16a34a":"var(--text2)"}}>{e.published?"● Published":"○ Draft"}</button></td>
-            {W_PLACE.map(([p])=>{ const pl = e.fin[p]; return <td key={p} style={{...td,background:pf===p?"var(--accent)08":"transparent"}}>
+            {W_PLACE.map(([p,,sh])=>{ const pl = e.fin[p]; return <td key={p} style={{...td,background:pf===p?"var(--accent)08":"transparent"}}>
+              {pl&&<div style={{fontSize:10,fontWeight:800,color:"#b45309",marginBottom:3}}>★ {sh}</div>}
               {pl?<div style={{display:"flex",gap:4,alignItems:"center"}}>
                 <input type="number" min="1" title="Position (1 = first)" value={pl.order??1} onChange={ev=>setPlace(k,p,{order:Math.max(1,Math.round(Number(ev.target.value))||1)})} style={{...wInput,width:46,padding:"4px 6px",fontSize:12}}/>
-                <select title="View" value={pl.layout||"double"} onChange={ev=>setPlace(k,p,{layout:ev.target.value})} style={{...wInput,width:"auto",padding:"4px 4px",fontSize:12}}>{[["single","Single"],["double","Double"],["triple","Triple"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>
+                <select title="View" value={pl.layout||"auto"} onChange={ev=>setPlace(k,p,{layout:ev.target.value})} style={{...wInput,width:"auto",padding:"4px 4px",fontSize:12}}>{[["auto","Auto"],["single","Single"],["double","Double"],["triple","Triple"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>
                 <button title="Remove from here" onClick={()=>setPlace(k,p,null)} style={{fontSize:12,color:"#dc2626",padding:"0 3px"}}>✕</button>
-              </div>:<button onClick={()=>setPlace(k,p,{})} style={{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:99,border:"1px dashed var(--border2)",color:"var(--text3)",background:"transparent",cursor:"pointer"}}>＋ Feature</button>}
+              </div>:<button onClick={()=>setPlace(k,p,{})} style={{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:99,border:"1px dashed var(--border2)",color:"var(--text3)",background:"transparent",cursor:"pointer"}}>＋ {sh}</button>}
             </td>; })}
             <td style={td}><button onClick={()=>onOpen(k, items[k])} style={{...wBtn(false),padding:"5px 12px",fontSize:12}}>Open</button></td>
           </tr>); })}</tbody>
@@ -34109,7 +34125,7 @@ function WContentList({dir, onOpen, onNew, newLabel}) {
   useEffect(()=>{ wApi.get("list",{dir}).then(r=>{ if(r.connected===false) setErr(r.error+" (see the Setup tab)"); else setItems(r.items||{}); }).catch(e=>setErr(e.message)); },[dir]);
   if(err) return <div style={wCard}><p style={{color:"#ef4444",fontSize:13}}>{err}</p></div>;
   if(!items) return <div style={{padding:40,display:"flex",justifyContent:"center"}}><Spinner size={20}/></div>;
-  const placeOf=(k,p)=>{ const f=feat[k]; if(!f) return null; if(f.featuredIn&&f.featuredIn[p]) return f.featuredIn[p]; return (p==="home"&&f.featured&&!(f.featuredIn&&f.featuredIn.home))?{order:f.order??99,layout:"double"}:null; };
+  const placeOf=(k,p)=>{ const f=feat[k]; if(!f) return null; if(f.featuredIn&&f.featuredIn[p]) return f.featuredIn[p]; return (p==="home"&&f.featured&&!(f.featuredIn&&f.featuredIn.home))?{order:f.order??99,layout:"auto"}:null; };
   const isPub=k=>!(feat[k]&&feat[k].published===false);
   const togglePub=async(k)=>{ const to=!isPub(k); if(!window.confirm(to?`Publish "${k.replace(/-/g," ")}"? It goes live on the website in 1–2 minutes.`:`Move "${k.replace(/-/g," ")}" to draft? It disappears from the website in 1–2 minutes.`)) return;
     setPubBusy(k); try{ await wApi.post("set_published",{path:items[k].json,published:to}); setFeat(f=>({...f,[k]:{...(f[k]||{}),published:to}})); }catch(e){ window.alert(e.message); } setPubBusy(""); };
@@ -34208,8 +34224,8 @@ function WebsiteProjects({root}) {
   };
   const cats = ["branding","creative","digital","production"];
   // Featured placements: home page and the three portfolios, each with its own position and view. "featured" stays true when it is on home, for older website code.
-  const fin = {...(d.featured&&!(d.featuredIn&&d.featuredIn.home)?{home:{order:Math.max(1,d.order??1),layout:"double"}}:{}),...(d.featuredIn||{})};
-  const setPlace = (k,patch) => { const cur={...fin}; if(patch===null) delete cur[k]; else cur[k]={order:1,layout:"double",...(cur[k]||{}),...patch}; set("featuredIn",cur); set("featured",!!cur.home); };
+  const fin = {...(d.featured&&!(d.featuredIn&&d.featuredIn.home)?{home:{order:Math.max(1,d.order??1),layout:"auto"}}:{}),...(d.featuredIn||{})};
+  const setPlace = (k,patch) => { const cur={...fin}; if(patch===null) delete cur[k]; else cur[k]={order:1,layout:"auto",...(cur[k]||{}),...patch}; set("featuredIn",cur); set("featured",!!cur.home); };
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <WSaveBar dirty={dirty} saving={saving} onSave={save} onBack={()=>{ if(!dirty||window.confirm("Leave without saving?")) setOpen(null); }} msg={msg}
@@ -34249,10 +34265,10 @@ function WebsiteProjects({root}) {
                 <label style={{display:"flex",gap:8,alignItems:"center",fontSize:13,fontWeight:700,cursor:"pointer"}}><input type="checkbox" checked={!!p} onChange={e=>setPlace(k,e.target.checked?{}:null)}/> {lb}</label>
                 {p&&<div style={{display:"flex",gap:6,paddingLeft:24,alignItems:"center"}}>
                   <input type="number" min="1" title="Position: 1 shows first" value={p.order??1} onChange={e=>setPlace(k,{order:Math.max(1,Math.round(Number(e.target.value))||1)})} style={{...wInput,width:64}}/>
-                  <select value={p.layout||"double"} onChange={e=>setPlace(k,{layout:e.target.value})} style={{...wInput,flex:1,minWidth:0}}>{W_VIEW.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>
+                  <select value={p.layout||"auto"} onChange={e=>setPlace(k,{layout:e.target.value})} style={{...wInput,flex:1,minWidth:0}}>{W_VIEW.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>
                 </div>}
               </div>; })}
-              <p style={{fontSize:11,color:"var(--text3)"}}>Position 1 shows first in that place. Single is one big card per row, double is two, triple is three. Press Save &amp; publish to apply.</p>
+              <p style={{fontSize:11,color:"var(--text3)"}}>Position 1 shows first in that place. Auto lets the website decide. Single is one big card per row, double is two, triple is three. Press Save &amp; publish to apply.</p>
             </div>
             <div><span style={wLabel}>Order in the full portfolio (lower = first)</span><input type="number" value={d.order??99} onChange={e=>set("order",Number(e.target.value))} style={wInput}/></div>
             <div><span style={wLabel}>Date</span><input type="date" value={d.date||""} onChange={e=>set("date",e.target.value)} style={wInput}/></div>
