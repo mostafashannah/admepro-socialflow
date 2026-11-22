@@ -34307,7 +34307,7 @@ function WProjectsTable({keys, items, feat, pf, sf, onOpen, reload}) {
 // SIMPLE view: pick a place, tick the projects shown there, give each a NUMBER and Single / Double. One save for everything.
 function WProjectsSimple({keys, items, feat, onOpen, reload}) {
   const [place, setPlace] = useState("home"); const [prev, setPrev] = useState(false); const [imgs, setImgs] = useState(null); const [edits, setEdits] = useState({});
-  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(null); const dragRef = useRef(null);
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(null); const dragRef = useRef(null); const dragRowRef = useRef(null);
   const allKeys = Object.keys(items).filter(k=>items[k].json);
   const base = k => { const f = feat[k] || {}; const fin = f.featuredIn || {}; return {fin, old:!!(f.featured && !fin.home)}; };
   const eff = k => { const b = base(k), e = edits[k] || {}; return {fin:e.fin||b.fin, old:e.old!==undefined?e.old:b.old}; };
@@ -34329,6 +34329,11 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
   // Drag & drop: moves a project to the place of another one and renumbers this tab 1, 2, 3 … (each project keeps its own view).
   const reorder = (from, to) => { if(!from || from===to) return; const arr = rows.filter(k=>state(k,place).on); const i = arr.indexOf(from), j = arr.indexOf(to); if(i<0||j<0) return; arr.splice(j,0,arr.splice(i,1)[0]);
     arr.forEach((k,n)=>{ const st = state(k,place), e = eff(k); const fin = {...e.fin}; fin[place] = {order:n+1, layout:st.layout}; put(k, fin, place==="home" ? false : e.old); }); };
+  // Drag a whole row (all its projects together) onto another row.
+  const reorderRows = (from, to) => { if(from==null || to==null || from===to) return; const nos = [...new Set(Object.values(rowOf).map(r=>r.no))].sort((a,b)=>a-b); const groups = {};
+    rows.forEach(k=>{ if(rowOf[k]) (groups[rowOf[k].no] = groups[rowOf[k].no] || []).push(k); });
+    const i = nos.indexOf(from), j = nos.indexOf(to); if(i<0||j<0) return; nos.splice(j,0,nos.splice(i,1)[0]); let n = 0;
+    nos.forEach(no=>(groups[no]||[]).forEach(k=>{ const st = state(k,place), e = eff(k); const fin = {...e.fin}; fin[place] = {order:++n, layout:st.layout}; put(k, fin, place==="home" ? false : e.old); })); };
   const applyPat = (v) => { if(!v) return; const seq = v.split(","), NAME = {s:"single",d:"double",t:"triple"}; let i = 0;
     rows.filter(k=>state(k,place).on).forEach(k=>{ const e = eff(k); const fin = {...e.fin}; fin[place] = {order:i+1, layout:NAME[seq[i%seq.length]]}; put(k, fin, place==="home" ? false : e.old); i++; }); };
   const nEdits = Object.keys(edits).length;
@@ -34378,9 +34383,9 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
       <div style={{display:"flex",flexDirection:"column"}}>
         {rows.map(k=>{ const s = state(k, place); const f = feat[k] || {}; const lay = s.layout==="auto" ? "triple" : s.layout; const rw = rowOf[k]; return (
           <React.Fragment key={k}>
-          {rw&&rw.first&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 6px 2px",fontSize:11,fontWeight:800,letterSpacing:"0.06em",textTransform:"uppercase",color:rowFill[rw.no]===3?"#10b981":"#f59e0b"}}>Row {rw.no} <span style={{fontWeight:700,textTransform:"none",letterSpacing:0,color:"var(--text3)"}}>· {rowFill[rw.no]} of 3 spots{rowFill[rw.no]===3?"":" — a spot is empty (add a Single next, or change the view)"}</span></div>}
-          <div onDragOver={e=>{ if(s.on) e.preventDefault(); }} onDrop={e=>{ e.preventDefault(); if(s.on) reorder(dragRef.current, k); }} style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",padding:"9px 6px",borderBottom:"1px solid var(--border)",opacity:s.on?1:0.6,background:s.on?"transparent":"transparent"}}>
-            {s.on?<span draggable onDragStart={()=>{ dragRef.current = k; }} title="Drag to change the order" style={{cursor:"grab",color:"var(--text3)",fontSize:16,userSelect:"none"}}>⠿</span>:<span style={{width:10}}/>}
+          {rw&&rw.first&&<div draggable onDragStart={()=>{ dragRowRef.current = rw.no; dragRef.current = null; }} onDragOver={e=>e.preventDefault()} onDrop={e=>{ e.preventDefault(); if(dragRowRef.current!=null) reorderRows(dragRowRef.current, rw.no); dragRowRef.current = null; }} title="Drag this row (with all its projects) onto another row" style={{cursor:"grab",display:"flex",alignItems:"center",gap:8,padding:"10px 6px 2px",fontSize:11,fontWeight:800,letterSpacing:"0.06em",textTransform:"uppercase",color:rowFill[rw.no]===3?"#10b981":"#f59e0b"}}><span style={{fontSize:15,color:"var(--text3)"}}>⠿</span>Row {rw.no} <span style={{fontWeight:700,textTransform:"none",letterSpacing:0,color:"var(--text3)"}}>· {rowFill[rw.no]} of 3 spots{rowFill[rw.no]===3?"":" — a spot is empty (add a Single next, or change the view)"}</span></div>}
+          <div onDragOver={e=>{ if(s.on) e.preventDefault(); }} onDrop={e=>{ e.preventDefault(); if(!s.on) return; if(dragRowRef.current!=null) { reorderRows(dragRowRef.current, rw&&rw.no); dragRowRef.current = null; } else reorder(dragRef.current, k); }} style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",padding:"9px 6px",borderBottom:"1px solid var(--border)",opacity:s.on?1:0.6,background:s.on?"transparent":"transparent"}}>
+            {s.on?<span draggable onDragStart={()=>{ dragRef.current = k; dragRowRef.current = null; }} title="Drag to change the order" style={{cursor:"grab",color:"var(--text3)",fontSize:16,userSelect:"none"}}>⠿</span>:<span style={{width:10}}/>}
             <input type="checkbox" checked={s.on} disabled={!!s.tagOnly} title={s.tagOnly?"In this portfolio because of its tags — remove the tag in the project to take it out":""} onChange={e=>toggle(k,place,e.target.checked)} style={{width:18,height:18,cursor:"pointer"}}/>
             <input type="number" min="1" placeholder="–" disabled={!s.on} value={s.on?(s.order??""):""} onChange={e=>setNo(k,place,e.target.value)} title="Number (1 = first)" style={{...wInput,width:62,padding:"6px 8px",textAlign:"center",fontWeight:800}}/>
             <div style={{display:"flex",opacity:s.on?1:0.4}}>
