@@ -34324,6 +34324,9 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
     else { delete fin[p]; put(k, fin, p==="home" ? false : e.old); } };
   const setNo = (k, p, n) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {layout:(state(k,p).legacy||state(k,p).tagOnly)?state(k,p).layout:"double", ...(fin[p]||{}), order:Math.max(1,Math.round(Number(n))||1)}; put(k, fin, p==="home" ? false : e.old); };
   const setLay = (k, p, l) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {order:(state(k,p).legacy||state(k,p).tagOnly)?(state(k,p).order||nextNo(p)):nextNo(p), ...(fin[p]||{}), layout:l}; put(k, fin, p==="home" ? false : e.old); };
+  // Quick layout: gives every project on this tab a number (1, 2, 3 …) and a view from a repeating pattern. You can still change any one after.
+  const applyPat = (v) => { if(!v) return; const seq = v.split(","), NAME = {s:"single",d:"double",t:"triple"}; let i = 0;
+    rows.filter(k=>state(k,place).on).forEach(k=>{ const e = eff(k); const fin = {...e.fin}; fin[place] = {order:i+1, layout:NAME[seq[i%seq.length]]}; put(k, fin, place==="home" ? false : e.old); i++; }); };
   const nEdits = Object.keys(edits).length;
   const PL = [["home","Home page"],["gcc","GCC & KSA"],["real_estate","Real estate"],["retail","Retail"]];
   const count = p => allKeys.filter(k=>state(k,p).on).length;
@@ -34347,7 +34350,16 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
         {nEdits>0&&<><button onClick={()=>{ setEdits({}); setMsg(null); }} disabled={busy} style={wBtn(false)}>Discard</button><button onClick={saveAll} disabled={busy} style={wBtn(true)}>{busy?"Saving…":"Save & publish"}</button></>}
         {nEdits===0&&msg&&<button onClick={()=>setMsg(null)} style={wBtn(false)}>OK</button>}
       </div>}
-      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{PL.map(([p,lb])=><button key={p} onClick={()=>setPlace(p)} style={{...gPillW(place===p)}}>{lb} <span style={{opacity:.7}}>· {count(p)}</span></button>)}<span style={{flex:1}}/><button onClick={()=>setPrev(v=>!v)} style={{...gPillW(prev)}}>👁 Preview</button></div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{PL.map(([p,lb])=><button key={p} onClick={()=>setPlace(p)} style={{...gPillW(place===p)}}>{lb} <span style={{opacity:.7}}>· {count(p)}</span></button>)}<span style={{flex:1}}/>
+        <select value="" onChange={ev=>{ applyPat(ev.target.value); ev.target.value=""; }} style={{...wInput,width:"auto",padding:"6px 10px",fontSize:12}}>
+          <option value="">Quick layout for this tab…</option>
+          <option value="d,s,s,s,s,s,d,s,d,s,s,s">Like the home page now (wide + small, 3 small …)</option>
+          <option value="d,s,s,d">Wide + small, then small + wide</option>
+          <option value="t,d,s">Full row, then wide + small</option>
+          <option value="s">All small (3 per row)</option>
+          <option value="t">All full row</option>
+        </select>
+        <button onClick={()=>setPrev(v=>!v)} style={{...gPillW(prev)}}>👁 Preview</button></div>
       {prev&&<div style={{border:"1px solid var(--border)",borderRadius:12,padding:12,background:"var(--surface)"}}>
         <p style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>Simulation of <b>{(PL.find(x=>x[0]===place)||[])[1]}</b> with your changes (not saved yet). 3 columns; each card takes 1, 2 or 3 spots, in number order — an empty dashed spot means the row is not full.</p>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>
