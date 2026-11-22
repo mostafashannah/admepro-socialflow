@@ -34305,6 +34305,14 @@ function WProjectsTable({keys, items, feat, pf, sf, onOpen, reload}) {
 }
 
 // SIMPLE view: pick a place, tick the projects shown there, give each a NUMBER and Single / Double. One save for everything.
+// <img> can't send the login token, so fetch the picture with the app's authenticated fetch and show it as a blob.
+function WProjImg({slug, style}) {
+  const [src, setSrc] = useState(null);
+  useEffect(()=>{ let dead = false, url = null;
+    fetch(window.location.origin+"/website-admin.php?action=project_img&slug="+encodeURIComponent(slug)).then(r=>r.ok?r.blob():null).then(b=>{ if(b && !dead && /^image\//.test(b.type)) { url = URL.createObjectURL(b); setSrc(url); } }).catch(()=>{});
+    return ()=>{ dead = true; if(url) URL.revokeObjectURL(url); }; },[slug]);
+  return src ? <img src={src} alt="" draggable={false} style={style}/> : null;
+}
 function WProjectsSimple({keys, items, feat, onOpen, reload}) {
   const [place, setPlace] = useState("home"); const [prev, setPrev] = useState(false); const [imgs, setImgs] = useState(null); const [edits, setEdits] = useState({});
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(null); const dragRef = useRef(null); const dragRowRef = useRef(null);
@@ -34382,7 +34390,7 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>
           {rows.filter(k=>state(k,place).on).flatMap(k=>{ const st = state(k,place); const lay = (st.layout==="auto" && (st.legacy||st.tagOnly)) ? "auto" : (st.layout==="auto"?"single":st.layout); const sp = lay==="single"?1:lay==="double"?2:3; const f = feat[k]||{};
             return [...(k===firstHidden?[<div key={"sm"+k} style={{gridColumn:"span 3",display:"flex",alignItems:"center",gap:10,fontSize:11,fontWeight:800,color:"#b45309"}}><span style={{flex:1,borderTop:"2px dashed #f59e0b"}}/>Everything below shows after pressing “See more” (3 more rows each press)<span style={{flex:1,borderTop:"2px dashed #f59e0b"}}/></div>]:[]), <div key={k} draggable onDragStart={()=>{ dragRef.current = k; }} onDragOver={e=>e.preventDefault()} onDrop={e=>{ e.preventDefault(); reorder(dragRef.current, k); }} style={{cursor:"grab",opacity:(place!=="gcc"&&rowOf[k]&&rowOf[k].no>3)?0.55:1,gridColumn:`span ${sp}`,minHeight:sp===3?200:150,borderRadius:12,overflow:"hidden",position:"relative",background:"linear-gradient(135deg,#1f2937,#374151)",color:"#fff",display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
-              <img src={`/website-admin.php?action=project_img&slug=${encodeURIComponent(k)}`} alt="" loading="lazy" draggable={false} onError={e=>{ e.currentTarget.style.display="none"; }} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+              <WProjImg slug={k} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
               <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,.65),rgba(0,0,0,0) 55%)"}}/>
               <div style={{position:"relative",padding:"10px 14px",display:"flex",flexDirection:"column"}}><span style={{fontSize:14,fontWeight:800}}>{f.title||k.replace(/-/g," ")}</span><span style={{fontSize:10,opacity:.8}}>#{st.order} · {lay}</span></div></div>]; })}
         </div>
