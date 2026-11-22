@@ -34315,12 +34315,15 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
   const legacyRank = (() => { const ks = allKeys.filter(k=>{ const e = eff(k); return !e.fin.home && e.old; }).sort((a,b)=>(((feat[a]||{}).order??99)-((feat[b]||{}).order??99))||a.localeCompare(b)); const m = {}; ks.forEach((k,i)=>{ m[k]=i+1; }); return m; })();
   // What the live home grid shows today (3 spots per row): [wide+small] [small×3] [small+wide] [small+wide] [small×3].
   const legacyLayOf = (k) => ["double","single","single","single","single","single","double","single","double","single","single","single"][((legacyRank[k]||1)-1)%12];
-  const state = (k, p) => { const e = eff(k); if(e.fin[p]) return {on:true, order:e.fin[p].order, layout:e.fin[p].layout||"auto", legacy:false}; if(p==="home" && e.old) return {on:true, legacy:true, order:legacyRank[k], layout:legacyLayOf(k)}; return {on:false}; };
+  const state = (k, p) => { const e = eff(k); if(e.fin[p]) return {on:true, order:e.fin[p].order, layout:e.fin[p].layout||"auto", legacy:false}; if(p==="home" && e.old) return {on:true, legacy:true, order:legacyRank[k], layout:legacyLayOf(k)};
+    // Portfolio pages: every project whose tags put it there is shown (numbered after the featured ones, website default Triple) until you set its own number/view.
+    if(p!=="home" && wMember((feat[k]||{}).tags, p)) { const mem = allKeys.filter(x=>!eff(x).fin[p] && wMember((feat[x]||{}).tags, p)).sort((a,b)=>(((feat[a]||{}).order??99)-((feat[b]||{}).order??99))||a.localeCompare(b)); const top = allKeys.reduce((m,x)=>Math.max(m,(eff(x).fin[p]||{}).order||0), 0); return {on:true, tagOnly:true, order:top+mem.indexOf(k)+1, layout:"triple"}; }
+    return {on:false}; };
   const toggle = (k, p, on) => { const e = eff(k); const fin = {...e.fin};
     if(on) { fin[p] = {order:nextNo(p), layout:"double"}; put(k, fin, p==="home" ? false : e.old); }
     else { delete fin[p]; put(k, fin, p==="home" ? false : e.old); } };
-  const setNo = (k, p, n) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {layout:state(k,p).legacy?state(k,p).layout:"double", ...(fin[p]||{}), order:Math.max(1,Math.round(Number(n))||1)}; put(k, fin, p==="home" ? false : e.old); };
-  const setLay = (k, p, l) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {order:state(k,p).legacy?(state(k,p).order||nextNo(p)):nextNo(p), ...(fin[p]||{}), layout:l}; put(k, fin, p==="home" ? false : e.old); };
+  const setNo = (k, p, n) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {layout:(state(k,p).legacy||state(k,p).tagOnly)?state(k,p).layout:"double", ...(fin[p]||{}), order:Math.max(1,Math.round(Number(n))||1)}; put(k, fin, p==="home" ? false : e.old); };
+  const setLay = (k, p, l) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {order:(state(k,p).legacy||state(k,p).tagOnly)?(state(k,p).order||nextNo(p)):nextNo(p), ...(fin[p]||{}), layout:l}; put(k, fin, p==="home" ? false : e.old); };
   const nEdits = Object.keys(edits).length;
   const PL = [["home","Home page"],["gcc","GCC & KSA"],["real_estate","Real estate"],["retail","Retail"]];
   const count = p => allKeys.filter(k=>state(k,p).on).length;
@@ -34351,7 +34354,7 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
           <React.Fragment key={k}>
           {rw&&rw.first&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 6px 2px",fontSize:11,fontWeight:800,letterSpacing:"0.06em",textTransform:"uppercase",color:rowFill[rw.no]===3?"#10b981":"#f59e0b"}}>Row {rw.no} <span style={{fontWeight:700,textTransform:"none",letterSpacing:0,color:"var(--text3)"}}>· {rowFill[rw.no]} of 3 spots{rowFill[rw.no]===3?"":" — a spot is empty (add a Single next, or change the view)"}</span></div>}
           <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",padding:"9px 6px",borderBottom:"1px solid var(--border)",opacity:s.on?1:0.6,background:s.on?"transparent":"transparent"}}>
-            <input type="checkbox" checked={s.on} onChange={e=>toggle(k,place,e.target.checked)} style={{width:18,height:18,cursor:"pointer"}}/>
+            <input type="checkbox" checked={s.on} disabled={!!s.tagOnly} title={s.tagOnly?"In this portfolio because of its tags — remove the tag in the project to take it out":""} onChange={e=>toggle(k,place,e.target.checked)} style={{width:18,height:18,cursor:"pointer"}}/>
             <input type="number" min="1" placeholder="–" disabled={!s.on} value={s.on?(s.order??""):""} onChange={e=>setNo(k,place,e.target.value)} title="Number (1 = first)" style={{...wInput,width:62,padding:"6px 8px",textAlign:"center",fontWeight:800}}/>
             <div style={{display:"flex",opacity:s.on?1:0.4}}>
               <button disabled={!s.on} onClick={()=>setLay(k,place,"single")} style={{...seg(s.on&&lay==="single"),borderRadius:"9px 0 0 9px"}}>Single</button>
