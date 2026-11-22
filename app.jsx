@@ -26595,6 +26595,9 @@ const CAREERS_MORE_LINKS = [
   {label:"Creative", url:"https://admepro.com/creative/"},
   {label:"Digital", url:"https://admepro.com/digital/"},
   {label:"Production", url:"https://admepro.com/production/"},
+  {label:"AI Content", url:"https://admepro.com/ai-video-production/"},
+  {label:"Real Estate", url:"https://admepro.com/real-estate-marketing/"},
+  {label:"E-commerce & Retail", url:"https://admepro.com/e-commerce-retail-marketing/"},
   {label:"GCC & KSA", url:"https://admepro.com/gcc-ksa-ai-marketing-agency/"},
   {label:"Insights", url:"https://admepro.com/blog/"},
 ];
