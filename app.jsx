@@ -34047,6 +34047,34 @@ function WProjectsTable({keys, items, feat, pf, sf, onOpen, reload}) {
   const nEdits = Object.keys(edits).length;
   const move = (from, to) => { if(from===to) return; const arr = [...rows]; const i = arr.indexOf(from), j = arr.indexOf(to); if(i<0||j<0) return; arr.splice(j,0,arr.splice(i,1)[0]);
     arr.forEach((kk,n) => { const cur = {...eff(kk).fin}; if(cur[pf] && cur[pf].order !== n+1) { cur[pf] = {...cur[pf], order:n+1}; edit(kk,{fin:cur}); } }); };
+  // ---- Quick setup: read the portfolios from the tags each project already has, and set the views for every place at once ----
+  const GCCW = new Set(["gcc","ksa","uae","saudi","dubai","riyadh","jeddah","kuwait","qatar","doha","bahrain","oman","muscat","gulf","emirates","dhabi"]);
+  const detect = k => { const t = [...((feat[k]||{}).categories||[]), ...((feat[k]||{}).tags||[])].join(" ").toLowerCase(); const out = [];
+    if(t.split(/[^a-z0-9]+/).some(w=>GCCW.has(w))) out.push("gcc");
+    if(/real-?estate|propert(y|ies)|developer|compound|villa|residential|apartment|tower|communit/.test(t)) out.push("real_estate");
+    if(/retail|e-?commerce|fashion|boutique|jewel|cosmetic|apparel|cloth|furniture|supermarket|skincare|beauty|grocery|fmcg/.test(t)) out.push("retail");
+    return out; };
+  const layoutsFor = (n, v) => { const NAME = {1:"single",2:"double",3:"triple"}; if(v.indexOf("p:")!==0) return Array(n).fill(v);
+    const seq = v.slice(2).split(",").map(Number); const out = []; let gi = 0, left = seq[0]; for(let i=0;i<n;i++){ if(left===0){ gi=(gi+1)%seq.length; left=seq[gi]; } out.push(NAME[seq[gi]]); left--; } return out; };
+  const allKeys = Object.keys(items).filter(k=>items[k].json);
+  const fillFromTags = () => {
+    const per = {gcc:[],real_estate:[],retail:[]};
+    allKeys.forEach(k => detect(k).forEach(p => { if(!eff(k).fin[p]) per[p].push(k); }));
+    const ord = k => (feat[k] && feat[k].order!=null) ? feat[k].order : 99; const next = {}; const sum = [];
+    ["gcc","real_estate","retail"].forEach(p => {
+      const start = allKeys.reduce((m,k)=>Math.max(m, (eff(k).fin[p]||{}).order||0), 0);
+      const list = [...per[p]].sort((a,b)=>ord(a)-ord(b)||a.localeCompare(b)); const lays = layoutsFor(list.length, "p:2,3");
+      list.forEach((k,i) => { next[k] = next[k] || {...eff(k).fin}; next[k][p] = {order:start+i+1, layout:lays[i]}; });
+      sum.push(list.length+" "+(W_PLACE.find(x=>x[0]===p)||[])[2]); });
+    const n = Object.keys(next).length;
+    if(!n) { setMsg({err:true,t:"Nothing to fill: no project has a tag like gcc, ksa, real-estate, retail or e-commerce (or they are already set)."}); return; }
+    Object.keys(next).forEach(k => edit(k, {fin:next[k]}));
+    setMsg({t:`Filled from tags: ${sum.join(", ")}. Check them, then press Save & publish all.`});
+  };
+  const applyAll = v => { if(!v) return; const next = {};
+    W_PLACE.forEach(([p]) => { const list = allKeys.filter(k=>eff(k).fin[p]).sort((a,b)=>((eff(a).fin[p].order??99)-(eff(b).fin[p].order??99))||a.localeCompare(b)); const lays = layoutsFor(list.length, v);
+      list.forEach((k,i) => { next[k] = next[k] || {...eff(k).fin}; next[k][p] = {...next[k][p], layout:lays[i]}; }); });
+    Object.keys(next).forEach(k => edit(k, {fin:next[k]})); };
   // Same view for the whole list, or a repeating pattern of rows (for example 2 then 3), following the current order.
   const applyView = v => { if(!v||pf==="all") return; const NAME={1:"single",2:"double",3:"triple"};
     let seq=null; if(v.indexOf("p:")===0){ seq=v.slice(2).split(",").map(Number); } let gi=0, left=seq?seq[0]:0;
@@ -34076,6 +34104,16 @@ function WProjectsTable({keys, items, feat, pf, sf, onOpen, reload}) {
         {nEdits>0&&<><button onClick={()=>{ setEdits({}); setMsg(null); }} disabled={busy} style={wBtn(false)}>Discard</button><button onClick={saveAll} disabled={busy} style={wBtn(true)}>{busy?"Saving…":"Save & publish all"}</button></>}
         {nEdits===0&&msg&&<button onClick={()=>setMsg(null)} style={wBtn(false)}>OK</button>}
       </div>}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",padding:"9px 12px",border:"1px dashed var(--border2)",borderRadius:10}}>
+        <span style={{fontSize:12,fontWeight:800}}>Quick setup</span>
+        <button onClick={fillFromTags} disabled={!loaded} style={wBtn(true)}>✨ Fill portfolios from tags</button>
+        <select value="" onChange={ev=>{ applyAll(ev.target.value); ev.target.value=""; }} disabled={!loaded} style={{...wInput,width:"auto"}}>
+          <option value="">Set the view for ALL places…</option>
+          <option value="p:2,3">Pattern: rows of 2, then 3 (like the home page)</option><option value="p:3,2">Pattern: rows of 3, then 2</option><option value="p:1,2">Pattern: 1 big, then 2</option><option value="p:1,3">Pattern: 1 big, then 3</option><option value="p:1,2,3">Pattern: 1, then 2, then 3</option>
+          <option value="single">Everything Single</option><option value="double">Everything Double</option><option value="triple">Everything Triple</option><option value="auto">Everything Auto (website decides)</option>
+        </select>
+        <span style={{fontSize:11,color:"var(--text3)"}}>Nothing is saved until you press Save &amp; publish all.</span>
+      </div>
       {!loaded&&<p style={{fontSize:12,color:"var(--text3)"}}>Reading project details…</p>}
       {pf!=="all"&&rows.length>0&&<div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",padding:"8px 12px",border:"1px solid var(--border)",borderRadius:10}}>
         <span style={{fontSize:12,fontWeight:800}}>Set the view for everything in this list:</span>
