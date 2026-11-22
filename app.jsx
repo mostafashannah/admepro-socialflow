@@ -34307,7 +34307,7 @@ function WProjectsTable({keys, items, feat, pf, sf, onOpen, reload}) {
 // SIMPLE view: pick a place, tick the projects shown there, give each a NUMBER and Single / Double. One save for everything.
 function WProjectsSimple({keys, items, feat, onOpen, reload}) {
   const [place, setPlace] = useState("home"); const [prev, setPrev] = useState(false); const [imgs, setImgs] = useState(null); const [edits, setEdits] = useState({});
-  const dragRef = useRef(null);
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(null); const dragRef = useRef(null);
   const allKeys = Object.keys(items).filter(k=>items[k].json);
   const base = k => { const f = feat[k] || {}; const fin = f.featuredIn || {}; return {fin, old:!!(f.featured && !fin.home)}; };
   const eff = k => { const b = base(k), e = edits[k] || {}; return {fin:e.fin||b.fin, old:e.old!==undefined?e.old:b.old}; };
