@@ -34032,8 +34032,79 @@ function WebsiteOverview() {
 // Where a project can be featured on the website, and how it is laid out there.
 const W_PLACE=[["home","Home page","Home"],["gcc","GCC & KSA portfolio","GCC"],["real_estate","Real estate portfolio","Real estate"],["retail","E-commerce & retail portfolio","Retail"]];
 const W_VIEW=[["single","Single · 1 per row"],["double","Double · 2 per row"],["triple","Triple · 3 per row"]];
+// The projects page as one easy table: status switch + the four featured places (position and view) on each row, drag to re-arrange inside a place, then save everything at once.
+function WProjectsTable({keys, items, feat, pf, sf, onOpen, reload}) {
+  const [edits, setEdits] = useState({}); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(null);
+  const [dragK, setDragK] = useState(null); const [overK, setOverK] = useState(null);
+  const loaded = Object.keys(feat).length > 0;
+  const eff = k => { const f = feat[k] || {}; const e = edits[k] || {};
+    const legacy = (f.featured && !(f.featuredIn && f.featuredIn.home)) ? {home:{order:Math.max(1,f.order??1),layout:"double"}} : {};
+    return {published: e.published!==undefined ? e.published : f.published!==false, fin: e.fin || {...legacy, ...(f.featuredIn||{})}, title: f.title}; };
+  const edit = (k, patch) => setEdits(o => ({...o, [k]: {...(o[k]||{}), ...patch}}));
+  const setPlace = (k, p, val) => { const cur = {...eff(k).fin}; if(val===null) delete cur[p]; else cur[p] = {order:1,layout:"double",...(cur[p]||{}),...val}; edit(k,{fin:cur}); };
+  const rows = keys.filter(k => (pf==="all" || eff(k).fin[pf]) && (sf==="all" || (sf==="draft" ? !eff(k).published : eff(k).published)))
+    .sort((a,b) => pf==="all" ? a.localeCompare(b) : ((eff(a).fin[pf].order??99) - (eff(b).fin[pf].order??99)) || a.localeCompare(b));
+  const nEdits = Object.keys(edits).length;
+  const move = (from, to) => { if(from===to) return; const arr = [...rows]; const i = arr.indexOf(from), j = arr.indexOf(to); if(i<0||j<0) return; arr.splice(j,0,arr.splice(i,1)[0]);
+    arr.forEach((kk,n) => { const cur = {...eff(kk).fin}; if(cur[pf] && cur[pf].order !== n+1) { cur[pf] = {...cur[pf], order:n+1}; edit(kk,{fin:cur}); } }); };
+  const saveAll = async () => {
+    setBusy(true); setMsg(null); let ok = 0; const bad = [];
+    for(const k of Object.keys(edits)) {
+      const e = edits[k]; const f = feat[k] || {}; const body = {path: items[k].json};
+      if(e.published !== undefined && e.published !== (f.published!==false)) body.published = e.published;
+      if(e.fin) body.featuredIn = e.fin;
+      if(body.published===undefined && body.featuredIn===undefined) { ok++; continue; }
+      try { await wApi.post("set_project_fields", body); ok++; } catch(err) { bad.push(k.replace(/-/g," ")+": "+err.message); }
+    }
+    setBusy(false);
+    if(bad.length) setMsg({err:true,t:`Saved ${ok}, failed ${bad.length} — ${bad.join(" · ")}`});
+    else { setMsg({t:`Saved ${ok} project${ok===1?"":"s"} — live in ~1–2 min`}); setEdits({}); }
+    reload && reload();
+  };
+  const th = {textAlign:"left",fontSize:11,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".04em",padding:"8px 8px",borderBottom:"1px solid var(--border)",whiteSpace:"nowrap"};
+  const td = {padding:"8px 8px",borderBottom:"1px solid var(--border)",verticalAlign:"middle",fontSize:12};
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {(nEdits>0||msg)&&<div style={{position:"sticky",top:0,zIndex:6,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",padding:"9px 12px",borderRadius:10,background:"var(--surface)",border:"1px solid "+(msg&&msg.err?"#ef4444":"var(--accent)")}}>
+        <span style={{fontSize:13,fontWeight:700,color:msg&&msg.err?"#ef4444":"var(--text)"}}>{msg ? msg.t : `${nEdits} unsaved change${nEdits===1?"":"s"}`}</span>
+        <span style={{flex:1}}/>
+        {nEdits>0&&<><button onClick={()=>{ setEdits({}); setMsg(null); }} disabled={busy} style={wBtn(false)}>Discard</button><button onClick={saveAll} disabled={busy} style={wBtn(true)}>{busy?"Saving…":"Save & publish all"}</button></>}
+        {nEdits===0&&msg&&<button onClick={()=>setMsg(null)} style={wBtn(false)}>OK</button>}
+      </div>}
+      {!loaded&&<p style={{fontSize:12,color:"var(--text3)"}}>Reading project details…</p>}
+      {pf!=="all"&&<p style={{fontSize:12,color:"var(--text2)"}}>Drag a row by its ⠿ handle, or use ▲ ▼, to change its position in <b>{(W_PLACE.find(x=>x[0]===pf)||[])[2]}</b>. Positions renumber automatically.</p>}
+      <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:980}}>
+        <thead><tr>
+          <th style={{...th,width:pf==="all"?10:64}}>{pf==="all"?"":"Move"}</th><th style={th}>Project</th><th style={th}>Status</th>
+          {W_PLACE.map(([p,,sh])=><th key={p} style={{...th,background:pf===p?"var(--accent)14":"transparent"}}>★ {sh}</th>)}<th style={th}/>
+        </tr></thead>
+        <tbody>{rows.map((k,idx)=>{ const e = eff(k); const changed = !!edits[k]; return (
+          <tr key={k} onDragOver={ev=>{ if(dragK){ ev.preventDefault(); if(overK!==k) setOverK(k); } }} onDrop={ev=>{ ev.preventDefault(); if(dragK) move(dragK,k); setDragK(null); setOverK(null); }}
+            style={{opacity:dragK===k?0.45:(e.published?1:0.72),background:changed?"#f59e0b10":"transparent",boxShadow:overK===k&&dragK&&dragK!==k?"inset 0 3px 0 var(--accent)":"none"}}>
+            <td style={td}>{pf!=="all"&&<span style={{display:"inline-flex",alignItems:"center",gap:2}}>
+              <span draggable title="Drag to move" onDragStart={ev=>{ setDragK(k); try{ ev.dataTransfer.effectAllowed="move"; ev.dataTransfer.setData("text/plain",k); const r=ev.currentTarget.closest("tr"); if(r) ev.dataTransfer.setDragImage(r,20,20); }catch(x){} }} onDragEnd={()=>{ setDragK(null); setOverK(null); }} style={{cursor:"grab",fontSize:16,color:"var(--text3)",padding:"0 3px",userSelect:"none"}}>⠿</span>
+              <button disabled={idx===0} onClick={()=>move(k,rows[idx-1])} style={{fontSize:10,padding:"1px 4px",opacity:idx===0?0.3:1}}>▲</button>
+              <button disabled={idx===rows.length-1} onClick={()=>move(k,rows[idx+1])} style={{fontSize:10,padding:"1px 4px",opacity:idx===rows.length-1?0.3:1}}>▼</button></span>}</td>
+            <td style={td}><div style={{fontSize:13,fontWeight:800}}>{e.title||k.replace(/-/g," ")}</div><div style={{fontSize:11,color:"var(--text3)"}}>{(items[k].images||[]).length} images{changed?" · unsaved":""}</div></td>
+            <td style={td}><button onClick={()=>edit(k,{published:!e.published})} title="Click to switch" style={{fontSize:11,fontWeight:800,padding:"4px 11px",borderRadius:99,border:"none",cursor:"pointer",background:e.published?"#16a34a22":"#6b728033",color:e.published?"#16a34a":"var(--text2)"}}>{e.published?"● Published":"○ Draft"}</button></td>
+            {W_PLACE.map(([p])=>{ const pl = e.fin[p]; return <td key={p} style={{...td,background:pf===p?"var(--accent)08":"transparent"}}>
+              {pl?<div style={{display:"flex",gap:4,alignItems:"center"}}>
+                <input type="number" min="1" title="Position (1 = first)" value={pl.order??1} onChange={ev=>setPlace(k,p,{order:Math.max(1,Math.round(Number(ev.target.value))||1)})} style={{...wInput,width:46,padding:"4px 6px",fontSize:12}}/>
+                <select title="View" value={pl.layout||"double"} onChange={ev=>setPlace(k,p,{layout:ev.target.value})} style={{...wInput,width:"auto",padding:"4px 4px",fontSize:12}}>{[["single","Single"],["double","Double"],["triple","Triple"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>
+                <button title="Remove from here" onClick={()=>setPlace(k,p,null)} style={{fontSize:12,color:"#dc2626",padding:"0 3px"}}>✕</button>
+              </div>:<button onClick={()=>setPlace(k,p,{})} style={{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:99,border:"1px dashed var(--border2)",color:"var(--text3)",background:"transparent",cursor:"pointer"}}>＋ Feature</button>}
+            </td>; })}
+            <td style={td}><button onClick={()=>onOpen(k, items[k])} style={{...wBtn(false),padding:"5px 12px",fontSize:12}}>Open</button></td>
+          </tr>); })}</tbody>
+      </table></div>
+      {rows.length===0&&<p style={{fontSize:13,color:"var(--text3)"}}>Nothing found.</p>}
+    </div>);
+}
+
 function WContentList({dir, onOpen, onNew, newLabel}) {
-  const [items, setItems] = useState(null); const [err, setErr] = useState(""); const [q, setQ] = useState(""); const [feat, setFeat] = useState({}); const [pf, setPf] = useState("all"); const [sf, setSf] = useState("all"); const [pubBusy, setPubBusy] = useState("");
+  const [items, setItems] = useState(null); const [err, setErr] = useState(""); const [q, setQ] = useState(""); const [feat, setFeat] = useState({}); const [pf, setPf] = useState("all"); const [sf, setSf] = useState("all"); const [pubBusy, setPubBusy] = useState(""); const [view, setViewS] = useState(()=>{ try{ return localStorage.getItem("sf_proj_view")||"list"; }catch(e){ return "list"; } });
+  const setView = v => { setViewS(v); try{ localStorage.setItem("sf_proj_view",v); }catch(e){} };
+  const reloadFeat = () => wApi.get("featured",{refresh:1}).then(r=>setFeat(r.items||{})).catch(()=>{});
   useEffect(()=>{ if(dir==="projects") wApi.get("featured").then(r=>setFeat(r.items||{})).catch(()=>{}); },[dir]);
   useEffect(()=>{ wApi.get("list",{dir}).then(r=>{ if(r.connected===false) setErr(r.error+" (see the Setup tab)"); else setItems(r.items||{}); }).catch(e=>setErr(e.message)); },[dir]);
   if(err) return <div style={wCard}><p style={{color:"#ef4444",fontSize:13}}>{err}</p></div>;
@@ -34043,16 +34114,20 @@ function WContentList({dir, onOpen, onNew, newLabel}) {
   const togglePub=async(k)=>{ const to=!isPub(k); if(!window.confirm(to?`Publish "${k.replace(/-/g," ")}"? It goes live on the website in 1–2 minutes.`:`Move "${k.replace(/-/g," ")}" to draft? It disappears from the website in 1–2 minutes.`)) return;
     setPubBusy(k); try{ await wApi.post("set_published",{path:items[k].json,published:to}); setFeat(f=>({...f,[k]:{...(f[k]||{}),published:to}})); }catch(e){ window.alert(e.message); } setPubBusy(""); };
   const nDraft=Object.keys(items).filter(k=>items[k].json&&!isPub(k)).length;
+  const baseKeys = Object.keys(items).filter(k=>items[k].json && (!q || k.includes(q.toLowerCase())));
+  const showTable = dir==="projects" && view==="list";
   const keys = Object.keys(items).filter(k=>items[k].json && (!q || k.includes(q.toLowerCase())) && (pf==="all"||placeOf(k,pf)) && (sf==="all"||(sf==="draft"?!isPub(k):isPub(k)))).sort((a,b)=>pf==="all"?a.localeCompare(b):((placeOf(a,pf).order??99)-(placeOf(b,pf).order??99)));
   return (
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <input placeholder="Search…" value={q} onChange={e=>setQ(e.target.value)} style={{...wInput,maxWidth:280}}/>
+        {dir==="projects"&&<div style={{display:"flex",gap:0}}>{[["list","☰ List"],["cards","▦ Cards"]].map(([v,l])=><button key={v} onClick={()=>setView(v)} style={{...wBtn(view===v),borderRadius:v==="list"?"9px 0 0 9px":"0 9px 9px 0"}}>{l}</button>)}</div>}
         {dir==="projects"&&<select value={sf} onChange={e=>setSf(e.target.value)} style={{...wInput,width:"auto"}}><option value="all">All statuses</option><option value="published">Published</option><option value="draft">Drafts{nDraft?" ("+nDraft+")":""}</option></select>}
         {dir==="projects"&&<select value={pf} onChange={e=>setPf(e.target.value)} style={{...wInput,width:"auto"}}><option value="all">All projects</option>{W_PLACE.map(([k,,sh])=><option key={k} value={k}>★ Featured: {sh}</option>)}</select>}
         {onNew&&<button onClick={onNew} style={{...wBtn(true),marginLeft:"auto"}}>+ {newLabel}</button>}
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:8}}>
+      {showTable&&<WProjectsTable keys={baseKeys} items={items} feat={feat} pf={pf} sf={sf} onOpen={onOpen} reload={reloadFeat}/>}
+      {!showTable&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:8}}>
         {keys.map(k=>(
           <div key={k} role="button" tabIndex={0} onClick={()=>onOpen(k, items[k])} onKeyDown={e=>{ if(e.key==="Enter") onOpen(k, items[k]); }} style={{...wCard,padding:12,textAlign:"left",cursor:"pointer",display:"flex",flexDirection:"column",gap:3,color:"var(--text)",opacity:dir==="projects"&&!isPub(k)?0.7:1}}>
             <span style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:13,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{k.replace(/-/g," ")}</span>{dir==="projects"&&!isPub(k)&&<span style={{fontSize:10,fontWeight:800,padding:"2px 7px",borderRadius:99,background:"#6b728033",color:"var(--text2)"}}>Draft</span>}</span>
@@ -34060,8 +34135,8 @@ function WContentList({dir, onOpen, onNew, newLabel}) {
             {dir==="projects"&&(()=>{ const ps=W_PLACE.map(([p,,sh])=>[sh,placeOf(k,p)]).filter(x=>x[1]); return ps.length>0&&<span style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:3}}>{ps.map(([sh,p])=><span key={sh} title={"Position "+p.order+" · "+p.layout} style={{fontSize:10,fontWeight:800,padding:"2px 7px",borderRadius:99,background:"#f59e0b22",color:"#b45309"}}>★ {sh} · {p.order}</span>)}</span>; })()}
             {dir==="projects"&&feat[k]&&<button disabled={pubBusy===k} onClick={e=>{ e.stopPropagation(); togglePub(k); }} style={{...wBtn(false),marginTop:6,padding:"4px 10px",fontSize:11,alignSelf:"flex-start",color:isPub(k)?"var(--text2)":"#16a34a"}}>{pubBusy===k?"Saving…":isPub(k)?"Move to draft":"Publish"}</button>}
           </div>))}
-      </div>
-      {!keys.length&&<p style={{fontSize:13,color:"var(--text3)"}}>Nothing found.</p>}
+      </div>}
+      {!showTable&&!keys.length&&<p style={{fontSize:13,color:"var(--text3)"}}>Nothing found.</p>}
     </div>);
 }
 

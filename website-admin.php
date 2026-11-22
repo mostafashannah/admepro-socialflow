@@ -159,7 +159,7 @@ function safePath($p, $ROOT) {
 }
 $ghPath = fn($p) => implode('/', array_map('rawurlencode', explode('/', $p)));
 
-if (in_array($action, ['status', 'list', 'get', 'put', 'upload', 'featured', 'set_published'], true) && (!$REPO || !$TOKEN)) {
+if (in_array($action, ['status', 'list', 'get', 'put', 'upload', 'featured', 'set_published', 'set_project_fields'], true) && (!$REPO || !$TOKEN)) {
     wOut(200, ['connected' => false, 'error' => 'GitHub is not connected yet — add WEBSITE_GITHUB_REPO and WEBSITE_GITHUB_TOKEN to config.php.']);
 }
 
@@ -189,6 +189,35 @@ if ($action === 'set_published') {
         wOut(200, ['ok' => true, 'published' => $want, 'commit' => substr($r2['commit']['sha'] ?? '', 0, 7)]);
     }
     wOut(200, ['ok' => true, 'published' => $want, 'unchanged' => true]);
+}
+
+/* Several quick settings of one project in ONE commit (used by the project list): published and/or featuredIn. Everything else in the file is kept as it is. */
+if ($action === 'set_project_fields') {
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') wOut(405, ['error' => 'POST only']);
+    $in = json_decode((string)file_get_contents('php://input'), true) ?: [];
+    $p = safePath($in['path'] ?? '', $ROOT);
+    if (!$p || !preg_match('#(^|/)projects/[^/_][^/]*/project\.json$#', $p)) wOut(400, ['error' => 'Not a project file']);
+    [$c, $r] = gh('GET', "/repos/$REPO/contents/" . $ghPath($p) . "?ref=" . rawurlencode($BRANCH), $TOKEN);
+    if ($c !== 200) wOut($c === 404 ? 404 : 502, ['error' => "GitHub HTTP $c"]);
+    $raw = (string)base64_decode((string)($r['content'] ?? ''));
+    $j = json_decode($raw); if (!is_object($j)) wOut(400, ['error' => 'That project file is not valid JSON']);   // objects, so {} and [] keep their meaning
+    if (array_key_exists('published', $in)) $j->published = !empty($in['published']);
+    if (array_key_exists('featuredIn', $in) && is_array($in['featuredIn'])) {
+        $fin = [];
+        foreach (['home', 'gcc', 'real_estate', 'retail'] as $k) if (isset($in['featuredIn'][$k]) && is_array($in['featuredIn'][$k]))
+            $fin[$k] = ['order' => max(1, min(999, (int)($in['featuredIn'][$k]['order'] ?? 1))), 'layout' => in_array($in['featuredIn'][$k]['layout'] ?? '', ['single', 'double', 'triple'], true) ? $in['featuredIn'][$k]['layout'] : 'double'];
+        $j->featuredIn = (object)$fin; $j->featured = isset($fin['home']);   // "featured" stays true when it is on home, for older website code
+    }
+    $new = json_encode($j, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $new = preg_replace_callback('/^( +)/m', fn($m) => str_repeat(' ', intdiv(strlen($m[1]), 2)), $new) . "\n";   // 2-space indent like the editor writes
+    if (trim($new) === trim($raw)) wOut(200, ['ok' => true, 'unchanged' => true]);
+    $who = $s['email'] ?? 'admin'; $title = is_string($j->title ?? null) ? $j->title : basename(dirname($p));
+    [$c2, $r2] = gh('PUT', "/repos/$REPO/contents/" . $ghPath($p), $TOKEN, ['message' => "Update project settings: $title\n\nFrom SocialFlow Website tab by " . $who, 'content' => base64_encode($new), 'branch' => $BRANCH, 'sha' => $r['sha']]);
+    if ($c2 === 409) wOut(409, ['error' => 'Someone changed this file in the meantime — reload and try again.']);
+    if ($c2 !== 200 && $c2 !== 201) wOut(502, ['error' => "GitHub HTTP $c2: " . ($r2['message'] ?? '')]);
+    @unlink(sys_get_temp_dir() . '/sf-web-featured.json');
+    try { $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), 'website_project_settings', 'website', ?, 'success', ?)")->execute([$p, $who]); } catch (Throwable $e) {}
+    wOut(200, ['ok' => true, 'commit' => substr($r2['commit']['sha'] ?? '', 0, 7)]);
 }
 
 /* Featured placements of every project (read-only): which projects are featured on the home page / the GCC, real estate and retail portfolios, with their position and view.
