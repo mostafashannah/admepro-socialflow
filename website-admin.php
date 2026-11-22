@@ -162,7 +162,7 @@ function safePath($p, $ROOT) {
 }
 $ghPath = fn($p) => implode('/', array_map('rawurlencode', explode('/', $p)));
 
-if (in_array($action, ['status', 'list', 'get', 'put', 'upload', 'featured', 'set_published', 'set_project_fields', 'set_projects_batch'], true) && (!$REPO || !$TOKEN)) {
+if (in_array($action, ['status', 'list', 'get', 'put', 'upload', 'featured', 'set_published', 'set_project_fields', 'set_projects_batch', 'project_img'], true) && (!$REPO || !$TOKEN)) {
     wOut(200, ['connected' => false, 'error' => 'GitHub is not connected yet — add WEBSITE_GITHUB_REPO and WEBSITE_GITHUB_TOKEN to config.php.']);
 }
 
@@ -313,6 +313,35 @@ if ($action === 'featured') {
     curl_multi_close($mh);
     if ($items) @file_put_contents($cache, json_encode($items, JSON_UNESCAPED_UNICODE));
     wOut(200, ['items' => $items]);
+}
+
+/* One project's picture, streamed straight from the website repo (its own images folder) — used by the Projects preview. */
+if ($action === 'project_img') {
+    $slug = preg_replace('/[^A-Za-z0-9._-]/', '', (string)($_GET['slug'] ?? ''));
+    if ($slug === '') wOut(400, ['error' => 'slug?']);
+    $cache = sys_get_temp_dir() . '/sf-web-imgtree.json'; $map = null;
+    if (is_file($cache) && time() - filemtime($cache) < 300) $map = json_decode((string)file_get_contents($cache), true);
+    if (!is_array($map)) {
+        [$c, $r] = gh('GET', "/repos/$REPO/git/trees/" . rawurlencode($BRANCH) . "?recursive=1", $TOKEN);
+        if ($c !== 200) wOut(502, ['error' => "GitHub HTTP $c"]);
+        $base = ($ROOT ? $ROOT . '/' : '') . 'projects/'; $map = [];
+        foreach ($r['tree'] ?? [] as $t) {
+            if ($t['type'] !== 'blob' || strpos($t['path'], $base) !== 0) continue;
+            if (preg_match('#^([^/_][^/]*)/images/(.+\.(?:jpe?g|png|webp|gif))$#i', substr($t['path'], strlen($base)), $m)) $map[$m[1]][] = ['p' => $t['path'], 's' => (int)($t['size'] ?? 0)];
+        }
+        @file_put_contents($cache, json_encode($map));
+    }
+    $list = $map[$slug] ?? [];
+    if (!$list) { http_response_code(404); exit; }
+    usort($list, fn($a, $b) => strnatcasecmp($a['p'], $b['p']));
+    $pick = null; foreach ($list as $f) if (preg_match('#/(cover|thumb|thumbnail|hero|main|banner)[^/]*$#i', $f['p'])) { $pick = $f; break; }
+    $pick = $pick ?: $list[0];
+    if ($pick['s'] > 12 * 1024 * 1024) { http_response_code(413); exit; }
+    $types = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp', 'gif' => 'image/gif'];
+    header_remove('Content-Type'); header('Content-Type: ' . ($types[strtolower(pathinfo($pick['p'], PATHINFO_EXTENSION))] ?? 'application/octet-stream')); header('Cache-Control: private, max-age=3600'); header('X-Content-Type-Options: nosniff');
+    $ch = curl_init("https://api.github.com/repos/$REPO/contents/" . $ghPath($pick['p']) . "?ref=" . rawurlencode($BRANCH));
+    curl_setopt_array($ch, [CURLOPT_FOLLOWLOCATION => true, CURLOPT_TIMEOUT => 60, CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $TOKEN, 'Accept: application/vnd.github.raw', 'User-Agent: SocialFlow-Website-Tab']]);
+    curl_exec($ch); curl_close($ch); exit;
 }
 
 /* Thumbnails for the Projects preview: slug -> real image of each live project (same source the newsletter builder uses). */

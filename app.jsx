@@ -34307,8 +34307,7 @@ function WProjectsTable({keys, items, feat, pf, sf, onOpen, reload}) {
 // SIMPLE view: pick a place, tick the projects shown there, give each a NUMBER and Single / Double. One save for everything.
 function WProjectsSimple({keys, items, feat, onOpen, reload}) {
   const [place, setPlace] = useState("home"); const [prev, setPrev] = useState(false); const [imgs, setImgs] = useState(null); const [edits, setEdits] = useState({});
-  const [imgNote, setImgNote] = useState("");
-  useEffect(()=>{ if(prev && imgs===null) { setImgs({}); setImgNote("Loading project images… the first time can take up to a minute."); wApi.get("site_images").then(d=>{ const m = d.images||{}; setImgs(m); setImgNote(d.error ? ("Images: "+d.error) : Object.keys(m).length ? "" : `No images found (the site returned ${d.projects||0} live projects).`); }).catch(err=>{ setImgs(null); setImgNote("Images failed to load: "+(err.message||err)+" — close and open Preview to retry."); }); } },[prev]); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(null);
+  const dragRef = useRef(null);
   const allKeys = Object.keys(items).filter(k=>items[k].json);
   const base = k => { const f = feat[k] || {}; const fin = f.featuredIn || {}; return {fin, old:!!(f.featured && !fin.home)}; };
   const eff = k => { const b = base(k), e = edits[k] || {}; return {fin:e.fin||b.fin, old:e.old!==undefined?e.old:b.old}; };
@@ -34327,6 +34326,9 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
   const setNo = (k, p, n) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {layout:(state(k,p).legacy||state(k,p).tagOnly)?state(k,p).layout:"double", ...(fin[p]||{}), order:Math.max(1,Math.round(Number(n))||1)}; put(k, fin, p==="home" ? false : e.old); };
   const setLay = (k, p, l) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {order:(state(k,p).legacy||state(k,p).tagOnly)?(state(k,p).order||nextNo(p)):nextNo(p), ...(fin[p]||{}), layout:l}; put(k, fin, p==="home" ? false : e.old); };
   // Quick layout: gives every project on this tab a number (1, 2, 3 …) and a view from a repeating pattern. You can still change any one after.
+  // Drag & drop: moves a project to the place of another one and renumbers this tab 1, 2, 3 … (each project keeps its own view).
+  const reorder = (from, to) => { if(!from || from===to) return; const arr = rows.filter(k=>state(k,place).on); const i = arr.indexOf(from), j = arr.indexOf(to); if(i<0||j<0) return; arr.splice(j,0,arr.splice(i,1)[0]);
+    arr.forEach((k,n)=>{ const st = state(k,place), e = eff(k); const fin = {...e.fin}; fin[place] = {order:n+1, layout:st.layout}; put(k, fin, place==="home" ? false : e.old); }); };
   const applyPat = (v) => { if(!v) return; const seq = v.split(","), NAME = {s:"single",d:"double",t:"triple"}; let i = 0;
     rows.filter(k=>state(k,place).on).forEach(k=>{ const e = eff(k); const fin = {...e.fin}; fin[place] = {order:i+1, layout:NAME[seq[i%seq.length]]}; put(k, fin, place==="home" ? false : e.old); i++; }); };
   const nEdits = Object.keys(edits).length;
@@ -34363,11 +34365,11 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
         </select>
         <button onClick={()=>setPrev(v=>!v)} style={{...gPillW(prev)}}>👁 Preview</button></div>
       {prev&&<div style={{border:"1px solid var(--border)",borderRadius:12,padding:12,background:"var(--surface)"}}>
-        <p style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>Simulation of <b>{(PL.find(x=>x[0]===place)||[])[1]}</b> with your changes (not saved yet). 3 columns; each card takes 1, 2 or 3 spots, in number order.{imgNote&&<><br/><b style={{color:"#b45309"}}>{imgNote}</b></>}</p>
+        <p style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>Simulation of <b>{(PL.find(x=>x[0]===place)||[])[1]}</b> with your changes (not saved yet). 3 columns; each card takes 1, 2 or 3 spots, in number order.<br/><b>Drag a card onto another to change the order.</b></p>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>
           {rows.filter(k=>state(k,place).on).flatMap(k=>{ const st = state(k,place); const lay = st.layout==="auto"?"triple":st.layout; const sp = lay==="single"?1:lay==="double"?2:3; const f = feat[k]||{};
-            return [<div key={k} style={{gridColumn:`span ${sp}`,minHeight:sp===1?170:150,borderRadius:12,overflow:"hidden",position:"relative",background:"linear-gradient(135deg,#1f2937,#374151)",color:"#fff",display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
-              {(imgs||{})[k]&&<img src={imgs[k]} alt="" loading="lazy" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>}
+            return [<div key={k} draggable onDragStart={()=>{ dragRef.current = k; }} onDragOver={e=>e.preventDefault()} onDrop={e=>{ e.preventDefault(); reorder(dragRef.current, k); }} style={{cursor:"grab",gridColumn:`span ${sp}`,minHeight:sp===1?170:150,borderRadius:12,overflow:"hidden",position:"relative",background:"linear-gradient(135deg,#1f2937,#374151)",color:"#fff",display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
+              <img src={`/website-admin.php?action=project_img&slug=${encodeURIComponent(k)}`} alt="" loading="lazy" draggable={false} onError={e=>{ e.currentTarget.style.display="none"; }} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
               <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,.65),rgba(0,0,0,0) 55%)"}}/>
               <div style={{position:"relative",padding:"10px 14px",display:"flex",flexDirection:"column"}}><span style={{fontSize:14,fontWeight:800}}>{f.title||k.replace(/-/g," ")}</span><span style={{fontSize:10,opacity:.8}}>#{st.order} · {lay}</span></div></div>]; })}
         </div>
@@ -34377,7 +34379,8 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
         {rows.map(k=>{ const s = state(k, place); const f = feat[k] || {}; const lay = s.layout==="auto" ? "triple" : s.layout; const rw = rowOf[k]; return (
           <React.Fragment key={k}>
           {rw&&rw.first&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 6px 2px",fontSize:11,fontWeight:800,letterSpacing:"0.06em",textTransform:"uppercase",color:rowFill[rw.no]===3?"#10b981":"#f59e0b"}}>Row {rw.no} <span style={{fontWeight:700,textTransform:"none",letterSpacing:0,color:"var(--text3)"}}>· {rowFill[rw.no]} of 3 spots{rowFill[rw.no]===3?"":" — a spot is empty (add a Single next, or change the view)"}</span></div>}
-          <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",padding:"9px 6px",borderBottom:"1px solid var(--border)",opacity:s.on?1:0.6,background:s.on?"transparent":"transparent"}}>
+          <div onDragOver={e=>{ if(s.on) e.preventDefault(); }} onDrop={e=>{ e.preventDefault(); if(s.on) reorder(dragRef.current, k); }} style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",padding:"9px 6px",borderBottom:"1px solid var(--border)",opacity:s.on?1:0.6,background:s.on?"transparent":"transparent"}}>
+            {s.on?<span draggable onDragStart={()=>{ dragRef.current = k; }} title="Drag to change the order" style={{cursor:"grab",color:"var(--text3)",fontSize:16,userSelect:"none"}}>⠿</span>:<span style={{width:10}}/>}
             <input type="checkbox" checked={s.on} disabled={!!s.tagOnly} title={s.tagOnly?"In this portfolio because of its tags — remove the tag in the project to take it out":""} onChange={e=>toggle(k,place,e.target.checked)} style={{width:18,height:18,cursor:"pointer"}}/>
             <input type="number" min="1" placeholder="–" disabled={!s.on} value={s.on?(s.order??""):""} onChange={e=>setNo(k,place,e.target.value)} title="Number (1 = first)" style={{...wInput,width:62,padding:"6px 8px",textAlign:"center",fontWeight:800}}/>
             <div style={{display:"flex",opacity:s.on?1:0.4}}>
