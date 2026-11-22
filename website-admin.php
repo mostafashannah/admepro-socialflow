@@ -159,8 +159,36 @@ function safePath($p, $ROOT) {
 }
 $ghPath = fn($p) => implode('/', array_map('rawurlencode', explode('/', $p)));
 
-if (in_array($action, ['status', 'list', 'get', 'put', 'upload', 'featured'], true) && (!$REPO || !$TOKEN)) {
+if (in_array($action, ['status', 'list', 'get', 'put', 'upload', 'featured', 'set_published'], true) && (!$REPO || !$TOKEN)) {
     wOut(200, ['connected' => false, 'error' => 'GitHub is not connected yet — add WEBSITE_GITHUB_REPO and WEBSITE_GITHUB_TOKEN to config.php.']);
+}
+
+/* Draft / publish one project without opening it: changes only the "published" value of its project.json (one small commit). */
+if ($action === 'set_published') {
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') wOut(405, ['error' => 'POST only']);
+    $in = json_decode((string)file_get_contents('php://input'), true) ?: [];
+    $p = safePath($in['path'] ?? '', $ROOT);
+    if (!$p || !preg_match('#(^|/)projects/[^/_][^/]*/project\.json$#', $p)) wOut(400, ['error' => 'Not a project file']);
+    $want = !empty($in['published']);
+    [$c, $r] = gh('GET', "/repos/$REPO/contents/" . $ghPath($p) . "?ref=" . rawurlencode($BRANCH), $TOKEN);
+    if ($c !== 200) wOut($c === 404 ? 404 : 502, ['error' => "GitHub HTTP $c"]);
+    $raw = (string)base64_decode((string)($r['content'] ?? ''));
+    $j = json_decode($raw, true); if (!is_array($j)) wOut(400, ['error' => 'That project file is not valid JSON']);
+    $val = $want ? 'true' : 'false'; $n = 0;
+    // Edit the one value in place so the file keeps its formatting (no noisy diff); fall back to a full re-write only if the key is missing.
+    $new = preg_replace('/^(\s*"published"\s*:\s*)(true|false)/m', '${1}' . $val, $raw, 1, $n);
+    if (!$n) { $j['published'] = $want; $new = json_encode($j, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n"; }
+    if ($new !== $raw) {
+        $who = $s['email'] ?? 'admin'; $title = is_string($j['title'] ?? null) ? $j['title'] : basename(dirname($p));
+        $body = ['message' => ($want ? 'Publish' : 'Move to draft') . " project: $title\n\nFrom SocialFlow Website tab by " . $who, 'content' => base64_encode($new), 'branch' => $BRANCH, 'sha' => $r['sha']];
+        [$c2, $r2] = gh('PUT', "/repos/$REPO/contents/" . $ghPath($p), $TOKEN, $body);
+        if ($c2 === 409) wOut(409, ['error' => 'Someone changed this file in the meantime — reload and try again.']);
+        if ($c2 !== 200 && $c2 !== 201) wOut(502, ['error' => "GitHub HTTP $c2: " . ($r2['message'] ?? '')]);
+        @unlink(sys_get_temp_dir() . '/sf-web-featured.json');
+        try { $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), ?, 'website', ?, 'success', ?)")->execute([$want ? 'website_publish' : 'website_draft', $p, $who]); } catch (Throwable $e) {}
+        wOut(200, ['ok' => true, 'published' => $want, 'commit' => substr($r2['commit']['sha'] ?? '', 0, 7)]);
+    }
+    wOut(200, ['ok' => true, 'published' => $want, 'unchanged' => true]);
 }
 
 /* Featured placements of every project (read-only): which projects are featured on the home page / the GCC, real estate and retail portfolios, with their position and view.

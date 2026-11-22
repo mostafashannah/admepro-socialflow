@@ -34033,27 +34033,33 @@ function WebsiteOverview() {
 const W_PLACE=[["home","Home page","Home"],["gcc","GCC & KSA portfolio","GCC"],["real_estate","Real estate portfolio","Real estate"],["retail","E-commerce & retail portfolio","Retail"]];
 const W_VIEW=[["single","Single · 1 per row"],["double","Double · 2 per row"],["triple","Triple · 3 per row"]];
 function WContentList({dir, onOpen, onNew, newLabel}) {
-  const [items, setItems] = useState(null); const [err, setErr] = useState(""); const [q, setQ] = useState(""); const [feat, setFeat] = useState({}); const [pf, setPf] = useState("all");
+  const [items, setItems] = useState(null); const [err, setErr] = useState(""); const [q, setQ] = useState(""); const [feat, setFeat] = useState({}); const [pf, setPf] = useState("all"); const [sf, setSf] = useState("all"); const [pubBusy, setPubBusy] = useState("");
   useEffect(()=>{ if(dir==="projects") wApi.get("featured").then(r=>setFeat(r.items||{})).catch(()=>{}); },[dir]);
   useEffect(()=>{ wApi.get("list",{dir}).then(r=>{ if(r.connected===false) setErr(r.error+" (see the Setup tab)"); else setItems(r.items||{}); }).catch(e=>setErr(e.message)); },[dir]);
   if(err) return <div style={wCard}><p style={{color:"#ef4444",fontSize:13}}>{err}</p></div>;
   if(!items) return <div style={{padding:40,display:"flex",justifyContent:"center"}}><Spinner size={20}/></div>;
   const placeOf=(k,p)=>{ const f=feat[k]; if(!f) return null; if(f.featuredIn&&f.featuredIn[p]) return f.featuredIn[p]; return (p==="home"&&f.featured&&!(f.featuredIn&&f.featuredIn.home))?{order:f.order??99,layout:"double"}:null; };
-  const keys = Object.keys(items).filter(k=>items[k].json && (!q || k.includes(q.toLowerCase())) && (pf==="all"||placeOf(k,pf))).sort((a,b)=>pf==="all"?a.localeCompare(b):((placeOf(a,pf).order??99)-(placeOf(b,pf).order??99)));
+  const isPub=k=>!(feat[k]&&feat[k].published===false);
+  const togglePub=async(k)=>{ const to=!isPub(k); if(!window.confirm(to?`Publish "${k.replace(/-/g," ")}"? It goes live on the website in 1–2 minutes.`:`Move "${k.replace(/-/g," ")}" to draft? It disappears from the website in 1–2 minutes.`)) return;
+    setPubBusy(k); try{ await wApi.post("set_published",{path:items[k].json,published:to}); setFeat(f=>({...f,[k]:{...(f[k]||{}),published:to}})); }catch(e){ window.alert(e.message); } setPubBusy(""); };
+  const nDraft=Object.keys(items).filter(k=>items[k].json&&!isPub(k)).length;
+  const keys = Object.keys(items).filter(k=>items[k].json && (!q || k.includes(q.toLowerCase())) && (pf==="all"||placeOf(k,pf)) && (sf==="all"||(sf==="draft"?!isPub(k):isPub(k)))).sort((a,b)=>pf==="all"?a.localeCompare(b):((placeOf(a,pf).order??99)-(placeOf(b,pf).order??99)));
   return (
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <input placeholder="Search…" value={q} onChange={e=>setQ(e.target.value)} style={{...wInput,maxWidth:280}}/>
+        {dir==="projects"&&<select value={sf} onChange={e=>setSf(e.target.value)} style={{...wInput,width:"auto"}}><option value="all">All statuses</option><option value="published">Published</option><option value="draft">Drafts{nDraft?" ("+nDraft+")":""}</option></select>}
         {dir==="projects"&&<select value={pf} onChange={e=>setPf(e.target.value)} style={{...wInput,width:"auto"}}><option value="all">All projects</option>{W_PLACE.map(([k,,sh])=><option key={k} value={k}>★ Featured: {sh}</option>)}</select>}
         {onNew&&<button onClick={onNew} style={{...wBtn(true),marginLeft:"auto"}}>+ {newLabel}</button>}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:8}}>
         {keys.map(k=>(
-          <button key={k} onClick={()=>onOpen(k, items[k])} style={{...wCard,padding:12,textAlign:"left",cursor:"pointer",display:"flex",flexDirection:"column",gap:3,color:"var(--text)"}}>
-            <span style={{fontSize:13,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{k.replace(/-/g," ")}</span>
+          <div key={k} role="button" tabIndex={0} onClick={()=>onOpen(k, items[k])} onKeyDown={e=>{ if(e.key==="Enter") onOpen(k, items[k]); }} style={{...wCard,padding:12,textAlign:"left",cursor:"pointer",display:"flex",flexDirection:"column",gap:3,color:"var(--text)",opacity:dir==="projects"&&!isPub(k)?0.7:1}}>
+            <span style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:13,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{k.replace(/-/g," ")}</span>{dir==="projects"&&!isPub(k)&&<span style={{fontSize:10,fontWeight:800,padding:"2px 7px",borderRadius:99,background:"#6b728033",color:"var(--text2)"}}>Draft</span>}</span>
             <span style={{fontSize:11,color:"var(--text3)"}}>{dir==="projects"?`${(items[k].images||[]).length} images`:items[k].json.split("/").pop()}</span>
             {dir==="projects"&&(()=>{ const ps=W_PLACE.map(([p,,sh])=>[sh,placeOf(k,p)]).filter(x=>x[1]); return ps.length>0&&<span style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:3}}>{ps.map(([sh,p])=><span key={sh} title={"Position "+p.order+" · "+p.layout} style={{fontSize:10,fontWeight:800,padding:"2px 7px",borderRadius:99,background:"#f59e0b22",color:"#b45309"}}>★ {sh} · {p.order}</span>)}</span>; })()}
-          </button>))}
+            {dir==="projects"&&feat[k]&&<button disabled={pubBusy===k} onClick={e=>{ e.stopPropagation(); togglePub(k); }} style={{...wBtn(false),marginTop:6,padding:"4px 10px",fontSize:11,alignSelf:"flex-start",color:isPub(k)?"var(--text2)":"#16a34a"}}>{pubBusy===k?"Saving…":isPub(k)?"Move to draft":"Publish"}</button>}
+          </div>))}
       </div>
       {!keys.length&&<p style={{fontSize:13,color:"var(--text3)"}}>Nothing found.</p>}
     </div>);
@@ -34155,7 +34161,13 @@ function WebsiteProjects({root}) {
             {(open.images||[]).length>0&&<p style={{fontSize:11,color:"var(--text3)",wordBreak:"break-all"}}>{open.images.join(" · ")}</p>}
           </div>
           <div style={{...wCard,display:"flex",flexDirection:"column",gap:10}}>
-            <label style={{display:"flex",gap:8,alignItems:"center",fontSize:13,fontWeight:700}}><input type="checkbox" checked={!!d.published} onChange={e=>set("published",e.target.checked)}/> Published</label>
+            <div><span style={wLabel}>Status</span>
+              <div style={{display:"flex",gap:6}}>
+                <button type="button" onClick={()=>set("published",false)} style={{...wBtn(!d.published),flex:1,justifyContent:"center"}}>Draft · hidden</button>
+                <button type="button" onClick={()=>set("published",true)} style={{...wBtn(!!d.published),flex:1,justifyContent:"center"}}>Published · live</button>
+              </div>
+              <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>{d.published?"Visible on the website.":"Hidden from the website until you publish it."} Press Save &amp; publish to apply.</p>
+            </div>
             <div style={{display:"flex",flexDirection:"column",gap:8,padding:"10px 12px",border:"1px solid var(--border)",borderRadius:10}}>
               <span style={wLabel}>★ Featured on</span>
               {W_PLACE.map(([k,lb])=>{ const p=fin[k]; return <div key={k} style={{display:"flex",flexDirection:"column",gap:6}}>
