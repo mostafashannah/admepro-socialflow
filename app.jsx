@@ -34326,6 +34326,9 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
   const count = p => allKeys.filter(k=>state(k,p).on).length;
   const rank = k => { const s = state(k, place); return s.on ? (s.legacy ? 1000 + ((feat[k]||{}).order??99) : (s.order??99)) : (place!=="home" && wMember((feat[k]||{}).tags, place) ? 50000 : 100000); };
   const rows = keys.filter(k=>items[k].json).sort((a,b)=>(rank(a)-rank(b)) || a.localeCompare(b));
+  // Rows form by themselves, in order: Single = 1 spot, Double = 2, Triple = 3; a row holds 3 (e.g. Double + Single = 2 cards).
+  const rowOf = {}, rowFill = {}; { let cur = 0, no = 1; rows.forEach(k=>{ const s = state(k, place); if(!s.on) return; const sp = s.layout==="single" ? 1 : s.layout==="double" ? 2 : 3;
+    if(cur>0 && cur+sp>3) { no++; cur = 0; } rowOf[k] = {no, first:cur===0}; cur += sp; rowFill[no] = cur; if(cur>=3) { cur = 0; no++; } }); }
   const saveAll = async () => {
     setBusy(true); setMsg(null); const out = [];
     for(const k of Object.keys(edits)) { const g = eff(k); out.push({path:items[k].json, featuredIn:g.fin, featured:!!(g.fin.home||g.old)}); }
@@ -34344,8 +34347,10 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{PL.map(([p,lb])=><button key={p} onClick={()=>setPlace(p)} style={{...gPillW(place===p)}}>{lb} <span style={{opacity:.7}}>· {count(p)}</span></button>)}</div>
       <p style={{fontSize:12,color:"var(--text2)"}}>Tick the projects that should be shown on <b>{(PL.find(x=>x[0]===place)||[])[1]}</b>. <b>No.</b> is the order (1 comes first). Each row has <b>3 spots</b>: <b>Single</b> = takes 1 spot, <b>Double</b> = takes 2 spots, <b>Triple</b> = takes the whole row.</p>
       <div style={{display:"flex",flexDirection:"column"}}>
-        {rows.map(k=>{ const s = state(k, place); const f = feat[k] || {}; const lay = s.layout==="auto" ? "triple" : s.layout; return (
-          <div key={k} style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",padding:"9px 6px",borderBottom:"1px solid var(--border)",opacity:s.on?1:0.6,background:s.on?"transparent":"transparent"}}>
+        {rows.map(k=>{ const s = state(k, place); const f = feat[k] || {}; const lay = s.layout==="auto" ? "triple" : s.layout; const rw = rowOf[k]; return (
+          <React.Fragment key={k}>
+          {rw&&rw.first&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 6px 2px",fontSize:11,fontWeight:800,letterSpacing:"0.06em",textTransform:"uppercase",color:rowFill[rw.no]===3?"#10b981":"#f59e0b"}}>Row {rw.no} <span style={{fontWeight:700,textTransform:"none",letterSpacing:0,color:"var(--text3)"}}>· {rowFill[rw.no]} of 3 spots{rowFill[rw.no]===3?"":" — a spot is empty (add a Single next, or change the view)"}</span></div>}
+          <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",padding:"9px 6px",borderBottom:"1px solid var(--border)",opacity:s.on?1:0.6,background:s.on?"transparent":"transparent"}}>
             <input type="checkbox" checked={s.on} onChange={e=>toggle(k,place,e.target.checked)} style={{width:18,height:18,cursor:"pointer"}}/>
             <input type="number" min="1" placeholder="–" disabled={!s.on} value={s.on?(s.order??""):""} onChange={e=>setNo(k,place,e.target.value)} title="Number (1 = first)" style={{...wInput,width:62,padding:"6px 8px",textAlign:"center",fontWeight:800}}/>
             <div style={{display:"flex",opacity:s.on?1:0.4}}>
@@ -34358,7 +34363,7 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
               {place!=="home"&&wMember(f.tags,place)&&<span title="This project's tags put it in this portfolio page. Tick it to also feature it at the top." style={{marginLeft:8,fontSize:10,fontWeight:800,padding:"2px 7px",borderRadius:99,background:"#10b98122",color:"#047857"}}>● In portfolio (tags)</span>}
               {s.legacy&&<span title="Shown on the old home grid. Set a number or a view to move it to the top featured grid." style={{marginLeft:8,fontSize:10,fontWeight:800,padding:"2px 7px",borderRadius:99,background:"#f59e0b22",color:"#b45309"}}>old home grid</span>}</div>
             <button onClick={()=>onOpen(k, items[k])} style={{...wBtn(false),padding:"4px 10px",fontSize:11}}>Open</button>
-          </div>); })}
+          </div></React.Fragment>); })}
       </div>
       {rows.length===0&&<p style={{fontSize:13,color:"var(--text3)"}}>Nothing found.</p>}
     </div>);
