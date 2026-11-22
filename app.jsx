@@ -34312,16 +34312,17 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
   const eff = k => { const b = base(k), e = edits[k] || {}; return {fin:e.fin||b.fin, old:e.old!==undefined?e.old:b.old}; };
   const put = (k, fin, old) => setEdits(o => ({...o, [k]: {fin, old}}));
   const nextNo = p => 1 + allKeys.reduce((m,k)=>Math.max(m,(eff(k).fin[p]||{}).order||0), 0);
-  const state = (k, p) => { const e = eff(k); if(e.fin[p]) return {on:true, order:e.fin[p].order, layout:e.fin[p].layout||"auto", legacy:false}; if(p==="home" && e.old) return {on:true, legacy:true}; return {on:false}; };
+  const legacyRank = (() => { const ks = allKeys.filter(k=>{ const e = eff(k); return !e.fin.home && e.old; }).sort((a,b)=>(((feat[a]||{}).order??99)-((feat[b]||{}).order??99))||a.localeCompare(b)); const m = {}; ks.forEach((k,i)=>{ m[k]=i+1; }); return m; })();
+  const state = (k, p) => { const e = eff(k); if(e.fin[p]) return {on:true, order:e.fin[p].order, layout:e.fin[p].layout||"auto", legacy:false}; if(p==="home" && e.old) return {on:true, legacy:true, order:legacyRank[k], layout:"triple"}; return {on:false}; };
   const toggle = (k, p, on) => { const e = eff(k); const fin = {...e.fin};
     if(on) { fin[p] = {order:nextNo(p), layout:"double"}; put(k, fin, p==="home" ? false : e.old); }
     else { delete fin[p]; put(k, fin, p==="home" ? false : e.old); } };
-  const setNo = (k, p, n) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {layout:"double", ...(fin[p]||{}), order:Math.max(1,Math.round(Number(n))||1)}; put(k, fin, p==="home" ? false : e.old); };
-  const setLay = (k, p, l) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {order:nextNo(p), ...(fin[p]||{}), layout:l}; put(k, fin, p==="home" ? false : e.old); };
+  const setNo = (k, p, n) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {layout:state(k,p).legacy?"triple":"double", ...(fin[p]||{}), order:Math.max(1,Math.round(Number(n))||1)}; put(k, fin, p==="home" ? false : e.old); };
+  const setLay = (k, p, l) => { const e = eff(k); const fin = {...e.fin}; fin[p] = {order:state(k,p).legacy?(state(k,p).order||nextNo(p)):nextNo(p), ...(fin[p]||{}), layout:l}; put(k, fin, p==="home" ? false : e.old); };
   const nEdits = Object.keys(edits).length;
   const PL = [["home","Home page"],["gcc","GCC & KSA"],["real_estate","Real estate"],["retail","Retail"]];
   const count = p => allKeys.filter(k=>state(k,p).on).length;
-  const rank = k => { const s = state(k, place); return s.on ? (s.legacy ? 1000 + ((feat[k]||{}).order??99) : (s.order??99)) : 100000; };
+  const rank = k => { const s = state(k, place); return s.on ? (s.legacy ? 1000 + ((feat[k]||{}).order??99) : (s.order??99)) : (place!=="home" && wMember((feat[k]||{}).tags, place) ? 50000 : 100000); };
   const rows = keys.filter(k=>items[k].json).sort((a,b)=>(rank(a)-rank(b)) || a.localeCompare(b));
   const saveAll = async () => {
     setBusy(true); setMsg(null); const out = [];
@@ -34344,14 +34345,15 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
         {rows.map(k=>{ const s = state(k, place); const f = feat[k] || {}; const lay = s.layout==="auto" ? "triple" : s.layout; return (
           <div key={k} style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",padding:"9px 6px",borderBottom:"1px solid var(--border)",opacity:s.on?1:0.6,background:s.on?"transparent":"transparent"}}>
             <input type="checkbox" checked={s.on} onChange={e=>toggle(k,place,e.target.checked)} style={{width:18,height:18,cursor:"pointer"}}/>
-            <input type="number" min="1" placeholder="–" disabled={!s.on} value={s.on&&!s.legacy?(s.order??""):""} onChange={e=>setNo(k,place,e.target.value)} title="Number (1 = first)" style={{...wInput,width:62,padding:"6px 8px",textAlign:"center",fontWeight:800}}/>
+            <input type="number" min="1" placeholder="–" disabled={!s.on} value={s.on?(s.order??""):""} onChange={e=>setNo(k,place,e.target.value)} title="Number (1 = first)" style={{...wInput,width:62,padding:"6px 8px",textAlign:"center",fontWeight:800}}/>
             <div style={{display:"flex",opacity:s.on?1:0.4}}>
-              <button disabled={!s.on} onClick={()=>setLay(k,place,"single")} style={{...seg(s.on&&!s.legacy&&lay==="single"),borderRadius:"9px 0 0 9px"}}>Single</button>
-              <button disabled={!s.on} onClick={()=>setLay(k,place,"double")} style={{...seg(s.on&&!s.legacy&&lay==="double"),borderLeft:"none",borderRadius:0}}>Double</button>
-              <button disabled={!s.on} onClick={()=>setLay(k,place,"triple")} style={{...seg(s.on&&!s.legacy&&lay==="triple"),borderLeft:"none",borderRadius:"0 9px 9px 0"}}>Triple</button>
+              <button disabled={!s.on} onClick={()=>setLay(k,place,"single")} style={{...seg(s.on&&lay==="single"),borderRadius:"9px 0 0 9px"}}>Single</button>
+              <button disabled={!s.on} onClick={()=>setLay(k,place,"double")} style={{...seg(s.on&&lay==="double"),borderLeft:"none",borderRadius:0}}>Double</button>
+              <button disabled={!s.on} onClick={()=>setLay(k,place,"triple")} style={{...seg(s.on&&lay==="triple"),borderLeft:"none",borderRadius:"0 9px 9px 0"}}>Triple</button>
             </div>
             <div style={{flex:"1 1 160px",minWidth:0}}><span style={{fontSize:13,fontWeight:800}}>{f.title||k.replace(/-/g," ")}</span>
               {f.published===false&&<span style={{marginLeft:8,fontSize:10,fontWeight:800,padding:"2px 7px",borderRadius:99,background:"#6b728033",color:"var(--text2)"}}>Draft</span>}
+              {place!=="home"&&wMember(f.tags,place)&&<span title="This project's tags put it in this portfolio page. Tick it to also feature it at the top." style={{marginLeft:8,fontSize:10,fontWeight:800,padding:"2px 7px",borderRadius:99,background:"#10b98122",color:"#047857"}}>● In portfolio (tags)</span>}
               {s.legacy&&<span title="Shown on the old home grid. Set a number or a view to move it to the top featured grid." style={{marginLeft:8,fontSize:10,fontWeight:800,padding:"2px 7px",borderRadius:99,background:"#f59e0b22",color:"#b45309"}}>old home grid</span>}</div>
             <button onClick={()=>onOpen(k, items[k])} style={{...wBtn(false),padding:"4px 10px",fontSize:11}}>Open</button>
           </div>); })}
