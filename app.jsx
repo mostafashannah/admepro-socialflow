@@ -26523,8 +26523,8 @@ function AcceptInvitationPage({token, onAccepted}) {
 // ════════════════════════════════════════════════════════════════
 const MAX_CV_MB = 5;
 const MAX_PORTFOLIO_MB = 15;
-const ADMEPRO_LOGO_WHITE = "https://admepro.com/wp-content/uploads/2024/10/adme-p3.png";
-const ADMEPRO_LOGO_BLACK = "https://admepro.com/wp-content/uploads/2024/10/adme-p2.png";
+const ADMEPRO_LOGO_WHITE = "https://admepro.com/assets/img/brand/wordmark-light.webp"; // the live site's logo files (the old /wp-content/ uploads no longer exist)
+const ADMEPRO_LOGO_BLACK = "https://admepro.com/assets/img/brand/wordmark.webp";
 const SOCIAL_LINKS = [
   {label:"Fb.", url:"https://fb.com/admepro"},
   {label:"Ig.", url:"https://instagram.com/admeproagency"},
@@ -26688,71 +26688,102 @@ function CareersFullMenu({onClose}) {
 }
 
 function CareersFooter({isDark}) {
+  // Same content, links and look as the admepro.com site footer (location, contact, hours, work inquiries,
+  // career, socials, live city clocks, scroll to top, copyright and service links).
+  const SITE = "https://admepro.com";
+  const MAPS = "https://www.google.com/maps/search/?api=1&query=30.0638829,31.4708194";
+  const clocks = [["Africa/Cairo","Cairo, Egypt"],["Asia/Riyadh","Riyadh, Saudi Arabia"],["Asia/Dubai","Dubai, UAE"],["America/New_York","New York, USA"]];
+  const fmt = tz => { try { return new Intl.DateTimeFormat("en-GB",{hour:"2-digit",minute:"2-digit",timeZone:tz}).format(new Date()); } catch(e){ return ""; } };
+  const [, tick] = useState(0);
+  useEffect(()=>{ const t = setInterval(()=>tick(n=>n+1), 30000); return ()=>clearInterval(t); },[]);
+  const arrow = <svg viewBox="0 0 24 24" aria-hidden="true" width="14" height="14"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+  const toTop = e => { e.preventDefault(); const el = document.getElementById("careers-scroll"); if(el) el.scrollTo({top:0,behavior:"smooth"}); else window.scrollTo({top:0,behavior:"smooth"}); };
   return (
-    <div style={{background:"var(--surface)",borderTop:"1px solid var(--border)",padding:"56px 20px 28px"}}>
-      <div style={{maxWidth:1100,margin:"0 auto"}}>
-        <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:32}}>
-          <div>
-            <a href="https://admepro.com" target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6}}>
-              <img src={isDark?ADMEPRO_LOGO_WHITE:ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:32,width:"auto",objectFit:"contain"}}/>
-            </a>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:48,width:"min(560px,100%)"}}>
-            <div style={{display:"flex",flexDirection:"column",gap:20}}>
+    <footer className="sf-cfooter">
+      <style>{`
+        .sf-cfooter{--red:#d90b2c;background:var(--surface);border-top:1px solid var(--border);padding:clamp(56px,6vw,88px) 0 28px;font-family:"DM Sans","Montserrat",system-ui,sans-serif}
+        .sf-cfooter a{text-decoration:none}
+        .sf-cfooter .cfooter-in{width:min(1280px,100% - 48px);margin-inline:auto;display:grid}
+        .sf-cfooter .cfooter-top{display:grid;grid-template-columns:1fr;gap:clamp(36px,5vw,56px);align-items:start}
+        @media (min-width:1000px){.sf-cfooter .cfooter-top{grid-template-columns:minmax(210px,.85fr) 3fr;gap:clamp(48px,6vw,96px)}}
+        .sf-cfooter .cfooter-logo img{width:clamp(180px,17vw,240px);height:auto;display:block}
+        .sf-cfooter .cfooter-cols{display:grid;grid-template-columns:1fr;gap:40px;width:100%}
+        @media (min-width:720px){.sf-cfooter .cfooter-cols{grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(32px,5vw,72px)}}
+        .sf-cfooter .cfooter-col{display:flex;flex-direction:column;gap:30px}
+        .sf-cfooter p{margin:0}
+        .sf-cfooter .cf-h{font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--text3);margin-bottom:10px}
+        .sf-cfooter .cf-t,.sf-cfooter .cf-link,.sf-cfooter .clocks li{font-size:14px;line-height:1.7;color:var(--text2)}
+        .sf-cfooter .cf-link{transition:color .2s}.sf-cfooter .cf-link:hover{color:var(--red)}
+        .sf-cfooter .cf-strong{font-size:14px;font-weight:600;color:var(--text)}
+        .sf-cfooter .cf-accent{display:inline-flex;align-items:center;gap:6px;margin-top:6px;color:var(--text);font-weight:600;font-size:14px;text-decoration:underline;text-decoration-color:var(--border);text-underline-offset:5px;transition:color .2s,text-decoration-color .2s}
+        .sf-cfooter .cf-accent:hover{color:var(--red);text-decoration-color:var(--red)}
+        .sf-cfooter .cf-social{display:flex;flex-wrap:wrap;gap:6px 20px}
+        .sf-cfooter .cf-social a{font-size:13px;font-weight:500;color:var(--text2)}.sf-cfooter .cf-social a:hover{color:var(--red)}
+        .sf-cfooter .clocks{list-style:none;margin:0;padding:0;display:grid}
+        .sf-cfooter .clocks li{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:7px 0}
+        .sf-cfooter .clocks li:first-child{padding-top:0}
+        .sf-cfooter .clocks time{font:500 13px/1 ui-monospace,Menlo,monospace;letter-spacing:.04em;color:var(--text3);min-width:3.4em;text-align:end}
+        .sf-cfooter .cf-top{justify-self:end;display:inline-flex;align-items:center;gap:10px;margin-top:clamp(28px,3vw,44px);color:var(--text2);font-size:13px;font-weight:500}
+        .sf-cfooter .cf-top-ico{width:32px;height:32px;border-radius:50%;border:1px solid var(--border);display:grid;place-items:center;transform:rotate(90deg)}
+        .sf-cfooter .cf-bottom{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 28px;border-top:1px solid var(--border);margin-top:20px;padding-top:20px}
+        .sf-cfooter .cf-bottom p,.sf-cfooter .cf-bottom-links a{font-size:12px;color:var(--text3)}
+        .sf-cfooter .cf-bottom-links{display:flex;flex-wrap:wrap;gap:6px 22px}
+        .sf-cfooter .cf-bottom-links a{transition:color .2s}.sf-cfooter .cf-bottom-links a:hover{color:var(--red)}
+      `}</style>
+      <div className="cfooter-in">
+        <div className="cfooter-top">
+          <a className="cfooter-logo" href={SITE+"/"} aria-label="admepro"><img src={isDark?ADMEPRO_LOGO_WHITE:ADMEPRO_LOGO_BLACK} alt="admepro" width="1400" height="284" loading="lazy"/></a>
+          <div className="cfooter-cols">
+            <div className="cfooter-col">
               <div>
-                <p style={{fontWeight:800,fontSize:15,color:"var(--text)",marginBottom:8}}>Cairo</p>
-                <p style={{fontSize:14,color:"var(--text2)",lineHeight:1.6}}>145 El Banafsig 3<br/>New Cairo, Cairo</p>
+                <p className="cf-h">Location</p>
+                <p className="cf-t"><a className="cf-link" href={MAPS} target="_blank" rel="noopener noreferrer">145 El Banafsig 3<br/>New Cairo, Cairo</a></p>
+                <a className="cf-accent" href={MAPS} target="_blank" rel="noopener noreferrer">Open in Google Maps {arrow}</a>
               </div>
               <div>
-                <p style={{fontWeight:800,fontSize:15,color:"var(--text)",marginBottom:8}}>Call</p>
-                <p style={{fontSize:14,color:"var(--text2)"}}>+2 0100 037 0140</p>
+                <p className="cf-h">Contact</p>
+                <p className="cf-t"><a className="cf-link" href="tel:+201000370140" dir="ltr">+20 100 037 0140</a><br/><a className="cf-link" href="mailto:info@admepro.com">info@admepro.com</a></p>
               </div>
               <div>
-                <p style={{fontWeight:800,fontSize:15,color:"var(--text)",marginBottom:8}}>GPS</p>
-                <p style={{fontSize:14,color:"var(--text2)",lineHeight:1.6}}>30.0638829"<br/>31.4708194"</p>
+                <p className="cf-h">Assistance hours</p>
+                <p className="cf-t">Sunday – Thursday, 10 am – 8 pm</p>
               </div>
             </div>
-            <div style={{display:"flex",flexDirection:"column",gap:20}}>
+            <div className="cfooter-col">
               <div>
-                <p style={{fontWeight:800,fontSize:15,color:"var(--text)",marginBottom:8}}>Work inquiries</p>
-                <p style={{fontSize:14,color:"var(--text2)"}}>Interested in working with us?</p>
-                <a href="mailto:hello@admepro.com" style={{fontSize:14,fontWeight:700,color:"var(--text)",textDecoration:"none"}}>hello@admepro.com</a>
+                <p className="cf-h">Work inquiries</p>
+                <p className="cf-t">Interested in working with us?</p>
+                <a className="cf-strong" href="mailto:hello@admepro.com">hello@admepro.com</a>
               </div>
               <div>
-                <p style={{fontWeight:800,fontSize:15,color:"var(--text)",marginBottom:8}}>Career</p>
-                <p style={{fontSize:14,color:"var(--text2)"}}>Looking for a job opportunity?</p>
-                <p style={{fontSize:14,fontWeight:700,color:"var(--accent)"}}>You're on the right page!</p>
+                <p className="cf-h">Career</p>
+                <p className="cf-t">Looking for a job opportunity?</p>
+                <a className="cf-accent" href="/careers">See open positions</a>
               </div>
-              <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                {SOCIAL_LINKS.filter(s=>s.label!=="Li.").map(s=>(
-                  <a key={s.url} href={s.url} target="_blank" rel="noreferrer" style={{fontSize:14,color:"var(--text2)",textDecoration:"none"}}>
-                    {s.label==="Fb."?"Facebook":s.label==="Ig."?"Instagram":"Vimeo"}
-                  </a>
-                ))}
+              <div className="cf-social">
+                <a href="https://facebook.com/admepro" target="_blank" rel="noopener noreferrer">Facebook</a>
+                <a href="https://www.instagram.com/admeproagency" target="_blank" rel="noopener noreferrer">Instagram</a>
+                <a href="https://vimeo.com/admepro" target="_blank" rel="noopener noreferrer">Vimeo</a>
+                <a href="https://wa.me/201000531842?text=Hi%20admepro%2C%20I%27m%20interested%20in%20your%20services" target="_blank" rel="noopener noreferrer">WhatsApp</a>
               </div>
+            </div>
+            <div className="cfooter-col">
+              <p className="cf-h">We work across</p>
+              <ul className="clocks">
+                {clocks.map(([tz,city])=>(<li key={tz}><span>{city}</span><time dir="ltr">{fmt(tz)}</time></li>))}
+              </ul>
             </div>
           </div>
         </div>
-
-        <button onClick={()=>{
-          // The page scrolls inside its own #careers-scroll container (not
-          // document/body), so scroll that directly — window.scrollTo alone
-          // was a no-op since the actual scrollable element was never window.
-          const el = document.getElementById("careers-scroll");
-          if(el) el.scrollTo({top:0,behavior:"smooth"});
-          else window.scrollTo({top:0,behavior:"smooth"});
-        }} style={{display:"flex",alignItems:"center",gap:10,marginTop:48,background:"none",border:"none",cursor:"pointer",color:"var(--text2)",fontSize:14,fontWeight:600}}>
-          <span style={{width:36,height:36,borderRadius:"50%",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",transform:"rotate(90deg)"}}>
-            <Ico d={Icons.chevL} size={14} stroke="var(--text2)"/>
-          </span>
-          Scroll to top
-        </button>
-
-        <div style={{borderTop:"1px solid var(--border)",marginTop:28,paddingTop:20}}>
-          <p style={{fontSize:13,color:"var(--text3)"}}>© 2013-{new Date().getFullYear()} admepro . All rights reserved.</p>
+        <a href="#top" className="cf-top" onClick={toTop}><span className="cf-top-ico"><svg viewBox="0 0 24 24" aria-hidden="true" width="14" height="14"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></span>Scroll to top</a>
+        <div className="cf-bottom">
+          <p>© 2013-{new Date().getFullYear()} admepro . All rights reserved.</p>
+          <nav className="cf-bottom-links" aria-label="Services">
+            <a href={SITE+"/branding/"}>Branding</a><a href={SITE+"/creative/"}>Creative</a><a href={SITE+"/digital/"}>Digital</a><a href={SITE+"/production/"}>Production</a>
+          </nav>
         </div>
       </div>
-    </div>
+    </footer>
   );
 }
 

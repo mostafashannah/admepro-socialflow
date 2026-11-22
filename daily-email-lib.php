@@ -14,7 +14,7 @@ if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVE
  */
 
 const DE_OWN_STAGE = ['graphic_designer' => 'design', 'video_editor' => 'design', 'motion_designer' => 'design', 'content_creator' => 'content_creation'];
-const DE_LOGO = 'https://admepro.com/wp-content/uploads/2024/10/adme-p2.png';
+const DE_LOGO = 'https://admepro.com/assets/img/brand/wordmark-email.png';
 
 function de_load(PDO $pdo, DateTimeZone $tz) {
     $now = new DateTime('now', $tz);

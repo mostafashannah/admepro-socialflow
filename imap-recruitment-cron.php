@@ -75,7 +75,7 @@ function email_base($content) {
 <tr><td align="center">
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb">
   <tr><td style="padding:32px 36px 0">
-    <img src="https://admepro.com/wp-content/uploads/2024/10/adme-p2.png" alt="Admepro" style="height:28px;width:auto"/>
+    <img src="https://admepro.com/assets/img/brand/wordmark-email.png" alt="Admepro" style="height:28px;width:auto"/>
   </td></tr>
   <tr><td style="padding:24px 36px 36px">'.$content.'</td></tr>
 </table>

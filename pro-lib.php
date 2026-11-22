@@ -1645,7 +1645,7 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
                         . '<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif">'
                         . '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px"><tr><td align="center">'
                         . '<table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb">'
-                        . '<tr><td style="padding:32px 36px 0"><img src="https://admepro.com/wp-content/uploads/2024/10/adme-p2.png" alt="Admepro" style="height:28px;width:auto"/></td></tr>'
+                        . '<tr><td style="padding:32px 36px 0"><img src="https://admepro.com/assets/img/brand/wordmark-email.png" alt="Admepro" style="height:28px;width:auto"/></td></tr>'
                         . '<tr><td style="padding:24px 36px 36px">'
                         . '<p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#d90b2c;text-transform:uppercase;letter-spacing:0.08em">' . htmlspecialchars($typeLabel) . ' Report</p>'
                         . '<h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">' . htmlspecialchars($clientName) . '</h2>'
