@@ -34174,7 +34174,7 @@ function WebsiteOverview() {
 // Generic list → editor shell for projects / posts / pages.
 // Where a project can be featured on the website, and how it is laid out there.
 const W_PLACE=[["home","Home page","Home"],["gcc","GCC & KSA portfolio","GCC"],["real_estate","Real estate portfolio","Real estate"],["retail","E-commerce & retail portfolio","Retail"]];
-const W_VIEW=[["auto","Auto · Triple (website default)"],["single","Single · 1 per row"],["double","Double · 2 per row"],["triple","Triple · 3 per row"]];
+const W_VIEW=[["auto","Auto · Triple (website default)"],["single","Single · 1 spot of 3"],["double","Double · 2 spots of 3"],["triple","Triple · full row (3 spots)"]];
 // Portfolio pages on the website are decided by TAGS: GCC = gcc, Real estate = real-estate, Retail = retail or e-commerce, AI content = ai-video-production.
 const W_PORT=[["gcc","GCC"],["real_estate","Real estate"],["retail","Retail"],["ai","AI content"]];
 const wMember=(tags,p)=>{ const t=(tags||[]).map(x=>String(x).toLowerCase()); return p==="gcc"?t.includes("gcc"):p==="real_estate"?t.includes("real-estate"):p==="retail"?(t.includes("retail")||t.includes("e-commerce")):p==="ai"?t.includes("ai-video-production"):false; };
@@ -34210,8 +34210,8 @@ function WProjectsTable({keys, items, feat, pf, sf, onOpen, reload}) {
   const movable = featMode ? rows.filter(k=>eff(k).fin[place]) : [];   // only projects in the new featured grid can be re-ordered
   const move = (from, to) => { if(from===to) return; const arr = [...movable]; const i = arr.indexOf(from), j = arr.indexOf(to); if(i<0||j<0) return; arr.splice(j,0,arr.splice(i,1)[0]);
     arr.forEach((kk,n) => { const cur = {...eff(kk).fin}; if(cur[place] && cur[place].order !== n+1) { cur[place] = {...cur[place], order:n+1}; edit(kk,{fin:cur}); } }); };
-  const layoutsFor = (n, v) => { const NAME = {1:"single",2:"double",3:"triple"}; if(v.indexOf("p:")!==0) return Array(n).fill(v);
-    const seq = v.slice(2).split(",").map(Number); const out = []; let gi = 0, left = seq[0]; for(let i=0;i<n;i++){ if(left===0){ gi=(gi+1)%seq.length; left=seq[gi]; } out.push(NAME[seq[gi]]); left--; } return out; };
+  const layoutsFor = (n, v) => { const NAME = {s:"single",d:"double",t:"triple"}; if(v.indexOf("p:")!==0) return Array(n).fill(v);
+    const seq = v.slice(2).split(","); return Array.from({length:n}, (_,i)=>NAME[seq[i%seq.length]]); };
   // Same view for a whole list, or a repeating pattern of rows (2 then 3 …). Only projects already featured first are touched.
   const applyViews = (v, places) => { if(!v) return; const next = {};
     places.forEach(p => { const list = allKeys.filter(k=>eff(k).fin[p]).sort((a,b)=>((eff(a).fin[p].order??99)-(eff(b).fin[p].order??99))||a.localeCompare(b)); const lays = layoutsFor(list.length, v);
@@ -34257,12 +34257,12 @@ function WProjectsTable({keys, items, feat, pf, sf, onOpen, reload}) {
         <span style={{fontSize:12,fontWeight:800}}>Views of everything featured first</span>
         <select value="" onChange={ev=>{ applyViews(ev.target.value, W_PLACE.map(x=>x[0])); ev.target.value=""; }} disabled={!loaded} style={{...wInput,width:"auto"}}>
           <option value="">All places…</option>
-          <option value="p:2,3">Pattern: rows of 2, then 3, then 2…</option><option value="p:3,2">Pattern: rows of 3, then 2</option><option value="p:1,2">Pattern: 1 big, then 2</option><option value="p:1,3">Pattern: 1 big, then 3</option><option value="p:1,2,3">Pattern: 1, then 2, then 3</option>
+          <option value="p:d,s,s,s,s,s,d,s,d,s,s,s">Pattern: like the site now (wide+small, 3 small…)</option><option value="p:d,s,s,d">Pattern: wide+small, small+wide</option><option value="p:t,d,s">Pattern: full row, then wide+small</option><option value="p:s">3 small per row (all Single)</option>
           <option value="single">All Single</option><option value="double">All Double</option><option value="triple">All Triple</option><option value="auto">All Auto (= Triple)</option>
         </select>
         {featMode&&<select value="" onChange={ev=>{ applyViews(ev.target.value, [place]); ev.target.value=""; }} style={{...wInput,width:"auto"}}>
           <option value="">Only {(W_PLACE.find(x=>x[0]===place)||[])[2]}…</option>
-          <option value="p:2,3">Pattern: rows of 2, then 3, then 2…</option><option value="p:3,2">Pattern: rows of 3, then 2</option><option value="p:1,2">Pattern: 1 big, then 2</option><option value="p:1,3">Pattern: 1 big, then 3</option><option value="p:1,2,3">Pattern: 1, then 2, then 3</option>
+          <option value="p:d,s,s,s,s,s,d,s,d,s,s,s">Pattern: like the site now (wide+small, 3 small…)</option><option value="p:d,s,s,d">Pattern: wide+small, small+wide</option><option value="p:t,d,s">Pattern: full row, then wide+small</option><option value="p:s">3 small per row (all Single)</option>
           <option value="single">All Single</option><option value="double">All Double</option><option value="triple">All Triple</option><option value="auto">All Auto (= Triple)</option>
         </select>}
         <span style={{fontSize:11,color:"var(--text3)"}}>Rows of 2 then 3 fill the 6-column grid exactly. Nothing is saved until you press Save &amp; publish all.</span>
@@ -34313,8 +34313,8 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
   const put = (k, fin, old) => setEdits(o => ({...o, [k]: {fin, old}}));
   const nextNo = p => 1 + allKeys.reduce((m,k)=>Math.max(m,(eff(k).fin[p]||{}).order||0), 0);
   const legacyRank = (() => { const ks = allKeys.filter(k=>{ const e = eff(k); return !e.fin.home && e.old; }).sort((a,b)=>(((feat[a]||{}).order??99)-((feat[b]||{}).order??99))||a.localeCompare(b)); const m = {}; ks.forEach((k,i)=>{ m[k]=i+1; }); return m; })();
-  // What the live home grid shows today: rows of 2, 3, 2, 2, 3 … (read from the site: Darjan+Cote, Kohi+MCM+Zen, Golds+Asus, TMG+Autogate, Skycorp+Elle+Moltobella).
-  const legacyLayOf = (k) => { const n = legacyRank[k]||1; const seq = [2,3,2,2,3]; let c = 0, gi = 0; while(c + seq[gi%seq.length] < n) { c += seq[gi%seq.length]; gi++; } return seq[gi%seq.length]===3 ? "triple" : "double"; };
+  // What the live home grid shows today (3 spots per row): [wide+small] [small×3] [small+wide] [small+wide] [small×3].
+  const legacyLayOf = (k) => ["double","single","single","single","single","single","double","single","double","single","single","single"][((legacyRank[k]||1)-1)%12];
   const state = (k, p) => { const e = eff(k); if(e.fin[p]) return {on:true, order:e.fin[p].order, layout:e.fin[p].layout||"auto", legacy:false}; if(p==="home" && e.old) return {on:true, legacy:true, order:legacyRank[k], layout:legacyLayOf(k)}; return {on:false}; };
   const toggle = (k, p, on) => { const e = eff(k); const fin = {...e.fin};
     if(on) { fin[p] = {order:nextNo(p), layout:"double"}; put(k, fin, p==="home" ? false : e.old); }
@@ -34342,7 +34342,7 @@ function WProjectsSimple({keys, items, feat, onOpen, reload}) {
         {nEdits===0&&msg&&<button onClick={()=>setMsg(null)} style={wBtn(false)}>OK</button>}
       </div>}
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{PL.map(([p,lb])=><button key={p} onClick={()=>setPlace(p)} style={{...gPillW(place===p)}}>{lb} <span style={{opacity:.7}}>· {count(p)}</span></button>)}</div>
-      <p style={{fontSize:12,color:"var(--text2)"}}>Tick the projects that should be shown on <b>{(PL.find(x=>x[0]===place)||[])[1]}</b>. <b>No.</b> is the order (1 comes first). <b>Single</b> = one big card per row, <b>Double</b> = two per row.</p>
+      <p style={{fontSize:12,color:"var(--text2)"}}>Tick the projects that should be shown on <b>{(PL.find(x=>x[0]===place)||[])[1]}</b>. <b>No.</b> is the order (1 comes first). Each row has <b>3 spots</b>: <b>Single</b> = takes 1 spot, <b>Double</b> = takes 2 spots, <b>Triple</b> = takes the whole row.</p>
       <div style={{display:"flex",flexDirection:"column"}}>
         {rows.map(k=>{ const s = state(k, place); const f = feat[k] || {}; const lay = s.layout==="auto" ? "triple" : s.layout; return (
           <div key={k} style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",padding:"9px 6px",borderBottom:"1px solid var(--border)",opacity:s.on?1:0.6,background:s.on?"transparent":"transparent"}}>
@@ -34521,7 +34521,7 @@ function WebsiteProjects({root}) {
                   <select value={p.layout||"auto"} onChange={e=>setPlace(k,{layout:e.target.value})} style={{...wInput,flex:1,minWidth:0}}>{W_VIEW.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>
                 </div>}
               </div>; })}
-              <p style={{fontSize:11,color:"var(--text3)"}}>Position 1 shows first in that place. Auto lets the website decide. Single is one big card per row, double is two, triple is three. Press Save &amp; publish to apply.</p>
+              <p style={{fontSize:11,color:"var(--text3)"}}>Position 1 shows first in that place. Auto lets the website decide. Each row has 3 spots: single takes 1, double takes 2, triple takes the whole row. Press Save &amp; publish to apply.</p>
             </div>
             <div><span style={wLabel}>Global order (lower = first)</span><p style={{fontSize:10,color:"var(--text3)",marginBottom:3}}>Sorts the whole site (portfolio, prev/next, old home grid). Use the featured positions above for placement.</p><input type="number" value={d.order??99} onChange={e=>set("order",Number(e.target.value))} style={wInput}/></div>
             <div><span style={wLabel}>Date</span><input type="date" value={d.date||""} onChange={e=>set("date",e.target.value)} style={wInput}/></div>
