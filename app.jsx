@@ -7272,7 +7272,9 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
       msg: results.map(r=>`${platformLabel(r.platform)}: ${r.ok?"✓ published":"✗ "+(r.msg||"failed")}`).join("  ·  ")
         + (stillMissing.length ? `  ·  Still needs: ${stillMissing.map(platformLabel).join(", ")} — click Publish again once fixed.` : ""),
     });
-    if(nowPublished.length) await ue("Post", post.id, {published_platforms: JSON.stringify(nowPublished), platform_post_ids: JSON.stringify(platformPostIds), ...(firstOkId?{external_post_id:firstOkId}:{})}).catch(()=>{});
+    // keep each failed platform's reason on the post, so it still shows after the stage changes
+    const savedErrs = {}; results.filter(r=>!r.ok).forEach(r=>{ savedErrs[r.platform] = r.msg||"Publish failed"; });
+    if(nowPublished.length || Object.keys(savedErrs).length) await ue("Post", post.id, {published_platforms: JSON.stringify(nowPublished), platform_post_ids: JSON.stringify(platformPostIds), publish_error: Object.keys(savedErrs).length ? JSON.stringify(savedErrs) : null, ...(firstOkId?{external_post_id:firstOkId}:{})}).catch(()=>{});
     if(!stillMissing.length) onStageChange(post, "published");
     setPublishing(false);
   };
@@ -7311,10 +7313,14 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   };
 
   // A published post that did not reach every platform: list the failed ones with the reason, and republish just that platform.
-  const [rePub, setRePub] = useState({});
+  const [rePub, setRePub] = useState({}); const [logReasons, setLogReasons] = useState({});
   const failedPlatforms = post.stage==="published" ? allPostPlatforms.filter(pl=>!alreadyPublishedPlatforms.includes(pl)) : [];
   const peMap = (()=>{ let pe = null; try { pe = typeof post.publish_error==="string" && post.publish_error ? JSON.parse(post.publish_error) : post.publish_error; } catch(e) {} return pe && typeof pe==="object" ? pe : {}; })();
   const peText = pl => { const err = peMap[pl]; if(!err) return ""; if(typeof err==="string") return err; const m = err?.error?.message || err?.error || err?.detail?.error?.message || err?.detail?.error || err?.message || ""; return (typeof m==="string" ? m : JSON.stringify(m||err)).slice(0,400); };
+  // Older posts have no saved reason: read it from the auto-publisher's log.
+  useEffect(()=>{ if(post.stage!=="published" || !failedPlatforms.length || failedPlatforms.every(pl=>peText(pl))) return; let live = true;
+    fetch("/publish-reason.php?post_id="+encodeURIComponent(post.id)).then(r=>r.ok?r.json():null).then(j=>{ if(live && j?.reasons) setLogReasons(j.reasons); }).catch(()=>{});
+    return ()=>{ live = false; }; },[post.id, post.stage, failedPlatforms.join(","), post.publish_error]); // eslint-disable-line react-hooks/exhaustive-deps
   const republishPlatform = async (pl) => {
     const integ = findIntegrationForPlatform(pl); if(!integ) return;
     if(!post.caption && !post.hashtags) { setRePub(s=>({...s,[pl]:{err:"This post has no caption yet — add one first."}})); return; }
@@ -7925,7 +7931,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
           <div style={{padding:"12px 14px",background:"#ef444410",border:"1px solid #ef444455",borderRadius:"var(--rs)",display:"flex",flexDirection:"column",gap:10}}>
             <p style={{fontSize:11,fontWeight:800,color:"#ef4444",letterSpacing:"0.06em",textTransform:"uppercase",margin:0}}>⚠ Published with errors — {failedPlatforms.length} platform{failedPlatforms.length===1?"":"s"} failed</p>
             {alreadyPublishedPlatforms.length>0&&<p style={{fontSize:12,color:"var(--text2)",margin:0}}>✓ Live on: {alreadyPublishedPlatforms.map(pl=>({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"X",tiktok:"TikTok"}[pl]||pl)).join(", ")}</p>}
-            {failedPlatforms.map(pl=>{ const nm = {instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"X",tiktok:"TikTok"}[pl]||pl; const st = rePub[pl]||{}; const integ = findIntegrationForPlatform(pl); const reason = st.err || peText(pl) || "No reason was recorded for this failure.";
+            {failedPlatforms.map(pl=>{ const nm = {instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"X",tiktok:"TikTok"}[pl]||pl; const st = rePub[pl]||{}; const integ = findIntegrationForPlatform(pl); const reason = st.err || peText(pl) || logReasons[pl] || "No error was saved for this platform (it was moved to Published by hand, or the automatic publisher never tried it). Press Republish: if it fails, the real reason shows here.";
               return (<div key={pl} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:"10px 12px",display:"flex",flexDirection:"column",gap:6}}>
                 <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                   <PChip platform={pl} xs/><span style={{fontSize:13,fontWeight:700}}>{nm}</span><span style={{flex:1}}/>
