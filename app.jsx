@@ -4746,6 +4746,7 @@ function PostCard({post,project,team,onClick}) {
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <div style={{width:7,height:7,borderRadius:"50%",background:stage.color}}/>
           <span style={{fontSize:11,color:"var(--text2)",fontWeight:600}}>{stage.label}</span>
+          {(()=>{ if(post.stage!=="published") return null; const all = (Array.isArray(post.platforms)?post.platforms:parseJ(post.platforms||"[]")); const done = (Array.isArray(post.published_platforms)?post.published_platforms:parseJ(post.published_platforms||"[]")); const miss = (all.length?all:[post.platform]).filter(Boolean).filter(pl=>!done.includes(pl)); return miss.length ? <span title={"Not published on: "+miss.join(", ")} style={{fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:99,background:"#ef444422",color:"#ef4444"}}>⚠ {miss.length} failed</span> : null; })()}
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {post.scheduled_date&&<span style={{fontSize:10,color:"var(--text3)"}}>{fmtDate(post.scheduled_date)}</span>}
@@ -7309,6 +7310,34 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
     setPublishingExtra(false);
   };
 
+  // A published post that did not reach every platform: list the failed ones with the reason, and republish just that platform.
+  const [rePub, setRePub] = useState({});
+  const failedPlatforms = post.stage==="published" ? allPostPlatforms.filter(pl=>!alreadyPublishedPlatforms.includes(pl)) : [];
+  const peMap = (()=>{ let pe = null; try { pe = typeof post.publish_error==="string" && post.publish_error ? JSON.parse(post.publish_error) : post.publish_error; } catch(e) {} return pe && typeof pe==="object" ? pe : {}; })();
+  const peText = pl => { const err = peMap[pl]; if(!err) return ""; if(typeof err==="string") return err; const m = err?.error?.message || err?.error || err?.detail?.error?.message || err?.detail?.error || err?.message || ""; return (typeof m==="string" ? m : JSON.stringify(m||err)).slice(0,400); };
+  const republishPlatform = async (pl) => {
+    const integ = findIntegrationForPlatform(pl); if(!integ) return;
+    if(!post.caption && !post.hashtags) { setRePub(s=>({...s,[pl]:{err:"This post has no caption yet — add one first."}})); return; }
+    setRePub(s=>({...s,[pl]:{busy:true}}));
+    try {
+      const res = await publishPost(post, integ, null);
+      const postId = res.video_id || res.id || res.post_id || res.creation_id;
+      const nowPublished = [...new Set([...alreadyPublishedPlatforms, pl])];
+      const ids = {...(post.platform_post_ids ? (typeof post.platform_post_ids==="string"?parseJ(post.platform_post_ids,{}):post.platform_post_ids) : {})}; if(postId) ids[pl] = postId;
+      const nextErr = {...peMap}; delete nextErr[pl];
+      const patch = {published_platforms:JSON.stringify(nowPublished), platform_post_ids:JSON.stringify(ids), publish_error:Object.keys(nextErr).length?JSON.stringify(nextErr):null};
+      await ue("Post", post.id, patch).catch(()=>{});
+      onEdit&&onEdit({...post, published_platforms:nowPublished, platform_post_ids:ids, publish_error:patch.publish_error});
+      setRePub(s=>({...s,[pl]:{ok:true}}));
+    } catch(e) {
+      const msg = e.message || "Publish failed";
+      const nextErr = {...peMap, [pl]:msg};
+      await ue("Post", post.id, {publish_error:JSON.stringify(nextErr)}).catch(()=>{});
+      onEdit&&onEdit({...post, publish_error:JSON.stringify(nextErr)});
+      setRePub(s=>({...s,[pl]:{err:msg}}));
+    }
+  };
+
   const handlePublishTikTok = async () => {
     if(!socialIntegration || socialIntegration.app_key!=="tiktok" || !tkCanPublish) return;
     setPublishing(true); setPublishResult(null);
@@ -8382,6 +8411,24 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
             );
           })()}
           {post.stage==="client_approval"&&<ClientApprovalLinkCard post={post} client={client} currentUser={currentUser}/>}
+          {post.stage==="published" && failedPlatforms.length>0 && (
+            <div style={{padding:"12px 14px",background:"#ef444410",border:"1px solid #ef444455",borderRadius:"var(--rs)",display:"flex",flexDirection:"column",gap:10}}>
+              <p style={{fontSize:11,fontWeight:800,color:"#ef4444",letterSpacing:"0.06em",textTransform:"uppercase",margin:0}}>⚠ Published with errors — {failedPlatforms.length} platform{failedPlatforms.length===1?"":"s"} failed</p>
+              {alreadyPublishedPlatforms.length>0&&<p style={{fontSize:12,color:"var(--text2)",margin:0}}>✓ Live on: {alreadyPublishedPlatforms.map(pl=>({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"X",tiktok:"TikTok"}[pl]||pl)).join(", ")}</p>}
+              {failedPlatforms.map(pl=>{ const nm = {instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"X",tiktok:"TikTok"}[pl]||pl; const st = rePub[pl]||{}; const integ = findIntegrationForPlatform(pl); const reason = st.err || peText(pl) || "No reason was recorded for this failure.";
+                return (<div key={pl} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:"10px 12px",display:"flex",flexDirection:"column",gap:6}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                    <PChip platform={pl} xs/><span style={{fontSize:13,fontWeight:700}}>{nm}</span><span style={{flex:1}}/>
+                    {st.ok ? <span style={{fontSize:12,fontWeight:700,color:"#10b981"}}>✓ Published</span>
+                      : pl==="tiktok" ? <span style={{fontSize:11,color:"var(--text3)"}}>Use the TikTok publish button (it needs its own options)</span>
+                      : !integ ? <span style={{fontSize:11,color:"var(--text3)"}}>Connect {nm} in Settings → Integrations first</span>
+                      : <button onClick={()=>republishPlatform(pl)} disabled={!!st.busy} style={{padding:"5px 12px",borderRadius:99,border:"1px solid #ef444477",background:st.busy?"var(--surface2)":"#ef444418",color:"#ef4444",fontSize:12,fontWeight:800,cursor:st.busy?"default":"pointer"}}>{st.busy?"Publishing…":`↻ Republish on ${nm}`}</button>}
+                  </div>
+                  {!st.ok&&<p style={{fontSize:12,color:"var(--text2)",margin:0,lineHeight:1.5,wordBreak:"break-word"}}><b>Why it failed:</b> {reason}</p>}
+                </div>); })}
+              <p style={{fontSize:11,color:"var(--text3)",margin:0}}>Fix what the reason says (token, caption length, image, connection), then republish only that platform. Platforms that are already live are never sent again.</p>
+            </div>
+          )}
           {/* Warnings: things that stop this post reaching a platform, shown before anyone is surprised by them */}
           {(()=>{
             const nm = pl => ({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"X",tiktok:"TikTok"}[pl]||pl);
@@ -8389,10 +8436,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
             const xText = (post.x_caption||"").trim() || [post.caption,post.hashtags].filter(Boolean).join("\n\n");
             if(allPostPlatforms.includes("twitter") && !alreadyPublishedPlatforms.includes("twitter") && xText.length>280)
               warns.push(`X: the text is ${xText.length} characters and X allows 280. Add a short "X caption" (Edit caption).`);
-            if(post.stage==="published"){
-              const miss = allPostPlatforms.filter(pl=>!alreadyPublishedPlatforms.includes(pl));
-              if(miss.length) warns.push(`Marked Published, but it was never sent to: ${miss.map(nm).join(", ")}.`);
-            }
+            // (a published post that missed a platform now has its own "Published with errors" panel above)
             if(post.stage==="scheduled"){
               if(!String(post.scheduled_date||"").trim()) warns.push("No scheduled date: the auto-publisher skips this post. Set a date and time, or publish it manually.");
               if(!allPostPlatforms.length) warns.push("No platform is selected, so it can't be published automatically.");

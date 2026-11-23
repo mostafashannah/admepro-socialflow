@@ -348,13 +348,20 @@ foreach ($due as $post) {
         // 3-try cutoff, and only for the platform(s) still failing.
         // A video Instagram rejected fails identically every time: give up now instead of repeating it three times.
         $hardFail = false; foreach ($errorsByPlatform as $e) { if (strpos(json_encode($e), 'rejected the reel video') !== false) $hardFail = true; }
+        // Part of the post already went out: a platform with no connection can't be retried by itself either, so record why.
+        if ($alreadyDone) foreach ($stillMissing as $miss) { if (!isset($errorsByPlatform[$miss])) $errorsByPlatform[$miss] = ['error' => 'No active ' . $miss . ' connection for this client (Settings → Integrations)']; }
         $newAttempts = $hardFail ? 3 : $attempts + ($errorsByPlatform ? 1 : 0);
-        $upd = $pdo->prepare("UPDATE posts SET publish_attempts = :att, publish_error = :err, published_platforms = :pp, platform_post_ids = :ppi WHERE id = :id");
-        $upd->execute([
+        // After the last automatic attempt, if at least one platform is live the post moves to Published; the platforms that
+        // failed stay in publish_error so the card shows them (with a button to republish just those).
+        $partlyDone = ($newAttempts >= 3 && $errorsByPlatform && $alreadyDone);
+        $upd = $pdo->prepare("UPDATE posts SET publish_attempts = :att, publish_error = :err, published_platforms = :pp, platform_post_ids = :ppi" . ($partlyDone ? ", stage = 'published', published_at = COALESCE(published_at, :now), external_post_id = COALESCE(external_post_id, :ext)" : "") . " WHERE id = :id");
+        $params = [
             ':att' => $newAttempts, ':err' => json_encode($errorsByPlatform),   // waiting for a reel is not a failed attempt
             ':pp' => json_encode(array_values(array_unique($alreadyDone))),
             ':ppi' => json_encode($platformPostIds), ':id' => $post['id'],
-        ]);
+        ];
+        if ($partlyDone) { $params[':now'] = $now->format('Y-m-d H:i:s'); $params[':ext'] = $lastExtId ?: ($platformPostIds ? reset($platformPostIds) : null); }
+        $upd->execute($params);
         if ($newAttempts >= 3 && $errorsByPlatform && $attempts < 3) paNotifyGaveUp($pdo, $post, $errorsByPlatform, array_values(array_unique($alreadyDone)));
     }
   } catch (Throwable $e) {
