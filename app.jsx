@@ -20160,7 +20160,8 @@ function ClientIntegrationsSubTab({client, integrations, integrationLogs, curren
   const [editTrello, setEditTrello] = useState(null);
   const isAdmin = currentUser?.role==="admin";
   const canAdd = isAdmin || ["account_manager","account_director","account_executive"].includes(currentUser?.role);
-  const canEdit = canAdd; // AMs manage their own clients' integrations day-to-day; Delete/Retry stay admin-only below.
+  const canEdit = canAdd; // AMs manage their own clients' integrations day-to-day; Retry stays admin-only below.
+  const canDelete = isAdmin || currentUser?.role==="account_director"; // account directors can also delete an integration
   const clientIntegrations = (integrations||[]).filter(i=>i.client_id===client.id);
 
   return (
@@ -20213,9 +20214,9 @@ function ClientIntegrationsSubTab({client, integrations, integrationLogs, curren
                     <Ico d={Icons.edit} size={13} stroke="var(--text2)"/>
                   </button>
                 )}
-                {isAdmin&&(
+                {(isAdmin||canDelete)&&(
                   <>
-                    {integ.status==="error"&&onRetry&&(
+                    {isAdmin&&integ.status==="error"&&onRetry&&(
                       <button onClick={()=>onRetry(integ)} title="Retry" style={{width:30,height:30,borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
                         <Ico d={Icons.refresh} size={13} stroke="var(--text2)"/>
                       </button>
