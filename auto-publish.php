@@ -172,6 +172,11 @@ foreach ($due as $post) {
     $message       = trim(($post['caption'] ?? '') . "\n\n" . ($post['hashtags'] ?? ''));
     // X has its own short caption (280-character limit); the main caption + hashtags only if none was written.
     if ($platform === 'twitter' && trim((string)($post['x_caption'] ?? '')) !== '') $message = trim($post['x_caption']);
+    // No X caption and the main one is too long: let Sara summarise it for X (and keep it on the post), instead of failing at 280.
+    if ($platform === 'twitter' && trim((string)($post['x_caption'] ?? '')) === '' && mb_strlen($message) > 280) {
+        $xc = x_caption_summarize($pdo, $post, $message);
+        if ($xc !== null) { $message = $xc; try { $pdo->prepare("UPDATE posts SET x_caption = :x WHERE id = :id")->execute([':x' => $xc, ':id' => $post['id']]); } catch (Throwable $e) {} }
+    }
     // Use the LAST file added, not the first — matches publishPost() in app.jsx:
     // when a task has multiple attachments (revisions/replacements), the most
     // recently added one is the intended final version to actually publish.
@@ -372,6 +377,30 @@ echo json_encode(['checked' => count($due), 'published' => count($results), 'res
 // publishes happen here via cron, never through the browser, so the
 // frontend hook alone would miss almost everything that actually goes live.
 // Best-effort: any failure here must never break the publish loop above.
+/** Sara shortens a long post into one X post (max 270 characters, same language and tone). Returns null if the AI is unavailable. */
+function x_caption_summarize(PDO $pdo, array $post, string $message): ?string {
+    try {
+        if (!defined('ANTHROPIC_API_KEY') || ANTHROPIC_API_KEY === 'YOUR_ANTHROPIC_API_KEY_HERE') return null;
+        $brand = '';
+        if (!empty($post['client_id'])) {
+            $st = $pdo->prepare("SELECT tone, dos, donts FROM client_knowledge WHERE client_id = :c LIMIT 1"); $st->execute([':c' => $post['client_id']]);
+            if ($k = $st->fetch(PDO::FETCH_ASSOC)) $brand = "Brand tone: " . ($k['tone'] ?? '') . "\nDo: " . ($k['dos'] ?? '') . "\nDon't: " . ($k['donts'] ?? '') . "\n";
+        }
+        $prompt = "You are Sara, the agency's senior content creator. Rewrite the post below as ONE X (Twitter) post: summarise the main message, keep the same language (Arabic stays Arabic) and the client's tone, keep the key hook / offer / call to action and any phone number or link that must stay. At most 270 characters INCLUDING hashtags; at most 2 hashtags (only if the original has hashtags); no markdown, no quotation marks; do not add facts. Return ONLY the post text.\n\n{$brand}ORIGINAL:\n{$message}";
+        $ch = curl_init('https://api.anthropic.com/v1/messages');
+        curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode(['model' => 'claude-sonnet-5-5', 'max_tokens' => 400, 'messages' => [['role' => 'user', 'content' => $prompt]]]),
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 40, CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_HTTPHEADER => ['x-api-key: ' . ANTHROPIC_API_KEY, 'anthropic-version: 2023-06-01', 'Content-Type: application/json']]);
+        $res = curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+        if ($code < 200 || $code >= 300 || !$res) return null;
+        $t = ''; foreach ((json_decode($res, true)['content'] ?? []) as $b) $t .= $b['text'] ?? '';
+        $t = trim(trim($t), "\"“” \n");
+        if ($t === '') return null;
+        if (mb_strlen($t) > 280) $t = rtrim(mb_substr($t, 0, 277)) . '…';
+        return $t;
+    } catch (Throwable $e) { return null; }
+}
+
 function sara_learn_from_publish(PDO $pdo, array $post, string $platform): void {
     try {
         $clientId = $post['client_id'] ?? '';

@@ -2813,13 +2813,18 @@ async function publishPost(post, integration, tiktokOptions=null) {
   const storyUrl = integration.app_key==="instagram" ? (designAssets.find(a=>a.kind==="story")?.url || "") : "";
   // carousel_cover holds the reel cover image URL (set in AddPostModal).
   const coverUrl = (post.post_type==="reel"||post.post_type==="video") ? (post.carousel_cover||"") : "";
+  let publishMessage = (integration.app_key==="twitter" && (post.x_caption||"").trim()) ? post.x_caption.trim() : [post.caption, post.hashtags].filter(Boolean).join("\n\n");
+  // X: no X caption and the main one is too long -> Sara summarises it for X instead of failing at 280.
+  if(integration.app_key==="twitter" && !(post.x_caption||"").trim() && publishMessage.length>280) {
+    try { const t = await saraXCaption({caption:post.caption, hashtags:post.hashtags, clientId:post.client_id, clientName:post.client_name, title:post.title}); if(t) publishMessage = t; } catch(e) {}
+  }
   const r = await fetch(PUBLISH_ENDPOINT, {
     method:"POST", headers:{"Content-Type":"application/json",apikey:SB_KEY},
     body: JSON.stringify({
       platform: integration.app_key,
       page_id: creds.page_id||"",
       access_token: creds.access_token||"",
-      message: (integration.app_key==="twitter" && (post.x_caption||"").trim()) ? post.x_caption.trim() : [post.caption, post.hashtags].filter(Boolean).join("\n\n"),
+      message: publishMessage,
       image_url: imageUrl,
       image_urls: carouselUrls.length>1 ? carouselUrls : undefined,
       story_image_url: storyUrl,
@@ -2937,6 +2942,19 @@ FORMATTING — this is rendered as markdown, so use it: short paragraphs, "**bol
 // Read the live team-wide agent config; App() mirrors app_settings.ai_agents
 // into this global whenever settings load/change, so non-React helpers
 // (agentAI below) can read it without prop-drilling.
+// Sara shortens a post into one X post (max 270 chars incl. hashtags), same language + the client's tone from the Client Brain.
+async function saraXCaption({caption, hashtags, clientId, clientName, title}) {
+  const src = [caption, hashtags].filter(Boolean).join("\n\n").trim(); if(!src) return "";
+  const raw = await agentAI("content_creator", "X caption: "+(title||""), `You are Sara, the agency's senior content creator.
+${clientBrainBlock(clientId, clientName, title||"")}
+Rewrite the post below as ONE X (Twitter) post: summarise the main message, keep the same language (Arabic stays Arabic) and the client's tone, keep the key hook / offer / call to action and any phone number or link that must stay. At most 270 characters INCLUDING hashtags; at most 2 hashtags (only if the original has hashtags); no markdown, no quotation marks; do not add facts. Return ONLY the post text.
+
+ORIGINAL:
+${src}`, 400);
+  let t = String(raw||"").trim().replace(/^["“”]+|["“”]+$/g,"").trim();
+  if(t.length>280) t = t.slice(0,277).replace(/\s+\S*$/,"")+"…";
+  return t;
+}
 function getAgentCfg(agentId){
   try { return (window.__SF_AI_AGENTS||{})[agentId]||{}; } catch(e){ return {}; }
 }
@@ -6940,6 +6958,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   // post in Internal Review or Design — they're the ones expected to tweak
   // wording during review, so making them click "Edit" first every time was
   // just an extra step for no reason.
+  const [xGen, setXGen] = useState(false);
   const [captionInlineEdit, setCaptionInlineEdit] = useState(()=>isManager && ["internal_review","design"].includes(post.stage));
   const [captionDraft, setCaptionDraft] = useState(()=>({caption:post.caption||"",hashtags:post.hashtags||"",text_on_visual:post.text_on_visual||"",reel_hook:post.reel_hook||""}));
   const [publishing, setPublishing] = useState(false);
@@ -7923,7 +7942,8 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                     </div>
                     {(Array.isArray(post.platforms)?post.platforms:parseJ(post.platforms||"[]")).includes("twitter")&&(
                       <div>
-                        <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:5}}>X caption (max 280)</p>
+                        <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:5,display:"flex",alignItems:"center",gap:10}}>X caption (max 280)
+                          <button type="button" disabled={xGen||!(captionDraft.caption||"").trim()} onClick={async()=>{ setXGen(true); try { const t = await saraXCaption({caption:captionDraft.caption, hashtags:captionDraft.hashtags, clientId:post.client_id, clientName:post.client_name, title:post.title}); if(t) setCaptionDraft(d=>({...d,x_caption:t})); } catch(e) {} setXGen(false); }} style={{textTransform:"none",letterSpacing:0,padding:"2px 10px",borderRadius:99,border:"1px solid var(--border2)",background:"transparent",color:"var(--text2)",fontSize:11,fontWeight:700,cursor:xGen?"default":"pointer"}}>{xGen?"Sara is writing…":"✨ Sara: make it from the caption"}</button></p>
                         <textarea value={captionDraft.x_caption||""} onChange={e=>setCaptionDraft(d=>({...d,x_caption:e.target.value}))} rows={3} style={{width:"100%",fontSize:13,lineHeight:1.6,color:"var(--text)",background:"var(--surface)",border:`1px solid ${(captionDraft.x_caption||captionDraft.caption||"").length>280?"#ef4444":"var(--border2)"}`,borderRadius:6,padding:"8px 10px"}}/>
                         <div style={{fontSize:11,fontWeight:700,marginTop:3,color:(captionDraft.x_caption||captionDraft.caption||"").length>280?"#ef4444":"var(--text3)"}}>{(captionDraft.x_caption||captionDraft.caption||"").length} / 280</div>
                       </div>
@@ -9167,6 +9187,10 @@ Return ONLY valid JSON (no markdown):
   // X allows 280 characters: when X is one of the platforms it gets its own caption (or the main one must already fit).
   const xText = (f.x_caption||"").trim() ? f.x_caption : f.caption;
   const xOk = !f.platforms.includes("twitter") || xText.trim().length<=280;
+  // X caption by Sara: filled automatically when the main caption is too long for X, or on demand with the button.
+  const [xBusy, setXBusy] = useState(false); const xEditedRef = useRef(false);
+  const genX = async () => { if(!f.caption.trim()) return; setXBusy(true); try { const pj = projects.find(p=>p.id===f.project_id); const t = await saraXCaption({caption:f.caption, clientId:pj?.client_id, clientName:pj?.client_name, title:f.title}); if(t) { xEditedRef.current = true; s("x_caption", t); } } catch(e) {} setXBusy(false); };
+  useEffect(()=>{ if(!f.platforms.includes("twitter") || xEditedRef.current) return; if(f.caption.trim().length<=280 || (f.x_caption||"").trim()) return; const t = setTimeout(()=>{ genX(); }, 1500); return ()=>clearTimeout(t); },[f.caption, f.platforms.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
   const canSubmit = f.content_mode==="ready"
     ? f.title.trim()&&f.project_id&&f.caption.trim()&&f.platforms.length&&(f.publish_mode!=="schedule"||(f.scheduled_date&&f.scheduled_time))&&!needsInstaCover&&xOk
     : f.title.trim()&&f.project_id&&f.platforms.length&&(!f.scheduled_date||f.scheduled_time);
@@ -9349,7 +9373,8 @@ Return ONLY valid JSON (no markdown):
                 </Field>
                 {f.platforms.includes("twitter")&&(
                   <Field label="X caption (max 280 characters)" hint="X has its own caption so it never exceeds the limit. If you leave it empty the main caption is used, and it must be 280 characters or fewer.">
-                    <textarea value={f.x_caption||""} onChange={e=>s("x_caption",e.target.value)} rows={3} placeholder="Short version for X…" style={{...inputSt,resize:"vertical",borderColor:xOk?undefined:"#ef4444"}}/>
+                    <textarea value={f.x_caption||""} onChange={e=>{ xEditedRef.current = true; s("x_caption",e.target.value); }} rows={3} placeholder="Short version for X (Sara writes it for you when the main caption is too long)…" style={{...inputSt,resize:"vertical",borderColor:xOk?undefined:"#ef4444"}}/>
+                    <button type="button" onClick={genX} disabled={xBusy||!f.caption.trim()} style={{marginTop:6,padding:"4px 12px",borderRadius:99,border:"1px solid var(--border2)",background:"transparent",color:"var(--text2)",fontSize:12,fontWeight:700,cursor:xBusy?"default":"pointer"}}>{xBusy?"Sara is writing…":"✨ Sara: make it from the main caption"}</button>
                     <div style={{fontSize:11,marginTop:4,fontWeight:700,color:xOk?"var(--text3)":"#ef4444"}}>
                       {(xText||"").trim().length} / 280{!xOk?" — too long for X: shorten it or write an X caption above":""}
                     </div>
