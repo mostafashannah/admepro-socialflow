@@ -7921,6 +7921,24 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
             which stage, at what time, and who it landed with), so this stayed
             a duplicate of the log rather than a distinct source of truth. */}
 
+        {post.stage==="published" && failedPlatforms.length>0 && (
+          <div style={{padding:"12px 14px",background:"#ef444410",border:"1px solid #ef444455",borderRadius:"var(--rs)",display:"flex",flexDirection:"column",gap:10}}>
+            <p style={{fontSize:11,fontWeight:800,color:"#ef4444",letterSpacing:"0.06em",textTransform:"uppercase",margin:0}}>⚠ Published with errors — {failedPlatforms.length} platform{failedPlatforms.length===1?"":"s"} failed</p>
+            {alreadyPublishedPlatforms.length>0&&<p style={{fontSize:12,color:"var(--text2)",margin:0}}>✓ Live on: {alreadyPublishedPlatforms.map(pl=>({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"X",tiktok:"TikTok"}[pl]||pl)).join(", ")}</p>}
+            {failedPlatforms.map(pl=>{ const nm = {instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"X",tiktok:"TikTok"}[pl]||pl; const st = rePub[pl]||{}; const integ = findIntegrationForPlatform(pl); const reason = st.err || peText(pl) || "No reason was recorded for this failure.";
+              return (<div key={pl} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:"10px 12px",display:"flex",flexDirection:"column",gap:6}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                  <PChip platform={pl} xs/><span style={{fontSize:13,fontWeight:700}}>{nm}</span><span style={{flex:1}}/>
+                  {st.ok ? <span style={{fontSize:12,fontWeight:700,color:"#10b981"}}>✓ Published</span>
+                    : pl==="tiktok" ? <span style={{fontSize:11,color:"var(--text3)"}}>Use the TikTok publish button (it needs its own options)</span>
+                    : !integ ? <span style={{fontSize:11,color:"var(--text3)"}}>Connect {nm} in Settings → Integrations first</span>
+                    : <button onClick={()=>republishPlatform(pl)} disabled={!!st.busy} style={{padding:"5px 12px",borderRadius:99,border:"1px solid #ef444477",background:st.busy?"var(--surface2)":"#ef444418",color:"#ef4444",fontSize:12,fontWeight:800,cursor:st.busy?"default":"pointer"}}>{st.busy?"Publishing…":`↻ Republish on ${nm}`}</button>}
+                </div>
+                {!st.ok&&<p style={{fontSize:12,color:"var(--text2)",margin:0,lineHeight:1.5,wordBreak:"break-word"}}><b>Why it failed:</b> {reason}</p>}
+              </div>); })}
+            <p style={{fontSize:11,color:"var(--text3)",margin:0}}>Fix what the reason says (token, caption length, image, connection), then republish only that platform. Platforms that are already live are never sent again.</p>
+          </div>
+        )}
         {/* Post preview: always shows the final file(s) that will be posted; a carousel shows every slide, numbered in posting order. */}
         {!editing&&post.stage!=="content_creation"&&<PostFinalPreview post={post}/>}
 
@@ -8411,24 +8429,6 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
             );
           })()}
           {post.stage==="client_approval"&&<ClientApprovalLinkCard post={post} client={client} currentUser={currentUser}/>}
-          {post.stage==="published" && failedPlatforms.length>0 && (
-            <div style={{padding:"12px 14px",background:"#ef444410",border:"1px solid #ef444455",borderRadius:"var(--rs)",display:"flex",flexDirection:"column",gap:10}}>
-              <p style={{fontSize:11,fontWeight:800,color:"#ef4444",letterSpacing:"0.06em",textTransform:"uppercase",margin:0}}>⚠ Published with errors — {failedPlatforms.length} platform{failedPlatforms.length===1?"":"s"} failed</p>
-              {alreadyPublishedPlatforms.length>0&&<p style={{fontSize:12,color:"var(--text2)",margin:0}}>✓ Live on: {alreadyPublishedPlatforms.map(pl=>({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"X",tiktok:"TikTok"}[pl]||pl)).join(", ")}</p>}
-              {failedPlatforms.map(pl=>{ const nm = {instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"X",tiktok:"TikTok"}[pl]||pl; const st = rePub[pl]||{}; const integ = findIntegrationForPlatform(pl); const reason = st.err || peText(pl) || "No reason was recorded for this failure.";
-                return (<div key={pl} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:"10px 12px",display:"flex",flexDirection:"column",gap:6}}>
-                  <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                    <PChip platform={pl} xs/><span style={{fontSize:13,fontWeight:700}}>{nm}</span><span style={{flex:1}}/>
-                    {st.ok ? <span style={{fontSize:12,fontWeight:700,color:"#10b981"}}>✓ Published</span>
-                      : pl==="tiktok" ? <span style={{fontSize:11,color:"var(--text3)"}}>Use the TikTok publish button (it needs its own options)</span>
-                      : !integ ? <span style={{fontSize:11,color:"var(--text3)"}}>Connect {nm} in Settings → Integrations first</span>
-                      : <button onClick={()=>republishPlatform(pl)} disabled={!!st.busy} style={{padding:"5px 12px",borderRadius:99,border:"1px solid #ef444477",background:st.busy?"var(--surface2)":"#ef444418",color:"#ef4444",fontSize:12,fontWeight:800,cursor:st.busy?"default":"pointer"}}>{st.busy?"Publishing…":`↻ Republish on ${nm}`}</button>}
-                  </div>
-                  {!st.ok&&<p style={{fontSize:12,color:"var(--text2)",margin:0,lineHeight:1.5,wordBreak:"break-word"}}><b>Why it failed:</b> {reason}</p>}
-                </div>); })}
-              <p style={{fontSize:11,color:"var(--text3)",margin:0}}>Fix what the reason says (token, caption length, image, connection), then republish only that platform. Platforms that are already live are never sent again.</p>
-            </div>
-          )}
           {/* Warnings: things that stop this post reaching a platform, shown before anyone is surprised by them */}
           {(()=>{
             const nm = pl => ({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"X",tiktok:"TikTok"}[pl]||pl);
