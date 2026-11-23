@@ -8109,7 +8109,9 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
               const lockOld = !isManager;
               const card = (key, title, sub, color, set, open, locked=false, extra=null) => (
                 <FoldCard key={key} id={`sub_${post.id}_${key}`} title={`${title} · ${set.size} file${set.size!==1?"s":""}`} sub={sub} color={color} defaultOpen={open}>
-                  <div style={{padding:"0 4px",display:"flex",flexDirection:"column",gap:10}}>{set.size>0&&grid(set, locked)}{extra}</div>
+                  <div style={{padding:"0 4px",display:"flex",flexDirection:"column",gap:10}}>
+                    {set.size>0&&<div style={{display:"flex",justifyContent:"flex-end"}}><button onClick={()=>downloadAllMedia(list.filter((_,k)=>set.has(k)), `${post.title||"media"} - ${typeof key==="number"?"submission "+key:"new files"}`)} style={{fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:99,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",cursor:"pointer"}}>⬇ Download {set.size>1?`these ${set.size} files`:"this file"}</button></div>}
+                    {set.size>0&&grid(set, locked)}{extra}</div>
                 </FoldCard>);
               const nextN = rounds[0]+1;
               const uploadHere = post.stage==="design" ? (
