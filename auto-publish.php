@@ -180,9 +180,9 @@ foreach ($due as $post) {
     // Use the LAST file added, not the first — matches publishPost() in app.jsx:
     // when a task has multiple attachments (revisions/replacements), the most
     // recently added one is the intended final version to actually publish.
-    // The file the account team picked (design_assets entry with pick:true), otherwise the last one added.
-    $pickedUrl = ''; foreach ($design_assets as $da) { if (!empty($da['pick']) && ($da['kind'] ?? '') !== 'story' && !empty($da['url'] ?? $da['file_url'] ?? '')) $pickedUrl = (string)($da['url'] ?? $da['file_url']); }
-    $image_url     = $pickedUrl !== '' ? $pickedUrl : (end($design_urls) ?: ($design_assets ? (end($design_assets)['url'] ?? '') : ''));
+    // The file that gets published: the account team's pick, else the last file of the latest submission (publish-media-lib.php).
+    require_once __DIR__ . '/publish-media-lib.php';
+    $image_url     = sf_publish_media_url($design_urls, $design_assets);
     // Carousel — every slide, in the exact order arranged in the Design
     // phase (see DesignAssetGrid's drag/arrow reordering in app.jsx).
     $image_urls    = ($post['post_type'] ?? '') === 'carousel'

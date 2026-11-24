@@ -2794,6 +2794,11 @@ function publishMediaUrl(post) {
   const assets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
   const pick = (assets||[]).find(a=>a && a.pick && a.kind!=="story" && (a.url||a.file_url));
   if(pick) return pick.url || pick.file_url;
+  // Otherwise: the LAST file added in the LATEST submission (round). Files not submitted yet count as the newest; inside a round the last
+  // one added wins. Never an earlier submission's file. Posts with no submissions (Ready Content) keep: last linked address, else last file.
+  let best = -1, bestRank = -1, anyRound = false;
+  (assets||[]).forEach((a,i)=>{ if(!a || a.kind==="story" || a.type==="link" || !(a.url||a.file_url)) return; const r = a.round ? Number(a.round) : Infinity; if(a.round) anyRound = true; if(r>=bestRank) { bestRank = r; best = i; } });
+  if(best>=0 && anyRound) return assets[best].url || assets[best].file_url;
   return urls[urls.length-1] || (assets[assets.length-1]||{}).url || "";
 }
 async function publishPost(post, integration, tiktokOptions=null) {
@@ -6191,7 +6196,7 @@ function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canF
                 const newAssets = post.design_assets.filter((_,idx)=>idx!==i);
                 onStageChange({...post,design_assets:newAssets},post.stage);
               }} style={{position:"absolute",top:3,right:3,width:20,height:20,borderRadius:99,background:"#ef4444",border:"none",color:"#fff",cursor:"pointer",fontSize:12,fontWeight:700,padding:0,lineHeight:"20px"}}>×</button>}
-              {!isCarousel&&(()=>{ const picked = !!asset.pick; const urlsN = (Array.isArray(post.design_urls)?post.design_urls:parseJ(post.design_urls||"[]")).length; const anyPick = post.design_assets.some(a=>a&&a.pick); const auto = !anyPick && urlsN===0 && i===post.design_assets.length-1 && (isImage||isVideo);
+              {!isCarousel&&(()=>{ const picked = !!asset.pick; const urlsN = (Array.isArray(post.design_urls)?post.design_urls:parseJ(post.design_urls||"[]")).length; const anyPick = post.design_assets.some(a=>a&&a.pick); const auto = !anyPick && (asset.url||asset.file_url||"")===publishMediaUrl(post) && (isImage||isVideo);
                 return picked ? <span style={{position:"absolute",bottom:3,right:3,padding:"1px 6px",borderRadius:99,background:"#d90b2c",color:"#fff",fontSize:9,fontWeight:800}}>★ PUBLISHED</span>
                   : auto ? <span style={{position:"absolute",bottom:3,right:3,padding:"1px 6px",borderRadius:99,background:"rgba(0,0,0,0.65)",color:"#fff",fontSize:9,fontWeight:800}}>AUTO · last</span> : null; })()}
               {asset.upscaledTo&&<span style={{position:"absolute",bottom:3,left:3,padding:"1px 6px",borderRadius:99,background:"rgba(16,185,129,0.9)",color:"#fff",fontSize:9,fontWeight:700}}>{asset.upscaledTo}</span>}
