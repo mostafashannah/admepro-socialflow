@@ -118,7 +118,8 @@ function website_publish_article(PDO $pdo, array $creds, array $post): array {
     // the article image: the last file added to the task (same rule as the social publishers)
     $imgUrl = '';
     $du = json_decode((string)($post['design_urls'] ?? '[]'), true) ?: []; $da = json_decode((string)($post['design_assets'] ?? '[]'), true) ?: [];
-    if ($du) $imgUrl = (string)end($du); elseif ($da) { $last = end($da); $imgUrl = (string)($last['url'] ?? $last['file_url'] ?? ''); }
+    foreach ($da as $x) { if (!empty($x['pick']) && ($x['kind'] ?? '') !== 'story') $imgUrl = (string)($x['url'] ?? $x['file_url'] ?? ''); }   // the file the account team picked
+    if ($imgUrl !== '') { /* picked */ } elseif ($du) $imgUrl = (string)end($du); elseif ($da) { $last = end($da); $imgUrl = (string)($last['url'] ?? $last['file_url'] ?? ''); }
     if ($imgUrl !== '' && !preg_match('#\.(jpe?g|png|webp|gif)(\?|$)#i', $imgUrl) && !preg_match('#^https?://#', $imgUrl)) $imgUrl = '';
 
     $slugHint = wp_slug($title);

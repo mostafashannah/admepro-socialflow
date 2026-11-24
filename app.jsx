@@ -2787,6 +2787,15 @@ async function fetchTikTokCreatorInfo(accessToken) {
   return d.data;
 }
 
+// The file a single post / video / reel publishes: the one the account team picked (design_assets entry with pick:true), otherwise
+// the last one added. Carousels ignore this (they publish every file, in order).
+function publishMediaUrl(post) {
+  const urls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
+  const assets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
+  const pick = (assets||[]).find(a=>a && a.pick && a.kind!=="story" && (a.url||a.file_url));
+  if(pick) return pick.url || pick.file_url;
+  return urls[urls.length-1] || (assets[assets.length-1]||{}).url || "";
+}
 async function publishPost(post, integration, tiktokOptions=null) {
   // api.php auto-decodes JSON-looking string columns server-side, so credentials
   // can arrive already as an object — parseJ()/JSON.parse() on an object throws
@@ -2799,7 +2808,7 @@ async function publishPost(post, integration, tiktokOptions=null) {
   // Use the LAST file added, not the first — when a task has multiple
   // attachments (revisions/replacements), the most recently added one is
   // the intended final version to actually publish.
-  const imageUrl = designUrls[designUrls.length-1] || designAssets[designAssets.length-1]?.url || "";
+  const imageUrl = publishMediaUrl(post);
   // A carousel publishes EVERY design asset (excluding the "story" one, if
   // any), in the exact order they're arranged in the Design phase's
   // Attachments grid — that arrangement IS the slide order Instagram/
@@ -4704,7 +4713,7 @@ function PostCard({post,project,team,onClick}) {
   const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
   const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
   const lastDesignAsset = designAssets[designAssets.length-1];
-  const thumbUrl = designUrls[designUrls.length-1] || lastDesignAsset?.url || post.carousel_cover || "";
+  const thumbUrl = publishMediaUrl(post) || lastDesignAsset?.url || post.carousel_cover || "";
   const thumbIsVideo = (lastDesignAsset?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
   return (
     <div onClick={()=>onClick(post)} className="fade-in" style={{
@@ -4911,7 +4920,7 @@ function ListView({posts,projects,team,onPostClick}) {
           const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
           const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
           const lastDesignAsset = designAssets[designAssets.length-1];
-          const thumbUrl = designUrls[designUrls.length-1] || lastDesignAsset?.url || post.carousel_cover || "";
+          const thumbUrl = publishMediaUrl(post) || lastDesignAsset?.url || post.carousel_cover || "";
           const thumbIsVideo = (lastDesignAsset?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
           return (
             <div key={post.id} onClick={()=>onPostClick(post)} style={{
@@ -4965,7 +4974,7 @@ function ListView({posts,projects,team,onPostClick}) {
         const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
         const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
         const lastDesignAsset = designAssets[designAssets.length-1];
-  const thumbUrl = designUrls[designUrls.length-1] || lastDesignAsset?.url || post.carousel_cover || "";
+  const thumbUrl = publishMediaUrl(post) || lastDesignAsset?.url || post.carousel_cover || "";
         const thumbIsVideo = (lastDesignAsset?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
         return (
           <div key={post.id} onClick={()=>onPostClick(post)} style={{
@@ -6126,7 +6135,7 @@ function FoldCard({id, title, sub, color="var(--accent)", defaultOpen=false, fla
   );
 }
 
-function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canForward, only=null, locked=false}) {
+function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canForward, only=null, locked=false, onPick, canPick=false}) {
   const [dragIdx, setDragIdx] = useState(null);
   if(!post.design_assets || post.design_assets.length===0) return null;
 
@@ -6182,11 +6191,18 @@ function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canF
                 const newAssets = post.design_assets.filter((_,idx)=>idx!==i);
                 onStageChange({...post,design_assets:newAssets},post.stage);
               }} style={{position:"absolute",top:3,right:3,width:20,height:20,borderRadius:99,background:"#ef4444",border:"none",color:"#fff",cursor:"pointer",fontSize:12,fontWeight:700,padding:0,lineHeight:"20px"}}>×</button>}
+              {!isCarousel&&(()=>{ const picked = !!asset.pick; const urlsN = (Array.isArray(post.design_urls)?post.design_urls:parseJ(post.design_urls||"[]")).length; const anyPick = post.design_assets.some(a=>a&&a.pick); const auto = !anyPick && urlsN===0 && i===post.design_assets.length-1 && (isImage||isVideo);
+                return picked ? <span style={{position:"absolute",bottom:3,right:3,padding:"1px 6px",borderRadius:99,background:"#d90b2c",color:"#fff",fontSize:9,fontWeight:800}}>★ PUBLISHED</span>
+                  : auto ? <span style={{position:"absolute",bottom:3,right:3,padding:"1px 6px",borderRadius:99,background:"rgba(0,0,0,0.65)",color:"#fff",fontSize:9,fontWeight:800}}>AUTO · last</span> : null; })()}
               {asset.upscaledTo&&<span style={{position:"absolute",bottom:3,left:3,padding:"1px 6px",borderRadius:99,background:"rgba(16,185,129,0.9)",color:"#fff",fontSize:9,fontWeight:700}}>{asset.upscaledTo}</span>}
             </div>
             {/* Admin/AM only — sends this media straight into the
                 client-facing comment thread as a link, same hand-off as
                 forwarding a comment attachment. Always confirms first. */}
+            {canPick && onPick && !isCarousel && (isImage||isVideo) && (
+              <button title={asset.pick?"This file is the one that gets published. Click to go back to the last added file.":"Publish this file instead of the last added one"} onClick={()=>onPick(i)}
+                style={{height:22,borderRadius:6,border:`1px solid ${asset.pick?"#d90b2c":"var(--border2)"}`,background:asset.pick?"#d90b2c18":"var(--surface)",color:asset.pick?"#d90b2c":"var(--text2)",fontSize:10,fontWeight:800,cursor:"pointer"}}>{asset.pick?"★ Chosen · reset":"☆ Publish this"}</button>
+            )}
             {canForward && (asset.url||asset.data) && (post.client_id || onForward) && (
               <div style={{display:"flex",gap:4}}>
                 {post.client_id && <AddToClientAssetsButton url={asset.url||asset.data} name={asset.name} type={(asset.type||"").startsWith("video")?"video":(asset.type||"").startsWith("image")?"image":"file"} clientId={post.client_id} clientName={post.client_name}
@@ -6877,7 +6893,7 @@ function PostFinalPreview({post}) {
   const type = post.post_type || "image"; const isCar = type==="carousel"; const vertical = ["reel","story","video"].includes(type);
   const all = assets.length ? assets : urls.map(url=>({url}));
   const slides = isCar ? all.filter(a=>a&&a.kind!=="story").map(a=>({url:a.url||a.file_url,type:a.type,name:a.name})).filter(a=>a.url) : [];
-  const finalUrl = !isCar ? (urls[urls.length-1] || ((assets[assets.length-1]||{}).url) || "") : "";
+  const finalUrl = !isCar ? publishMediaUrl(post) : "";
   const finalAsset = !isCar ? (assets.find(a=>(a.url||a.file_url)===finalUrl) || {}) : null;
   const story = assets.find(a=>a&&a.kind==="story"&&(a.url||a.file_url));
   const plats = (()=>{ const p = parse(post.platforms); return (p&&p.length?p:[post.platform]).filter(Boolean); })();
@@ -7322,6 +7338,14 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   useEffect(()=>{ if(post.stage!=="published" || !failedPlatforms.length || failedPlatforms.every(pl=>peText(pl))) return; let live = true;
     fetch("/publish-reason.php?post_id="+encodeURIComponent(post.id)).then(r=>r.ok?r.json():null).then(j=>{ if(live && j?.reasons) setLogReasons(j.reasons); }).catch(()=>{});
     return ()=>{ live = false; }; },[post.id, post.stage, failedPlatforms.join(","), post.publish_error]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Account team: choose which file gets published (default: the last added). Click the chosen one again to go back to automatic.
+  const handlePickPublish = async (index) => {
+    const list = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
+    const wasPicked = !!list[index]?.pick;
+    const next = list.map((a,k)=>{ const {pick, ...rest} = a||{}; return (!wasPicked && k===index) ? {...rest, pick:true} : rest; });
+    await ue("Post", post.id, {design_assets: JSON.stringify(next)}).catch(()=>{});
+    onEdit&&onEdit({...post, design_assets:next});
+  };
   const republishPlatform = async (pl) => {
     const integ = findIntegrationForPlatform(pl); if(!integ) return;
     if(!post.caption && !post.hashtags) { setRePub(s=>({...s,[pl]:{err:"This post has no caption yet — add one first."}})); return; }
@@ -8103,7 +8127,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
             {(()=>{
               const list = Array.isArray(post.design_assets) ? post.design_assets : [];
               const rounds = [...new Set(list.map(a=>Number(a?.round)||0).filter(Boolean))].sort((a,b)=>b-a);
-              const grid = (only, locked=false) => <DesignAssetGrid locked={locked} post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset} onForward={forwardDesignAssetToClient} canForward={currentUser?.role==="admin"||["account_manager","account_director","account_executive"].includes(currentUser?.role)} only={only}/>;
+              const grid = (only, locked=false) => <DesignAssetGrid locked={locked} post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset} onForward={forwardDesignAssetToClient} canForward={currentUser?.role==="admin"||["account_manager","account_director","account_executive"].includes(currentUser?.role)} only={only} canPick={["admin","account_manager","account_director","account_executive"].includes(currentUser?.role)} onPick={handlePickPublish}/>;
               if(!rounds.length) return list.length ? <FoldCard id={`sub_${post.id}_all`} title={`All files · ${list.length}`} color="#6366f1" defaultOpen={true}><div style={{padding:"0 4px"}}>{grid(null)}</div></FoldCard> : null;
               const pending = new Set(list.map((a,k)=>(!a||!a.round)?k:-1).filter(k=>k>=0));
               // Submitted rounds are locked for designers / writers; admin and the account team can still edit them.
@@ -42904,7 +42928,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
             const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
             const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
             const lastDesignAsset = designAssets[designAssets.length-1];
-            const thumbUrl = designUrls[designUrls.length-1] || lastDesignAsset?.url || post.carousel_cover || "";
+            const thumbUrl = publishMediaUrl(post) || lastDesignAsset?.url || post.carousel_cover || "";
             const thumbIsVideo = (lastDesignAsset?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
 
             return (
@@ -56906,7 +56930,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       const all = assets.length ? assets : urls.map(url=>({url}));
       let files;
       if(post.post_type==="carousel") files = all.filter(a=>a&&a.kind!=="story").map(a=>({url:a.url||a.file_url, type:a.type})).filter(a=>a.url);
-      else { const last = urls[urls.length-1] || (assets[assets.length-1]||{}).url; files = last ? [{url:last, type:(assets.find(a=>(a.url||a.file_url)===last)||{}).type}] : []; }
+      else { const last = publishMediaUrl(post); files = last ? [{url:last, type:(assets.find(a=>(a.url||a.file_url)===last)||{}).type}] : []; }
       const isImg = f => String(f.type||"").startsWith("image") || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(f.url||"");
       const withDesign = stage==="design_review";
       const imgs = withDesign ? files.filter(isImg).slice(0,8) : [];
