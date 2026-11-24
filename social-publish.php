@@ -71,13 +71,25 @@ if (!$platform || !$page_id || !$access_token || !$message) {
     exit;
 }
 
-if (!in_array($platform, ["facebook", "instagram", "linkedin", "tiktok", "twitter"])) {
+if (!in_array($platform, ["facebook", "instagram", "linkedin", "tiktok", "twitter", "website"])) {
     http_response_code(400);
-    echo json_encode(["error" => "Unsupported platform. Supported: facebook, instagram, linkedin, tiktok, twitter"]);
+    echo json_encode(["error" => "Unsupported platform. Supported: facebook, instagram, linkedin, tiktok, twitter, website"]);
     exit;
 }
 
-if ($platform === "twitter") {
+if ($platform === "website") {
+    // An article on the client's own website: the integration's saved connection is read here (the browser never sends the GitHub token).
+    require_once __DIR__ . '/website-publish-lib.php';
+    $wpdo = authPdo(); $wpost = null;
+    $wid = preg_replace('/[^A-Za-z0-9-]/', '', (string)($data["post_id"] ?? ""));
+    if ($wid !== "") { $q = $wpdo->prepare("SELECT * FROM posts WHERE id = :id LIMIT 1"); $q->execute([':id' => $wid]); $wpost = $q->fetch(PDO::FETCH_ASSOC); }
+    $wi = null;
+    if ($wpost) {
+        if (!empty($wpost['client_id'])) { $q = $wpdo->prepare("SELECT credentials FROM integrations WHERE app_key = 'website' AND status = 'active' AND client_id = :c LIMIT 1"); $q->execute([':c' => $wpost['client_id']]); $wi = $q->fetch(PDO::FETCH_ASSOC); }
+    }
+    if (!$wpost || !$wi) { $http_code = 400; $response = ['error' => 'No active website connection for this client (Client → Settings → Integrations → Website), or the task id is missing.']; }
+    else [$http_code, $response] = website_publish_article($wpdo, json_decode((string)$wi['credentials'], true) ?: [], $wpost);
+} elseif ($platform === "twitter") {
     // X is posted through Zernio only (credentials: page_id = Zernio account id, access_token = "zernio").
     require_once __DIR__ . '/zernio-lib.php';
     if ($access_token !== ZERNIO_TOKEN_MARKER) { $http_code = 400; $response = ['error' => 'X must be connected through Zernio.']; }

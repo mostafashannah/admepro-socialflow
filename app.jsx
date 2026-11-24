@@ -599,7 +599,7 @@ function commissionMultiplierForScore(score) {
   return 1;
 }
 
-const PLATFORMS = ["instagram","facebook","linkedin","tiktok","twitter"];
+const PLATFORMS = ["instagram","facebook","linkedin","tiktok","twitter","website"];
 const POST_TYPES = ["image","video","carousel","story","reel"];
 // Every post_type value that represents an actual piece of social content
 // meant to be published to a platform (as opposed to internal/deliverable
@@ -616,9 +616,9 @@ const POST_TYPES = ["image","video","carousel","story","reel"];
 const SOCIAL_POST_TYPES = new Set([...POST_TYPES, "social_post", "story_reel", "static", "campaign", "article", "blog"]);
 const PRIORITIES = ["low","medium","high","urgent"];
 
-const PLT_COLOR = { instagram:"#e1306c", facebook:"#1877f2", linkedin:"#0a66c2", tiktok:"#69c9d0", twitter:"#1da1f2" };
-const PLT_ABBR = { instagram:"IG", facebook:"FB", linkedin:"IN", tiktok:"TT", twitter:"X" };
-const PLT_ICON = { instagram:"IG", facebook:"FB", linkedin:"IN", tiktok:"TK", twitter:"X" };
+const PLT_COLOR = { instagram:"#e1306c", facebook:"#1877f2", linkedin:"#0a66c2", tiktok:"#69c9d0", twitter:"#1da1f2", website:"#0ea5e9" };
+const PLT_ABBR = { instagram:"IG", facebook:"FB", linkedin:"IN", tiktok:"TT", twitter:"X", website:"WEB" };
+const PLT_ICON = { instagram:"IG", facebook:"FB", linkedin:"IN", tiktok:"TK", twitter:"X", website:"WEB" };
 const PRI_COLOR = { low:"#6b7280", medium:"#3b82f6", high:"#f59e0b", urgent:"#ef4444" };
 const STAGE_MAP = Object.fromEntries(STAGES.map(s=>[s.key,s]));
 
@@ -2829,6 +2829,7 @@ async function publishPost(post, integration, tiktokOptions=null) {
       image_urls: carouselUrls.length>1 ? carouselUrls : undefined,
       story_image_url: storyUrl,
       post_type: post.post_type||"",
+      post_id: post.id,
       cover_url: coverUrl,
       ...(integration.app_key==="tiktok" && tiktokOptions ? tiktokOptions : {}),
     }),
@@ -7930,8 +7931,8 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
         {post.stage==="published" && failedPlatforms.length>0 && (
           <div style={{padding:"12px 14px",background:"#ef444410",border:"1px solid #ef444455",borderRadius:"var(--rs)",display:"flex",flexDirection:"column",gap:10}}>
             <p style={{fontSize:11,fontWeight:800,color:"#ef4444",letterSpacing:"0.06em",textTransform:"uppercase",margin:0}}>⚠ Published with errors — {failedPlatforms.length} platform{failedPlatforms.length===1?"":"s"} failed</p>
-            {alreadyPublishedPlatforms.length>0&&<p style={{fontSize:12,color:"var(--text2)",margin:0}}>✓ Live on: {alreadyPublishedPlatforms.map(pl=>({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"X",tiktok:"TikTok"}[pl]||pl)).join(", ")}</p>}
-            {failedPlatforms.map(pl=>{ const nm = {instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"X",tiktok:"TikTok"}[pl]||pl; const st = rePub[pl]||{}; const integ = findIntegrationForPlatform(pl); const reason = st.err || peText(pl) || logReasons[pl] || "No error was saved for this platform (it was moved to Published by hand, or the automatic publisher never tried it). Press Republish: if it fails, the real reason shows here.";
+            {alreadyPublishedPlatforms.length>0&&<p style={{fontSize:12,color:"var(--text2)",margin:0}}>✓ Live on: {alreadyPublishedPlatforms.map(pl=>({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"X",tiktok:"TikTok",website:"Website"}[pl]||pl)).join(", ")}</p>}
+            {failedPlatforms.map(pl=>{ const nm = {instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"X",tiktok:"TikTok",website:"Website"}[pl]||pl; const st = rePub[pl]||{}; const integ = findIntegrationForPlatform(pl); const reason = st.err || peText(pl) || logReasons[pl] || "No error was saved for this platform (it was moved to Published by hand, or the automatic publisher never tried it). Press Republish: if it fails, the real reason shows here.";
               return (<div key={pl} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:"10px 12px",display:"flex",flexDirection:"column",gap:6}}>
                 <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                   <PChip platform={pl} xs/><span style={{fontSize:13,fontWeight:700}}>{nm}</span><span style={{flex:1}}/>
@@ -8439,7 +8440,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
           {post.stage==="client_approval"&&<ClientApprovalLinkCard post={post} client={client} currentUser={currentUser}/>}
           {/* Warnings: things that stop this post reaching a platform, shown before anyone is surprised by them */}
           {(()=>{
-            const nm = pl => ({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"X",tiktok:"TikTok"}[pl]||pl);
+            const nm = pl => ({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"X",tiktok:"TikTok",website:"Website"}[pl]||pl);
             const warns = [];
             const xText = (post.x_caption||"").trim() || [post.caption,post.hashtags].filter(Boolean).join("\n\n");
             if(allPostPlatforms.includes("twitter") && !alreadyPublishedPlatforms.includes("twitter") && xText.length>280)
@@ -31212,6 +31213,7 @@ const INTEGRATION_APPS = [
   {key:"linkedin", label:"LinkedIn", category:"social", color:"#0A66C2", icon:Icons.linkedinBrand, brand:true, description:"Publish posts to LinkedIn (posting only — no DM/comment replies)"},
   {key:"tiktok", label:"TikTok", category:"social", color:"#000000", icon:Icons.tiktokBrand, brand:true, description:"Publish videos to TikTok and track per-video views/likes/comments"},
   {key:"twitter", label:"X (Twitter)", category:"social", color:"#000000", icon:Icons.xBrand, brand:true, description:"Publish posts to X through Zernio (280 characters)"},
+  {key:"website", label:"Website (GitHub)", category:"social", color:"#0ea5e9", icon:Icons.globe, description:"Publish articles to the client's own website through its GitHub repo (translated when the site has a second language)"},
   // Spreadsheet / Data
   {key:"google_sheets",label:"Google Sheets", category:"spreadsheet", color:"#0F9D58", icon:Icons.sheetsBrand, description:"Add rows to Google Sheets"},
   // Ecommerce
@@ -31298,6 +31300,7 @@ function VarChips({onInsert}) {
 // ── Integration Wizard ──
 function IntegrationWizard({open, onClose, onSave, existingIntegration, currentUser, clients=[]}) {
   const [step, setStep] = useState(1);
+  const [webTest, setWebTest] = useState(null);
   const TOTAL_STEPS = 5;
 
   const initState = existingIntegration ? {
@@ -31402,7 +31405,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
   const categoryActions = INTEGRATION_ACTIONS[selectedApp?.category||"social"]||INTEGRATION_ACTIONS.social;
   const selectedAction = categoryActions.find(a=>a.key===f.action);
   const isWhatsApp = f.app_key==="whatsapp";
-  const isSocialPublish = f.app_key==="facebook"||f.app_key==="instagram"||f.app_key==="linkedin"||f.app_key==="tiktok"||f.app_key==="twitter"||isWhatsApp;
+  const isSocialPublish = f.app_key==="facebook"||f.app_key==="instagram"||f.app_key==="linkedin"||f.app_key==="tiktok"||f.app_key==="twitter"||f.app_key==="website"||isWhatsApp;
   const metaConnected = isWhatsApp
     ? !!(f.credentials?.phone_id && f.credentials?.access_token && f.client_id)
     : (!isSocialPublish || !!(f.credentials?.page_id && f.credentials?.access_token && f.client_id));
@@ -31526,7 +31529,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
               <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10}}>
                 {INTEGRATION_APPS.filter(a=>categoryFilter==="all"||a.category===categoryFilter).map(app=>(
                   <AppCard key={app.key} app={app} selected={f.app_key===app.key} onClick={()=>{
-                    if(app.key==="facebook"||app.key==="instagram"||app.key==="linkedin"||app.key==="tiktok"||app.key==="twitter") {
+                    if(app.key==="facebook"||app.key==="instagram"||app.key==="linkedin"||app.key==="tiktok"||app.key==="twitter"||app.key==="website") {
                       setF(p=>({...p,app_key:app.key,trigger:"task_completed",action:"publish_post"}));
                     } else if(app.key==="whatsapp") {
                       setF(p=>({...p,app_key:app.key,trigger:"new_lead",action:"send_message"}));
@@ -31646,6 +31649,36 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                     <Ico d={Icons.check} size={14} stroke="#10b981"/> Connected
                   </div>
                 )}
+              </>)}
+              {f.app_key==="website"&&(<>
+                <Field label="Client" required hint="Which client does this website belong to?">
+                  <select value={f.client_id||""} onChange={e=>{ const c = clients.find(cl=>cl.id===e.target.value); sf("client_id", c?.id||""); sf("client_name", c?.name||""); }} style={inputSt}>
+                    <option value="">— Select a client —</option>
+                    {clients.filter(c=>c.status!=="hidden").map(c=>(<option key={c.id} value={c.id}>{c.name}</option>))}
+                  </select>
+                </Field>
+                <div style={{padding:10,background:"#0ea5e922",border:"1px solid #0ea5e955",borderRadius:"var(--rs)",fontSize:12,color:"var(--text2)",lineHeight:1.5}}>
+                  Articles are published by committing to the website's GitHub repo; the site rebuilds itself. The article format is learned from the articles the site already has, so the site needs at least one. If the site has a second language, the article is translated when it is published. The token needs <b>Contents: Read and write</b> on that repo.
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                  <Field label="GitHub repo" required hint='"owner/name"'><input value={f.credentials?.page_id||""} onChange={e=>scred("page_id",e.target.value.trim())} placeholder="company/client-website" style={inputSt}/></Field>
+                  <Field label="Branch"><input value={f.credentials?.branch||""} onChange={e=>scred("branch",e.target.value.trim())} placeholder="main" style={inputSt}/></Field>
+                </div>
+                <Field label="GitHub token" required><input type="password" value={f.credentials?.access_token||""} onChange={e=>scred("access_token",e.target.value.trim())} placeholder="github_pat_…" style={inputSt}/></Field>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                  <Field label="Content folder" hint="where the site keeps content"><input value={f.credentials?.content_root||""} onChange={e=>scred("content_root",e.target.value.trim())} placeholder="src/content" style={inputSt}/></Field>
+                  <Field label="Articles folder" hint="inside the content folder"><input value={f.credentials?.posts_dir||""} onChange={e=>scred("posts_dir",e.target.value.trim())} placeholder="posts" style={inputSt}/></Field>
+                  <Field label="Website address"><input value={f.credentials?.site_url||""} onChange={e=>scred("site_url",e.target.value.trim())} placeholder="https://client.com" style={inputSt}/></Field>
+                  <Field label="Articles URL path" hint="e.g. blog"><input value={f.credentials?.blog_path||""} onChange={e=>scred("blog_path",e.target.value.trim())} placeholder="blog" style={inputSt}/></Field>
+                </div>
+                <Field label="Languages of the site" hint='"en" for English only, "en,ar" for English + Arabic. Articles are translated into the others when published.'><input value={f.credentials?.languages||""} onChange={e=>scred("languages",e.target.value.trim().toLowerCase())} placeholder="en" style={inputSt}/></Field>
+                <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                  <button type="button" onClick={async()=>{ setWebTest({busy:true}); try { const r = await fetch("/website-client.php",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"test",credentials:f.credentials||{}})}); const j = await r.json().catch(()=>({error:"Bad response"})); setWebTest(j); } catch(e) { setWebTest({ok:false,error:"Connection problem"}); } }} disabled={!!webTest?.busy||!f.credentials?.page_id||!f.credentials?.access_token} style={{padding:"7px 14px",borderRadius:99,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:12,fontWeight:700,cursor:"pointer"}}>{webTest?.busy?"Testing…":"Test connection"}</button>
+                  {webTest&&!webTest.busy&&(webTest.ok
+                    ? <span style={{fontSize:12,color:"#10b981",fontWeight:700}}>✓ Connected to {webTest.repo} — {webTest.articles} article{webTest.articles===1?"":"s"} found in {webTest.folder}</span>
+                    : <span style={{fontSize:12,color:"#ef4444",lineHeight:1.5}}>{webTest.error||"Could not connect"}</span>)}
+                </div>
+                {metaConnected&&(<div style={{padding:10,background:"#10b98122",border:"1px solid #10b98155",borderRadius:"var(--rs)",fontSize:12,color:"#10b981",display:"flex",alignItems:"center",gap:6}}><Ico d={Icons.check} size={14} stroke="#10b981"/> Details filled in</div>)}
               </>)}
               {f.app_key==="tiktok"&&(<>
                 <Field label="Client" required hint="Which client does this TikTok account belong to?">

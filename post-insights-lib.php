@@ -116,6 +116,7 @@ function fetch_one_platform_insights(PDO $pdo, array $post, string $platform, st
 
     // LinkedIn / X / YouTube etc. have no numbers API for a directly connected account (LinkedIn only gives analytics to approved apps) —
     // without this guard they fell through to the Instagram branch below and failed with a confusing Instagram error.
+    if ($platform === 'website') { $out['error'] = 'A website article has no engagement numbers here (use the site analytics).'; return $out; }
     if (!in_array($platform, ['tiktok', 'facebook', 'instagram'], true)) {
         $out['error'] = ucfirst($platform) . " insights are only available when this account is connected through Zernio (Client → Settings → reconnect it there)";
         return $out;

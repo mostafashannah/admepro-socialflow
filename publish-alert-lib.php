@@ -11,7 +11,7 @@ if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVE
 // ================================================================
 require_once __DIR__ . '/pro-lib.php'; // sendWhatsAppReply()
 
-function paPlatformName($p): string { return ['instagram' => 'Instagram', 'facebook' => 'Facebook', 'linkedin' => 'LinkedIn', 'twitter' => 'X', 'tiktok' => 'TikTok'][strtolower((string)$p)] ?? ucfirst((string)$p); }
+function paPlatformName($p): string { return ['instagram' => 'Instagram', 'facebook' => 'Facebook', 'linkedin' => 'LinkedIn', 'twitter' => 'X', 'tiktok' => 'TikTok', 'website' => 'Website'][strtolower((string)$p)] ?? ucfirst((string)$p); }
 
 /** An error from a platform, in plain words with what to do. */
 function paFriendly($platform, $err): string {
@@ -108,7 +108,7 @@ function paDailyDigest(PDO $pdo): void {
                 if ((int)$p['publish_attempts'] >= 3) { $e = json_decode((string)$p['publish_error'], true); $why[] = 'stopped after 3 failed attempts' . (is_array($e) && $e ? ' (' . implode('; ', array_map(fn($k, $v) => paPlatformName($k) . ': ' . paFriendly($k, $v), array_keys($e), $e)) . ')' : ''); }
                 if (trim((string)$p['scheduled_date']) !== '') foreach ($all as $pl) {
                     // A platform with no connected account can never go out, so the post would stay in Scheduled forever.
-                    if (!in_array($pl, $done, true) && in_array($pl, ['facebook', 'instagram', 'linkedin', 'tiktok', 'twitter'], true) && !paHasIntegration($pdo, $pl, $p['client_id'] ?? ''))
+                    if (!in_array($pl, $done, true) && in_array($pl, ['facebook', 'instagram', 'linkedin', 'tiktok', 'twitter', 'website'], true) && !paHasIntegration($pdo, $pl, $p['client_id'] ?? ''))
                         $why[] = 'no ' . paPlatformName($pl) . ' account is connected, so it can never be sent there (connect it, or remove ' . paPlatformName($pl) . ' from the post)';
                 }
                 if ((int)$p['publish_attempts'] < 3 && in_array('twitter', $all, true) && !in_array('twitter', $done, true)) {
