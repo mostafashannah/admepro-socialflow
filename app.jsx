@@ -7343,8 +7343,14 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
     const list = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
     const wasPicked = !!list[index]?.pick;
     const next = list.map((a,k)=>{ const {pick, ...rest} = a||{}; return (!wasPicked && k===index) ? {...rest, pick:true} : rest; });
+    const oldUrl = publishMediaUrl(post), newUrl = publishMediaUrl({...post, design_assets:next});
+    const fname = u => { const f = list.find(x=>(x.url||x.file_url)===u); return (f && f.name) || (()=>{ try { return decodeURIComponent(String(u||"").split("?")[0].split("/").pop()); } catch(e) { return String(u||"").split("/").pop(); } })() || "no file"; };
     await ue("Post", post.id, {design_assets: JSON.stringify(next)}).catch(()=>{});
     onEdit&&onEdit({...post, design_assets:next});
+    // record who changed it, and from which file to which, in the task's Activity
+    if(onAddComment) onAddComment(post.id, wasPicked
+      ? `🖼 Publish file reset to automatic (last added): "${fname(oldUrl)}" → "${fname(newUrl)}"`
+      : `🖼 Publish file chosen by ${currentUser?.name||"the account team"}: "${fname(oldUrl)}" → "${fname(newUrl)}"`, currentUser, null, "internal");
   };
   const republishPlatform = async (pl) => {
     const integ = findIntegrationForPlatform(pl); if(!integ) return;
