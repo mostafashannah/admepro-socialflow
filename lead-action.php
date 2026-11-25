@@ -2,7 +2,7 @@
 /**
  * lead-action.php — one-tap follow-up shortcuts on a lead card (No answer / Call later / Not qualified).
  * POST {lead_id, action: "no_answer"|"call_later"|"not_qualified"} -> {ok, sent, text, send_error?}
- * Sends the matching WhatsApp message from the agency number to the lead (Arabic when the customer wrote in Arabic, else English),
+ * Sends the matching message the SAME WAY the lead came in (WhatsApp / Instagram / Messenger; WhatsApp by phone for other sources) (Arabic when the customer wrote in Arabic, else English),
  * and records it in the lead's chat. The app then moves the card / sets the follow-up date and logs the activity.
  * WhatsApp only allows free text within 24 hours of the customer's last message: outside that window the send is refused by WhatsApp,
  * which is reported back (sent:false + the reason) so the person knows to call or use a template.
@@ -20,10 +20,15 @@ $leadId = preg_replace('/[^A-Za-z0-9-]/', '', (string)($in['lead_id'] ?? '')); $
 if ($leadId === '' || !in_array($action, ['no_answer', 'call_later', 'not_qualified'], true)) { http_response_code(400); echo json_encode(['error' => 'lead_id and a valid action are required']); exit; }
 
 $pdo = authPdo();
-$st = $pdo->prepare("SELECT id, name, phone, client_id FROM leads WHERE id = :id LIMIT 1"); $st->execute([':id' => $leadId]); $lead = $st->fetch(PDO::FETCH_ASSOC);
+$st = $pdo->prepare("SELECT id, name, phone, client_id, notes FROM leads WHERE id = :id LIMIT 1"); $st->execute([':id' => $leadId]); $lead = $st->fetch(PDO::FETCH_ASSOC);
 if (!$lead) { http_response_code(404); echo json_encode(['error' => 'Lead not found']); exit; }
 $digits = preg_replace('/\D/', '', (string)$lead['phone']);
-if (strlen($digits) < 8) { echo json_encode(['ok' => true, 'sent' => false, 'send_error' => 'This lead has no usable phone number, so no message was sent.']); exit; }
+// Reply the way the lead came in: the lead's notes carry "src_id:<channel>:<customer id>" when it was created from a chat.
+$channel = ''; $custId = '';
+if (preg_match('/src_id:(whatsapp|instagram|messenger):(\S+)/', (string)$lead['notes'], $mc)) { $channel = $mc[1]; $custId = $mc[2]; }
+if ($channel === 'whatsapp') $digits = preg_replace('/\D/', '', $custId) ?: $digits;
+if ($channel === '' || $channel === 'whatsapp') { $channel = 'whatsapp'; if (strlen($digits) < 8) { echo json_encode(['ok' => true, 'sent' => false, 'channel' => 'whatsapp', 'send_error' => 'This lead has no usable phone number, so no message was sent.']); exit; } $custId = $digits; }
+$chanLabel = ['whatsapp' => 'WhatsApp', 'instagram' => 'Instagram', 'messenger' => 'Messenger'][$channel];
 
 // the agency: where the chat lives and which WhatsApp number sends
 $clientId = (string)($lead['client_id'] ?? ''); $clientName = '';
@@ -32,7 +37,7 @@ else { $q = $pdo->prepare("SELECT name FROM clients WHERE id = :i"); $q->execute
 
 // language: Arabic when the customer's own messages are Arabic
 $ar = false;
-$ids = array_unique([$digits, '+' . $digits]);
+$ids = $channel === 'whatsapp' ? array_unique([$digits, '+' . $digits]) : [$custId];
 $qm = $pdo->prepare("SELECT message_text FROM customer_messages WHERE customer_id IN (" . implode(',', array_fill(0, count($ids), '?')) . ") AND direction = 'in' ORDER BY created_at DESC LIMIT 6");
 $qm->execute(array_values($ids));
 foreach ($qm->fetchAll(PDO::FETCH_COLUMN) as $t) { if (preg_match('/\p{Arabic}/u', (string)$t)) { $ar = true; break; } }
@@ -56,16 +61,19 @@ $TXT = [
 ];
 $text = sprintf($TXT[$action][$ar ? 'ar' : 'en'], $first !== '' ? ($ar ? ' ' . $first : ' ' . $first) : '');
 
-$creds = $clientId !== '' ? findIntegrationCreds($pdo, $clientId, 'whatsapp') : null;
-if (!$creds) { echo json_encode(['ok' => true, 'sent' => false, 'text' => $text, 'send_error' => 'No active WhatsApp connection for the agency, so nothing was sent.']); exit; }
-[$code, $body] = sendWhatsAppBotReply($creds['phone_id'], $creds['access_token'], $digits, $text);
+$appKey = $channel === 'whatsapp' ? 'whatsapp' : ($channel === 'instagram' ? 'instagram' : 'facebook');
+$creds = $clientId !== '' ? findIntegrationCreds($pdo, $clientId, $appKey) : null;
+if (!$creds) { echo json_encode(['ok' => true, 'sent' => false, 'channel' => $channel, 'text' => $text, 'send_error' => "No active {$chanLabel} connection for the agency, so nothing was sent."]); exit; }
+if ($channel === 'whatsapp') [$code, $body] = sendWhatsAppBotReply($creds['phone_id'], $creds['access_token'], $digits, $text);
+else [$code, $body] = sendMetaDM($channel, $creds['page_id'], $creds['access_token'], $custId, $text);
 if ($code < 200 || $code >= 300) {
     $em = (string)($body['error']['message'] ?? ('HTTP ' . $code)); $ec = (int)($body['error']['code'] ?? 0);
-    if ($ec === 131047 || stripos($em, 're-engage') !== false || stripos($em, '24') !== false) $em = 'WhatsApp only allows free messages within 24 hours of the customer\'s last message. Call them, or send an approved template.';
-    echo json_encode(['ok' => true, 'sent' => false, 'text' => $text, 'send_error' => $em]); exit;
+    if ($channel === 'whatsapp' && ($ec === 131047 || stripos($em, 're-engage') !== false)) $em = 'WhatsApp only allows free messages within 24 hours of the customer\'s last message. Call them, or send an approved template.';
+    elseif ($channel !== 'whatsapp' && (stripos($em, 'outside of allowed window') !== false || $ec === 10 || $ec === 100)) $em = ($channel === 'instagram' ? 'Instagram' : 'Messenger') . ' only allows replies within 24 hours of the customer\'s last message. ' . $em;
+    echo json_encode(['ok' => true, 'sent' => false, 'channel' => $channel, 'text' => $text, 'send_error' => $em]); exit;
 }
 try {
-    $pdo->prepare("INSERT INTO customer_messages (client_id, client_name, channel, customer_id, customer_name, direction, message_text, sent_by, thread_status) VALUES (:c,:cn,'whatsapp',:cid,:name,'out',:t,'human','open')")
-        ->execute([':c' => $clientId, ':cn' => $clientName, ':cid' => $digits, ':name' => (string)$lead['name'], ':t' => $text]);
+    $pdo->prepare("INSERT INTO customer_messages (client_id, client_name, channel, customer_id, customer_name, direction, message_text, sent_by, thread_status) VALUES (:c,:cn,:ch,:cid,:name,'out',:t,'human','open')")
+        ->execute([':c' => $clientId, ':cn' => $clientName, ':ch' => $channel, ':cid' => $custId, ':name' => (string)$lead['name'], ':t' => $text]);
 } catch (Throwable $e) { error_log('[lead-action] could not store the chat message: ' . $e->getMessage()); }
-echo json_encode(['ok' => true, 'sent' => true, 'text' => $text], JSON_UNESCAPED_UNICODE);
+echo json_encode(['ok' => true, 'sent' => true, 'channel' => $channel, 'channel_label' => $chanLabel, 'text' => $text], JSON_UNESCAPED_UNICODE);

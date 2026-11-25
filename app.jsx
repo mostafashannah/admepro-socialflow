@@ -30160,7 +30160,7 @@ function LeadCard({lead, onClick, team, onShortcut}) {
   const assignee = lead.assigned_to && (team||[]).find(t=>t.email===lead.assigned_to);
   const [showQr, setShowQr] = useState(false);
   const [busyAct, setBusyAct] = useState("");
-  const canShortcut = !!onShortcut && lead.phone && !["closed_won","closed_lost","dead"].includes(lead.status||"");
+  const canShortcut = !!onShortcut && (lead.phone || /src_id:(instagram|messenger):/.test(lead.notes||"")) && !["closed_won","closed_lost","dead"].includes(lead.status||"");
   return (
     <div onClick={()=>onClick(lead)} style={{
       background:"var(--surface)",border:`1px solid ${overdue?"#ef444444":dueToday?"#f59e0b44":"var(--border)"}`,
@@ -30318,7 +30318,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
 
   // One-tap follow-up from the card: sends the WhatsApp message (server side), moves the card, sets tomorrow's follow-up and logs it.
   const leadShortcut = async (lead, action) => {
-    if(action==="not_qualified" && !window.confirm(`Mark "${lead.name}" as not qualified?\nA polite WhatsApp message is sent and the lead is closed.`)) return;
+    if(action==="not_qualified" && !window.confirm(`Mark "${lead.name}" as not qualified?\nA polite message is sent the same way they contacted you, and the lead is closed.`)) return;
     let j = null;
     try { const r = await fetch("/lead-action.php",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({lead_id:lead.id, action})}); j = await r.json().catch(()=>({error:"Bad response"})); if(!r.ok && !j.error) j.error = "HTTP "+r.status; }
     catch(e) { j = {error:"Connection problem"}; }
@@ -30329,8 +30329,8 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
       : action==="call_later" ? {status:"follow_up", followup_date:tomorrow}
       : {status:(!lead.status||lead.status==="new")?"contacted":lead.status, followup_date:tomorrow};
     await onUpdateLead({...lead, ...patch});
-    await onAddActivity({lead_id:lead.id, type:action==="not_qualified"?"note":"call", content:`${label}${action!=="not_qualified"?" — follow-up set for tomorrow":" — lead closed"}. ${j.sent?`WhatsApp sent: "${j.text}"`:`WhatsApp NOT sent: ${j.send_error||"unknown reason"}`}`, followup_date:patch.followup_date, author_name:currentUser?.name||"User", author_email:currentUser?.email});
-    if(!j.sent) alert(`Saved, but the WhatsApp message was NOT sent:\n${j.send_error||"unknown reason"}`);
+    await onAddActivity({lead_id:lead.id, type:action==="not_qualified"?"note":"call", content:`${label}${action!=="not_qualified"?" — follow-up set for tomorrow":" — lead closed"}. ${j.sent?`${j.channel_label||"WhatsApp"} message sent: "${j.text}"`:`Message NOT sent: ${j.send_error||"unknown reason"}`}`, followup_date:patch.followup_date, author_name:currentUser?.name||"User", author_email:currentUser?.email});
+    if(!j.sent) alert(`Saved, but the message was NOT sent:\n${j.send_error||"unknown reason"}`);
   };  const [showRotationSettings, setShowRotationSettings] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [view, setView_] = useState(()=>{ try{ const v=localStorage.getItem("sf_leads_view"); if(v) return v; }catch(e){} return ["account_manager","account_director","account_executive"].includes(currentUser?.role)?"today":"kanban"; });
