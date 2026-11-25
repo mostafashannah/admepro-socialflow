@@ -54,7 +54,13 @@ function seoGh($method, $url, $body = null) {
     if ($body !== null) $h[] = 'Content-Type: application/json';
     curl_setopt_array($ch, [CURLOPT_CUSTOMREQUEST => $method, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 40, CURLOPT_HTTPHEADER => $h]);
     if ($body !== null) curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
-    $res = curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+    // GitHub sometimes answers 500/502/503/504 or drops the connection for a moment: retry a few times (writes are safe, the same sha is sent).
+    for ($try = 0; $try < 4; $try++) {
+        $res = curl_exec($ch); $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        if ($code !== 0 && $code < 500) break;
+        if ($try < 3) sleep(1 + $try);
+    }
+    curl_close($ch);
     return [$code, json_decode((string)$res, true)];
 }
 function seoGhPath($p) { return implode('/', array_map('rawurlencode', explode('/', $p))); }
