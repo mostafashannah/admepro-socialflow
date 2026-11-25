@@ -30153,26 +30153,28 @@ function LeadQrModal({lead, onClose}) {
 }
 
 // Lead Card (Kanban)
-function LeadCard({lead, onClick, team}) {
+function LeadCard({lead, onClick, team, onShortcut}) {
   const status = LEAD_STATUS_MAP[lead.status]||LEAD_STATUSES[0];
   const overdue = isOverdue(lead.followup_date);
   const dueToday = isDueToday(lead.followup_date);
   const assignee = lead.assigned_to && (team||[]).find(t=>t.email===lead.assigned_to);
   const [showQr, setShowQr] = useState(false);
+  const [busyAct, setBusyAct] = useState("");
+  const canShortcut = !!onShortcut && lead.phone && !["closed_won","closed_lost","dead"].includes(lead.status||"");
   return (
     <div onClick={()=>onClick(lead)} style={{
       background:"var(--surface)",border:`1px solid ${overdue?"#ef444444":dueToday?"#f59e0b44":"var(--border)"}`,
       borderLeft:`3px solid ${(LEAD_GROUPS.find(g=>g.key===leadGroupOf(lead.source))||{color:"#a16207"}).color}`,
-      borderRadius:"var(--r)",padding:"12px 14px",cursor:"pointer",
-      transition:"all 0.18s",display:"flex",flexDirection:"column",gap:8,
+      borderRadius:"var(--r)",padding:"18px 20px",cursor:"pointer",
+      transition:"all 0.18s",display:"flex",flexDirection:"column",gap:12,
     }}
     onMouseEnter={e=>{e.currentTarget.style.borderColor=status.color+"88";e.currentTarget.style.transform="translateY(-1px)";}}
     onMouseLeave={e=>{e.currentTarget.style.borderColor=overdue?"#ef444444":dueToday?"#f59e0b44":"var(--border)";e.currentTarget.style.transform="";}}
     >
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
         <div>
-          <p style={{fontWeight:700,fontSize:13}}>{lead.name}</p>
-          {lead.company&&<p style={{fontSize:11,color:"var(--text2)",marginTop:2}}>{lead.company}</p>}
+          <p style={{fontWeight:700,fontSize:16}}>{lead.name}</p>
+          {lead.company&&<p style={{fontSize:12.5,color:"var(--text2)",marginTop:3}}>{lead.company}</p>}
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
           {lead.value>0&&<span style={{fontSize:12,fontWeight:800,color:"#10b981"}}>${lead.value.toLocaleString()}</span>}
@@ -30207,6 +30209,15 @@ function LeadCard({lead, onClick, team}) {
           {lead.phone&&<a href={`tel:${String(lead.phone).replace(/\s/g,"")}`} title="Call" style={{fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:99,background:"var(--surface2)",color:"var(--text2)",textDecoration:"none",border:"1px solid var(--border2)"}}>Call</a>}
         </div>;
       })()}
+      {canShortcut&&(
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",paddingTop:10,borderTop:"1px solid var(--border)"}} onClick={e=>e.stopPropagation()}>
+          {[["no_answer","📵 No answer","#f59e0b"],["call_later","⏰ Call later","#3b82f6"],["not_qualified","✖ Not qualified","#ef4444"]].map(([k,l,c])=>(
+            <button key={k} disabled={!!busyAct} onClick={async()=>{ setBusyAct(k); try { await onShortcut(lead,k); } finally { setBusyAct(""); } }}
+              title={k==="no_answer"?"Called, no answer: sends a WhatsApp message, follow-up tomorrow":k==="call_later"?"Customer asked for a later call: sends a WhatsApp message, follow-up tomorrow":"Not a fit: sends a polite WhatsApp message and closes the lead"}
+              style={{flex:"1 1 0",minWidth:92,padding:"7px 8px",borderRadius:10,border:`1px solid ${c}55`,background:c+"14",color:c,fontSize:11.5,fontWeight:800,cursor:busyAct?"default":"pointer",opacity:busyAct&&busyAct!==k?0.5:1}}>{busyAct===k?"Sending…":l}</button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -30304,7 +30315,23 @@ function LeadRotationSettingsModal({appSettings, onSave, team, onClose}) {
 }
 
 function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead, onUpdateLead, onAddActivity, onConvertLead, onDeleteLead, appSettings, onSaveSettings}) {
-  const [showRotationSettings, setShowRotationSettings] = useState(false);
+
+  // One-tap follow-up from the card: sends the WhatsApp message (server side), moves the card, sets tomorrow's follow-up and logs it.
+  const leadShortcut = async (lead, action) => {
+    if(action==="not_qualified" && !window.confirm(`Mark "${lead.name}" as not qualified?\nA polite WhatsApp message is sent and the lead is closed.`)) return;
+    let j = null;
+    try { const r = await fetch("/lead-action.php",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({lead_id:lead.id, action})}); j = await r.json().catch(()=>({error:"Bad response"})); if(!r.ok && !j.error) j.error = "HTTP "+r.status; }
+    catch(e) { j = {error:"Connection problem"}; }
+    if(j.error) { alert("Nothing was changed: "+j.error); return; }
+    const tmr = new Date(); tmr.setDate(tmr.getDate()+1); const tomorrow = tmr.toISOString().slice(0,10);
+    const label = {no_answer:"📵 No answer", call_later:"⏰ Call later", not_qualified:"✖ Not qualified"}[action];
+    const patch = action==="not_qualified" ? {status:"closed_lost"}
+      : action==="call_later" ? {status:"follow_up", followup_date:tomorrow}
+      : {status:(!lead.status||lead.status==="new")?"contacted":lead.status, followup_date:tomorrow};
+    await onUpdateLead({...lead, ...patch});
+    await onAddActivity({lead_id:lead.id, type:action==="not_qualified"?"note":"call", content:`${label}${action!=="not_qualified"?" — follow-up set for tomorrow":" — lead closed"}. ${j.sent?`WhatsApp sent: "${j.text}"`:`WhatsApp NOT sent: ${j.send_error||"unknown reason"}`}`, followup_date:patch.followup_date, author_name:currentUser?.name||"User", author_email:currentUser?.email});
+    if(!j.sent) alert(`Saved, but the WhatsApp message was NOT sent:\n${j.send_error||"unknown reason"}`);
+  };  const [showRotationSettings, setShowRotationSettings] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [view, setView_] = useState(()=>{ try{ const v=localStorage.getItem("sf_leads_view"); if(v) return v; }catch(e){} return ["account_manager","account_director","account_executive"].includes(currentUser?.role)?"today":"kanban"; });
   const setView = (v) => { setView_(v); try{ localStorage.setItem("sf_leads_view",typeof v==="function"?v(view):v); }catch(e){} };
@@ -30641,7 +30668,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
                 <div style={{display:"flex",flexDirection:"column",gap:8,minHeight:60,...(statusLeads.length>6?{maxHeight:"70vh",overflowY:"auto",paddingRight:2}:{})}}>
                   {statusLeads.map(l=>(
                     <div key={l.id} draggable onDragStart={e=>{dragLead.current=l;e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",l.id);}} onDragEnd={()=>{dragLead.current=null;}} style={{cursor:"grab"}}>
-                      <LeadCard lead={l} onClick={setSelectedLead} team={team}/>
+                      <LeadCard lead={l} onClick={setSelectedLead} team={team} onShortcut={leadShortcut}/>
                     </div>
                   ))}
                   {statusLeads.length===0&&<div title={status.label} style={{border:"1px dashed var(--border)",borderRadius:"var(--r)",padding:status.key==="new"?"20px":"20px 0",textAlign:"center",color:"var(--text3)",fontSize:11}}>{status.key==="new"?"No leads":"·"}</div>}
