@@ -30211,10 +30211,10 @@ function LeadCard({lead, onClick, team, onShortcut}) {
       })()}
       {canShortcut&&(
         <div style={{display:"flex",gap:6,flexWrap:"wrap",paddingTop:10,borderTop:"1px solid var(--border)"}} onClick={e=>e.stopPropagation()}>
-          {[["no_answer","📵 No answer","#f59e0b"],["call_later","⏰ Call later","#3b82f6"],["not_qualified","✖ Not qualified","#ef4444"]].map(([k,l,c])=>(
+          {[["no_answer","No answer","#f59e0b",["M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91","M23 1L1 23"]],["call_later","Call later","#3b82f6",Icons.clock],["not_qualified","Not qualified","#ef4444",Icons.x]].map(([k,l,c,ic])=>(
             <button key={k} disabled={!!busyAct} onClick={async()=>{ setBusyAct(k); try { await onShortcut(lead,k); } finally { setBusyAct(""); } }}
               title={k==="no_answer"?"Called, no answer: sends a WhatsApp message, follow-up tomorrow":k==="call_later"?"Customer asked for a later call: sends a WhatsApp message, follow-up tomorrow":"Not a fit: sends a polite WhatsApp message and closes the lead"}
-              style={{flex:"1 1 0",minWidth:92,padding:"7px 8px",borderRadius:10,border:`1px solid ${c}55`,background:c+"14",color:c,fontSize:11.5,fontWeight:800,cursor:busyAct?"default":"pointer",opacity:busyAct&&busyAct!==k?0.5:1}}>{busyAct===k?"Sending…":l}</button>
+              style={{flex:"1 1 0",minWidth:92,padding:"7px 8px",borderRadius:10,border:`1px solid ${c}55`,background:c+"14",color:c,fontSize:11.5,fontWeight:800,cursor:busyAct?"default":"pointer",opacity:busyAct&&busyAct!==k?0.5:1,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>{busyAct===k?"Sending…":<><Ico d={ic} size={13} stroke={c}/>{l}</>}</button>
           ))}
         </div>
       )}
