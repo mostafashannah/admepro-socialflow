@@ -29825,14 +29825,16 @@ function LeadChat({lead}) {
   const [msgs, setMsgs] = useState(null);
   useEffect(()=>{ let live = true; setMsgs(null);
     const d = String(lead.phone||"").replace(/\D/g,"");
-    const ids = [...new Set([d, "+"+d, d.replace(/^0+/,""), lead.phone].filter(x=>x && String(x).length>5))];
+    // A lead created from a chat carries "src_id:<channel>:<customer id>" in its notes (Instagram / Messenger chats are keyed by that id, not by phone).
+    const sm = String(lead.notes||"").match(/src_id:(?:whatsapp|instagram|messenger):(\S+)/);
+    const ids = [...new Set([sm?sm[1]:"", d, "+"+d, d.replace(/^0+/,""), lead.phone].filter(x=>x && String(x).length>5))];
     (async()=>{ let all = []; for(const id of ids) { try { const r = await qe("CustomerMessage",{customer_id:id},"created_at",500); all = all.concat(r?.entities||[]); } catch(e) {} }
       const seen = {}; all = all.filter(m=>{ const k = m.id||(m.created_at+m.message_text); if(seen[k]) return false; seen[k] = 1; return true; })
         .filter(m=>m.draft_status!=="pending_review" && m.draft_status!=="dismissed").sort((a,b)=>new Date(a.created_at||a.created_date||0)-new Date(b.created_at||b.created_date||0));
       if(live) setMsgs(all); })();
     return ()=>{ live = false; }; },[lead.id, lead.phone]);
   if(msgs===null) return <p style={{fontSize:13,color:"var(--text3)"}}>Loading the chat…</p>;
-  if(!msgs.length) return <p style={{fontSize:13,color:"var(--text3)"}}>No chat found for {lead.phone||"this lead"}. Chats are matched by the lead's phone number, and only WhatsApp / DM conversations the bot or the team handled are saved here.</p>;
+  if(!msgs.length) return <p style={{fontSize:13,color:"var(--text3)"}}>No chat found for this lead. It is matched by the chat id the lead was created from (Instagram / Messenger / WhatsApp), or by the phone number; only conversations received by the system are saved here.</p>;
   return (
     <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:560,overflowY:"auto",padding:"4px 2px"}}>
       {msgs.map((m,i)=>{ const out = m.direction==="out"; const pr = splitInboxImages(m.message_text); const who = out ? (m.sent_by==="bot"?"Bot":m.sent_by==="human"?"Team":"Us") : (m.customer_name||lead.name||"Customer");
