@@ -42,21 +42,7 @@ if ($action === 'reply') {
         ? "أهلاً{$nm}، علشان نجهزلك أنسب عرض، ياريت تملا الملخص السريع ده (دقيقتين بس):\n{$link}"
         : "Hi{$nm}, to prepare the right proposal for you, please fill in this short brief (2 minutes):\n{$link}";
 } else {
-    $TXT = [
-        'no_answer' => [
-            'en' => "Hi{$nm}, this is admepro. We tried to call you but couldn't reach you. Feel free to call us on our agency number " . LEAD_AGENCY_PHONE . ", or we'll call you again tomorrow.",
-            'ar' => "أهلاً{$nm}، معاك admepro. حاولنا نتصل بيك ومقدرناش نوصلك. تقدر تتصل بينا في أي وقت على رقم الشركة " . LEAD_AGENCY_PHONE . "، أو هنحاول نتصل بيك تاني بكرة.",
-        ],
-        'call_later' => [
-            'en' => "Hi{$nm}, thanks for your time. We'll call you back at a better time. If you'd rather reach us first, call our agency number " . LEAD_AGENCY_PHONE . ".",
-            'ar' => "أهلاً{$nm}، شكراً على وقتك. هنتصل بيك تاني في وقت أنسب. ولو حابب تتواصل معانا قبل كده، اتصل على رقم الشركة " . LEAD_AGENCY_PHONE . ".",
-        ],
-        'not_qualified' => [
-            'en' => "Hi{$nm}, thank you for your interest in admepro. From what you've shared, we may not be the right fit right now, but you're always welcome to message us again whenever your plans change.",
-            'ar' => "أهلاً{$nm}، شكراً لاهتمامك بـ admepro. من اللي حضرتك شاركته معانا، ممكن مكنّاش الأنسب حالياً، لكن دايماً تقدر تتواصل معانا تاني لو خططك اتغيرت.",
-        ],
-    ];
-    $text = $TXT[$action][$ar ? 'ar' : 'en'];
+    $text = lead_action_text($action, $ar, $first);
 }
 if ($text === '') { http_response_code(400); echo json_encode(['error' => 'The message is empty']); exit; }
 if (mb_strlen($text) > 2000) $text = mb_substr($text, 0, 2000);

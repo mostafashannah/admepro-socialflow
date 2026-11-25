@@ -210,7 +210,7 @@ function transcribeAudio(string $bytes, string $mimeType, ?string &$errorOut = n
 function identifySender(PDO $pdo, string $digits) {
     $like = '%' . substr($digits, -9) . '%';
 
-    $stmt = $pdo->prepare("SELECT id, name, role FROM team_members WHERE status = 'active' AND REPLACE(REPLACE(REPLACE(whatsapp_number,'+',''),' ',''),'-','') LIKE :p LIMIT 1");
+    $stmt = $pdo->prepare("SELECT id, name, role, email FROM team_members WHERE status = 'active' AND REPLACE(REPLACE(REPLACE(whatsapp_number,'+',''),' ',''),'-','') LIKE :p LIMIT 1");
     $stmt->execute([':p' => $like]);
     if ($m = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $tasks = $pdo->prepare("SELECT title, stage FROM posts WHERE assigned_to = :n AND stage NOT IN ('published','cancelled') ORDER BY scheduled_date ASC LIMIT 5");
@@ -235,7 +235,13 @@ function identifySender(PDO $pdo, string $digits) {
             $approvalsBlock = "\n\nPending leave/WFH requests waiting on YOUR approval:\n" . implode("\n", $lines);
         }
 
-        return [$m['name'], 'team:' . $m['role'], "Their open assigned posts:\n$list" . $approvalsBlock, $m['id']];
+        $leadsBlock = '';
+        try {
+            $lq = $pdo->prepare("SELECT name, phone, source, status, followup_date FROM leads WHERE assigned_to = :e AND status NOT IN ('closed_won','closed_lost','dead') ORDER BY created_at DESC LIMIT 15");
+            $lq->execute([':e' => $m['email']]); $lr = $lq->fetchAll(PDO::FETCH_ASSOC);
+            if ($lr) $leadsBlock = "\n\nTheir open LEADS (assigned to them; newest first):\n" . implode("\n", array_map(fn($r) => "- {$r['name']} — {$r['phone']} (source: {$r['source']}, status: {$r['status']}" . ($r['followup_date'] ? ", follow-up {$r['followup_date']}" : '') . ')', $lr));
+        } catch (Throwable $e) { /* leads are optional context */ }
+        return [$m['name'], 'team:' . $m['role'], "Their open assigned posts:\n$list" . $approvalsBlock . $leadsBlock, $m['id']];
     }
 
     $stmt = $pdo->prepare("SELECT up.id, up.display_name, up.user_email FROM user_profiles up INNER JOIN team_members tm ON tm.email = up.user_email AND tm.status = 'active' WHERE REPLACE(REPLACE(REPLACE(up.whatsapp_number,'+',''),' ',''),'-','') LIKE :p LIMIT 1");
@@ -1739,6 +1745,11 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
     if (in_array($name, ['list_job_applications', 'get_job_application', 'update_application_status', 'add_application_note', 'list_job_openings', 'send_completion_reminder', 'send_interview_invite', 'send_job_offer'], true)) {
         return runRecruitmentTool($pdo, $name, $input, $senderRole, $senderName);
     }
+    if ($name === 'update_lead') {
+        if (!in_array($senderRole, ['team:admin', 'team:account_manager', 'team:account_director', 'team:account_executive'], true)) return ['error' => 'Only the admin and the account team can update leads from WhatsApp.'];
+        require_once __DIR__ . '/pro-leads-lib.php';
+        return runLeadTool($pdo, $input, $senderRole, $senderId, $senderName);
+    }
     $isAdmin = $senderRole === 'team:admin';
     $isAM    = in_array($senderRole, ['team:account_manager','team:account_director','team:account_executive'], true);
 
@@ -2495,6 +2506,14 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                      . "permission to browse the full client list or other people's tasks.";
         } else {
             $tools = [];
+        }
+        if ($isAdmin || $isAM) {
+            require_once __DIR__ . '/pro-leads-lib.php';
+            $tools = array_merge($tools, leadTools());
+            $system .= "\n\nLEADS: every \"New lead assigned to you: NAME — PHONE. Source: X.\" message is a lead assigned to the sender (their open leads are listed in your context). When they reply about it, or mention a lead by name, "
+                     . "saying what happened (\"called Mona, no answer\", \"she will look at the website, remind me tomorrow 8pm\", \"not interested\", \"asked me to call later\"), they are reporting the outcome on THAT LEAD: it is NEVER a client contact report, so do NOT ask which client and do NOT offer a contact report. "
+                     . "Call update_lead right away (lead = name or phone, action, followup_date if they gave a day, remind_at if they asked to be reminded, note = their own words short). Only ask a question if two leads match. "
+                     . "A time like \"4pm\" or \"tomorrow at 8\" is a clock time, not minutes. After the tool returns, confirm in one or two lines exactly what was changed (status, follow-up date, reminder, whether the lead was messaged); never say something was set unless the tool returned ok.";
         }
         if ($canRecruit && !$isAdmin) {
             $tools = array_merge($tools, recruitmentTools());

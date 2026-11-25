@@ -84,3 +84,23 @@ function lead_meeting_text(DateTime $when, string $type, bool $ar, string $first
     if ($kind === 'reminder') return "Hi{$name}, a reminder: your meeting with admepro is today at {$time}.\n{$where}\nSee you soon!";
     return "Hi{$name}, your meeting with admepro is confirmed for {$day} at {$time}.\n{$where}\nTo change the time, just reply here or call " . LEAD_AGENCY_PHONE . ".";
 }
+
+/** The standard no-answer / call-later / not-qualified messages (Arabic when $ar). */
+function lead_action_text(string $action, bool $ar, string $first): string {
+    $nm = $first !== '' ? ' ' . $first : '';
+    $TXT = [
+        'no_answer' => [
+            'en' => "Hi{$nm}, this is admepro. We tried to call you but couldn't reach you. Feel free to call us on our agency number " . LEAD_AGENCY_PHONE . ", or we'll call you again tomorrow.",
+            'ar' => "أهلاً{$nm}، معاك admepro. حاولنا نتصل بيك ومقدرناش نوصلك. تقدر تتصل بينا في أي وقت على رقم الشركة " . LEAD_AGENCY_PHONE . "، أو هنحاول نتصل بيك تاني بكرة.",
+        ],
+        'call_later' => [
+            'en' => "Hi{$nm}, thanks for your time. We'll call you back at a better time. If you'd rather reach us first, call our agency number " . LEAD_AGENCY_PHONE . ".",
+            'ar' => "أهلاً{$nm}، شكراً على وقتك. هنتصل بيك تاني في وقت أنسب. ولو حابب تتواصل معانا قبل كده، اتصل على رقم الشركة " . LEAD_AGENCY_PHONE . ".",
+        ],
+        'not_qualified' => [
+            'en' => "Hi{$nm}, thank you for your interest in admepro. From what you've shared, we may not be the right fit right now, but you're always welcome to message us again whenever your plans change.",
+            'ar' => "أهلاً{$nm}، شكراً لاهتمامك بـ admepro. من اللي حضرتك شاركته معانا، ممكن مكنّاش الأنسب حالياً، لكن دايماً تقدر تتواصل معانا تاني لو خططك اتغيرت.",
+        ],
+    ];
+    return $TXT[$action][$ar ? 'ar' : 'en'] ?? '';
+}
