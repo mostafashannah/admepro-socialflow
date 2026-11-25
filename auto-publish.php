@@ -215,13 +215,13 @@ foreach ($due as $post) {
         require_once __DIR__ . '/zernio-lib.php';
         if ($access_token !== ZERNIO_TOKEN_MARKER) { $code = 400; $resp = ['error' => 'X must be connected through Zernio.']; }
         elseif (mb_strlen($message) > 280) { $code = 422; $resp = ['error' => 'X posts are limited to 280 characters (this one is ' . mb_strlen($message) . ').']; }
-        else [$code, $resp] = zernio_publish('twitter', $page_id, $message, $image_url ? [$image_url] : []);
+        else [$code, $resp] = zernio_publish('twitter', $page_id, $message, count($image_urls) > 1 ? array_slice($image_urls, 0, 4) : ($image_url ? [$image_url] : []));   // a carousel goes out as one post with up to 4 pictures (X's limit), in order
     } elseif ($platform === 'website') {
         // an article on the client's own website (GitHub repo -> the site rebuilds itself)
         require_once __DIR__ . '/website-publish-lib.php';
         [$code, $resp] = website_publish_article($pdo, $creds, $post);
     } elseif ($platform === 'linkedin') {
-        [$code, $resp] = linkedin_publish($page_id, $access_token, $message, $image_url);
+        [$code, $resp] = linkedin_publish($page_id, $access_token, $message, $image_url, count($image_urls) > 1 ? $image_urls : []);
     } elseif ($platform === 'tiktok') {
         if (!$image_url) {
             $anyAttempted = true;

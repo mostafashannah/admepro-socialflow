@@ -13,20 +13,30 @@ if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVE
 define('LINKEDIN_API_VERSION', '202401');
 
 // Performs a LinkedIn post as the given member. Returns [http_code, decoded_response].
-function linkedin_publish($author_urn, $access_token, $message, $image_url = '') {
+function linkedin_publish($author_urn, $access_token, $message, $image_url = '', array $image_urls = []) {
+    // A carousel: every slide, in order, as ONE multi-image post (LinkedIn allows up to 9 pictures per post).
+    $image_urls = array_slice(array_values(array_filter($image_urls)), 0, 9);
+    $multi = count($image_urls) > 1;
     // Account connected through Zernio (credentials: page_id = Zernio account id, access_token = "zernio").
     if ($access_token === 'zernio') {
         require_once __DIR__ . '/zernio-lib.php';
-        return zernio_publish('linkedin', $author_urn, $message, $image_url ? [$image_url] : []);
+        return zernio_publish('linkedin', $author_urn, $message, $multi ? $image_urls : ($image_url ? [$image_url] : []));
     }
     $endpoint = 'https://api.linkedin.com/v2/ugcPosts';
 
     $shareContent = [
         'shareCommentary'    => ['text' => $message],
-        'shareMediaCategory' => $image_url ? 'IMAGE' : 'NONE',
+        'shareMediaCategory' => ($image_url || $multi) ? 'IMAGE' : 'NONE',
     ];
 
-    if ($image_url) {
+    if ($multi) {
+        $shareContent['media'] = [];
+        foreach ($image_urls as $i => $u) {
+            $asset = linkedin_register_and_upload_image($author_urn, $access_token, $u);
+            if (!$asset) return [502, ['error' => 'Failed to upload slide ' . ($i + 1) . ' to LinkedIn']];
+            $shareContent['media'][] = ['status' => 'READY', 'media' => $asset];
+        }
+    } elseif ($image_url) {
         $asset = linkedin_register_and_upload_image($author_urn, $access_token, $image_url);
         if (!$asset) {
             return [502, ['error' => 'Failed to upload image to LinkedIn']];

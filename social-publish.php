@@ -94,9 +94,9 @@ if ($platform === "website") {
     require_once __DIR__ . '/zernio-lib.php';
     if ($access_token !== ZERNIO_TOKEN_MARKER) { $http_code = 400; $response = ['error' => 'X must be connected through Zernio.']; }
     elseif (mb_strlen($message) > 280) { $http_code = 422; $response = ['error' => 'X posts are limited to 280 characters (this one is ' . mb_strlen($message) . ').']; }
-    else [$http_code, $response] = zernio_publish('twitter', $page_id, $message, $image_url ? [$image_url] : []);
+    else [$http_code, $response] = zernio_publish('twitter', $page_id, $message, count($image_urls) > 1 ? array_slice($image_urls, 0, 4) : ($image_url ? [$image_url] : []));   // a carousel: one post, up to 4 pictures (X's limit), in order
 } elseif ($platform === "linkedin") {
-    [$http_code, $response] = linkedin_publish($page_id, $access_token, $message, $image_url);
+    [$http_code, $response] = linkedin_publish($page_id, $access_token, $message, $image_url, count($image_urls) > 1 ? $image_urls : []);
 } elseif ($platform === "tiktok") {
     // TikTok publishes video only — image_url is expected to point at a
     // video file here (the frontend enforces this, see IntegrationWizard's
