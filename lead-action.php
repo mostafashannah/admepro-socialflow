@@ -1,7 +1,7 @@
 <?php
 /**
  * lead-action.php — one-tap follow-up shortcuts on a lead card (No answer / Call later / Not qualified).
- * POST {lead_id, action: "no_answer"|"call_later"|"not_qualified"} -> {ok, sent, text, send_error?}
+ * POST {lead_id, action: "no_answer"|"call_later"|"not_qualified"|"reply" (+ text)} -> {ok, sent, text, send_error?}
  * Sends the matching message the SAME WAY the lead came in (WhatsApp / Instagram / Messenger; WhatsApp by phone for other sources) (Arabic when the customer wrote in Arabic, else English),
  * and records it in the lead's chat. The app then moves the card / sets the follow-up date and logs the activity.
  * WhatsApp only allows free text within 24 hours of the customer's last message: outside that window the send is refused by WhatsApp,
@@ -17,7 +17,7 @@ if (!$s || ($s['user_type'] ?? '') !== 'team') { http_response_code(403); echo j
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') { http_response_code(405); echo json_encode(['error' => 'POST only']); exit; }
 $in = json_decode((string)file_get_contents('php://input'), true) ?: [];
 $leadId = preg_replace('/[^A-Za-z0-9-]/', '', (string)($in['lead_id'] ?? '')); $action = (string)($in['action'] ?? '');
-if ($leadId === '' || !in_array($action, ['no_answer', 'call_later', 'not_qualified'], true)) { http_response_code(400); echo json_encode(['error' => 'lead_id and a valid action are required']); exit; }
+if ($leadId === '' || !in_array($action, ['no_answer', 'call_later', 'not_qualified', 'reply'], true)) { http_response_code(400); echo json_encode(['error' => 'lead_id and a valid action are required']); exit; }
 
 $pdo = authPdo();
 $st = $pdo->prepare("SELECT id, name, phone, client_id, notes FROM leads WHERE id = :id LIMIT 1"); $st->execute([':id' => $leadId]); $lead = $st->fetch(PDO::FETCH_ASSOC);
@@ -45,7 +45,7 @@ if (!$ar && preg_match('/\p{Arabic}/u', (string)$lead['name'])) $ar = true;
 
 $first = trim(explode(' ', trim((string)$lead['name']))[0] ?? '');
 if ($first === '' || preg_match('/\d/', $first)) $first = '';
-$TXT = [
+$TXT = $action === 'reply' ? [] : [
     'no_answer' => [
         'en' => "Hi%s, this is admepro. We tried to call you but couldn't reach you. Feel free to call us on our agency number 0100 037 0140, or we'll call you again tomorrow.",
         'ar' => "أهلاً%s، معاك admepro. حاولنا نتصل بيك ومقدرناش نوصلك. تقدر تتصل بينا في أي وقت على رقم الشركة 0100 037 0140، أو هنحاول نتصل بيك تاني بكرة.",
@@ -59,7 +59,9 @@ $TXT = [
         'ar' => "أهلاً%s، شكراً لاهتمامك بـ admepro. من اللي حضرتك شاركته معانا، ممكن مكنّاش الأنسب حالياً، لكن دايماً تقدر تتواصل معانا تاني لو خططك اتغيرت.",
     ],
 ];
-$text = sprintf($TXT[$action][$ar ? 'ar' : 'en'], $first !== '' ? ($ar ? ' ' . $first : ' ' . $first) : '');
+$text = $action === 'reply' ? trim((string)($in['text'] ?? '')) : sprintf($TXT[$action][$ar ? 'ar' : 'en'], $first !== '' ? ' ' . $first : '');
+if ($text === '') { http_response_code(400); echo json_encode(['error' => 'The message is empty']); exit; }
+if (mb_strlen($text) > 2000) $text = mb_substr($text, 0, 2000);
 
 $appKey = $channel === 'whatsapp' ? 'whatsapp' : ($channel === 'instagram' ? 'instagram' : 'facebook');
 $creds = $clientId !== '' ? findIntegrationCreds($pdo, $clientId, $appKey) : null;

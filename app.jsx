@@ -29823,6 +29823,14 @@ function leadQual(lead){
 // The WhatsApp / DM conversation behind a lead (customer_messages, matched by the lead's phone number).
 function LeadChat({lead}) {
   const [msgs, setMsgs] = useState(null);
+  const [draft, setDraft] = useState(""); const [sending, setSending] = useState(false); const [sendErr, setSendErr] = useState("");
+  const sendReply = async () => {
+    const t = draft.trim(); if(!t || sending) return; setSending(true); setSendErr("");
+    try { const r = await fetch("/lead-action.php",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({lead_id:lead.id, action:"reply", text:t})}); const j = await r.json().catch(()=>({error:"Bad response"}));
+      if(j.error) setSendErr(j.error); else if(!j.sent) setSendErr(j.send_error||"The message was not sent"); else { setMsgs(m=>[...(m||[]), {id:"local"+Date.now(), direction:"out", sent_by:"human", message_text:t, created_at:new Date().toISOString()}]); setDraft(""); } }
+    catch(e) { setSendErr("Connection problem"); }
+    setSending(false);
+  };
   useEffect(()=>{ let live = true; setMsgs(null);
     const d = String(lead.phone||"").replace(/\D/g,"");
     // A lead created from a chat carries "src_id:<channel>:<customer id>" in its notes (Instagram / Messenger chats are keyed by that id, not by phone).
@@ -29834,15 +29842,28 @@ function LeadChat({lead}) {
       if(live) setMsgs(all); })();
     return ()=>{ live = false; }; },[lead.id, lead.phone]);
   if(msgs===null) return <p style={{fontSize:13,color:"var(--text3)"}}>Loading the chat…</p>;
-  if(!msgs.length) return <p style={{fontSize:13,color:"var(--text3)"}}>No chat found for this lead. It is matched by the chat id the lead was created from (Instagram / Messenger / WhatsApp), or by the phone number; only conversations received by the system are saved here.</p>;
+  const chanHint = /src_id:instagram:/.test(lead.notes||"") ? "Instagram" : /src_id:messenger:/.test(lead.notes||"") ? "Messenger" : "WhatsApp";
+  const composer = (
+    <div style={{display:"flex",flexDirection:"column",gap:6,paddingTop:10,borderTop:"1px solid var(--border)",marginTop:6}}>
+      <textarea dir="auto" value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{ if(e.key==="Enter" && (e.metaKey||e.ctrlKey)) { e.preventDefault(); sendReply(); } }} rows={2} placeholder={`Reply on ${chanHint}… (Ctrl/Cmd+Enter to send)`} style={{width:"100%",fontSize:13,lineHeight:1.5,padding:"8px 10px",borderRadius:10,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",resize:"vertical",fontFamily:"inherit"}}/>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <button onClick={sendReply} disabled={sending||!draft.trim()} style={{padding:"7px 18px",borderRadius:99,border:"none",background:sending||!draft.trim()?"var(--surface2)":"var(--accent)",color:sending||!draft.trim()?"var(--text3)":"#fff",fontSize:13,fontWeight:800,cursor:sending||!draft.trim()?"default":"pointer"}}>{sending?"Sending…":"Send"}</button>
+        <span style={{fontSize:11,color:"var(--text3)"}}>Goes out on {chanHint}, the way this lead contacted you, within its 24-hour reply window.</span>
+      </div>
+      {sendErr&&<p style={{fontSize:12,color:"#ef4444",lineHeight:1.5,margin:0}}>Not sent: {sendErr}</p>}
+    </div>);
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:560,overflowY:"auto",padding:"4px 2px"}}>
-      {msgs.map((m,i)=>{ const out = m.direction==="out"; const pr = splitInboxImages(m.message_text); const who = out ? (m.sent_by==="bot"?"Bot":m.sent_by==="human"?"Team":"Us") : (m.customer_name||lead.name||"Customer");
-        return (<div key={m.id||i} style={{alignSelf:out?"flex-end":"flex-start",maxWidth:"82%"}}>
-          <div style={{fontSize:10,color:"var(--text3)",margin:"0 6px 2px",textAlign:out?"right":"left"}}>{who} · {new Date(m.created_at||m.created_date||0).toLocaleString([], {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</div>
-          <div dir="auto" style={{background:out?(m.sent_by==="bot"?"#10b98122":"var(--accent)"):"var(--surface2)",color:out&&m.sent_by!=="bot"?"#fff":"var(--text)",borderRadius:14,padding:"8px 12px",fontSize:13,lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
-            {pr.images.map(u=><img key={u} src={u} alt="" style={{display:"block",maxWidth:220,maxHeight:260,borderRadius:8,marginBottom:pr.text?6:0}}/>)}{pr.text}
-          </div></div>); })}
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {!msgs.length ? <p style={{fontSize:13,color:"var(--text3)"}}>No earlier chat found for this lead; you can still send a first message below.</p> : (
+      <div ref={el=>{ if(el) el.scrollTop = el.scrollHeight; }} style={{display:"flex",flexDirection:"column",gap:8,maxHeight:520,overflowY:"auto",padding:"4px 2px"}}>
+        {msgs.map((m,i)=>{ const out = m.direction==="out"; const pr = splitInboxImages(m.message_text); const who = out ? (m.sent_by==="bot"?"Bot":m.sent_by==="human"?"Team":"Us") : (m.customer_name||lead.name||"Customer");
+          return (<div key={m.id||i} style={{alignSelf:out?"flex-end":"flex-start",maxWidth:"82%"}}>
+            <div style={{fontSize:10,color:"var(--text3)",margin:"0 6px 2px",textAlign:out?"right":"left"}}>{who} · {new Date(m.created_at||m.created_date||0).toLocaleString([], {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</div>
+            <div dir="auto" style={{background:out?(m.sent_by==="bot"?"#10b98122":"var(--accent)"):"var(--surface2)",color:out&&m.sent_by!=="bot"?"#fff":"var(--text)",borderRadius:14,padding:"8px 12px",fontSize:13,lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
+              {pr.images.map(u=><img key={u} src={u} alt="" style={{display:"block",maxWidth:220,maxHeight:260,borderRadius:8,marginBottom:pr.text?6:0}}/>)}{pr.text}
+            </div></div>); })}
+      </div>)}
+      {composer}
     </div>);
 }
 
