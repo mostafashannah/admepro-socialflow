@@ -30244,7 +30244,7 @@ function LeadCard({lead, onClick, team, onShortcut}) {
               {row.map(([k,l,c,ic])=>(
                 <button key={k} disabled={!!busyAct} onClick={async()=>{ if(k==="meeting") { setShowMeeting(v=>!v); return; } setBusyAct(k); try { await onShortcut(lead,k); } finally { setBusyAct(""); } }}
                   title={k==="no_answer"?"Called, no answer: sends a message, follow-up tomorrow":k==="call_later"?"Customer asked for a later call: sends a message, follow-up tomorrow":k==="not_qualified"?"Not a fit: sends a polite message and closes the lead":k==="brief"?"Sends the lead a link to a short brief form; the answers fill the lead's profile":"Pick a day and time; the lead gets the confirmation and a reminder"}
-                  style={{flex:"1 1 0",minWidth:0,whiteSpace:"nowrap",padding:"8px 6px",borderRadius:10,border:`1px solid ${c}55`,background:c+"14",color:c,fontSize:12,fontWeight:800,cursor:busyAct?"default":"pointer",opacity:busyAct&&busyAct!==k?0.5:1,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>{busyAct===k?"Sending…":<><Ico d={ic} size={13} stroke={c}/>{l}</>}</button>
+                  style={{flex:"1 1 0",minWidth:0,whiteSpace:"nowrap",overflow:"hidden",padding:"8px 4px",borderRadius:10,border:`1px solid ${c}55`,background:c+"14",color:c,fontSize:11.5,fontWeight:800,cursor:busyAct?"default":"pointer",opacity:busyAct&&busyAct!==k?0.5:1,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>{busyAct===k?"Sending…":<><Ico d={ic} size={12} stroke={c}/><span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{l}</span></>}</button>
               ))}
             </div>))}
           {showMeeting&&(
