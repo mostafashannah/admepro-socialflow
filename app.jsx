@@ -54328,10 +54328,15 @@ function App() {
   // expense row that used the old name (invoice/subscription-linked income
   // is managed via their own modules, not here).
   const renameFinanceClient = async (oldName, newName) => {
-    const matches = data.expenses.filter(e=>(e.type||"out")==="in"&&e.category==="client_payment"&&e.description===oldName);
+    // The Finance list shows the name with prefixes such as "Client payment — " stripped, so match on that same cleaned name (the stored description may still carry the prefix).
+    const clean = (t)=>(t||"").replace(/^\s*(client\s*payment|bank\s*transfer|cash\s*payment|wire\s*transfer)\s*[—\-:]\s*/i,"").trim()||(t||"").trim();
+    const want = clean(oldName).toLowerCase();
+    const matches = data.expenses.filter(e=>(e.type||"out")==="in"&&e.category==="client_payment"&&clean(e.description).toLowerCase()===want);
+    if(!matches.length){ setToast(`Nothing was renamed: no payment found under "${oldName}"`); return; }
+    let failed = 0;
+    await Promise.all(matches.map(e=>ue("Expense", e.id, {description:newName}).catch(()=>{ failed++; })));
     setData(d=>({...d,expenses:d.expenses.map(e=>matches.some(m=>m.id===e.id)?{...e,description:newName}:e)}));
-    await Promise.all(matches.map(e=>ue("Expense", e.id, {description:newName}).catch(()=>{})));
-    setToast(`Renamed "${oldName}" to "${newName}" on ${matches.length} transaction${matches.length!==1?"s":""}`);
+    setToast(failed?`Renamed ${matches.length-failed} of ${matches.length} — ${failed} could not be saved, try again`:`Renamed "${oldName}" to "${newName}" on ${matches.length} transaction${matches.length!==1?"s":""}`);
   };
 
   const saveFinanceClientNote = async (clientName, updates) => {
