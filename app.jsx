@@ -30720,7 +30720,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
                     <span style={{fontSize:10,color:"var(--text3)",background:"var(--surface2)",padding:"1px 7px",borderRadius:99,border:"1px solid var(--border)"}}>{statusLeads.length}</span>
                   </div>
                 </div>
-                <div style={{display:"flex",flexDirection:"column",gap:8,minHeight:60,...(statusLeads.length>6?{maxHeight:"70vh",overflowY:"auto",paddingRight:2}:{})}}>
+                <div style={{display:"flex",flexDirection:"column",gap:8,minHeight:60}}>
                   {statusLeads.map(l=>(
                     <div key={l.id} draggable onDragStart={e=>{dragLead.current=l;e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",l.id);}} onDragEnd={()=>{dragLead.current=null;}} style={{cursor:"grab"}}>
                       <LeadCard lead={l} onClick={setSelectedLead} team={team} onShortcut={leadShortcut}/>
