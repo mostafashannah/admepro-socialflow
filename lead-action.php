@@ -42,12 +42,12 @@ $first = trim(explode(' ', trim((string)$lead['name']))[0] ?? '');
 if ($first === '' || preg_match('/\d/', $first)) $first = '';
 $TXT = [
     'no_answer' => [
-        'en' => "Hi%s, this is admepro. We tried to call you but couldn't reach you. Feel free to call us on our agency number ending in 140, or we'll call you again tomorrow.",
-        'ar' => "أهلاً%s، معاك admepro. حاولنا نتصل بيك ومقدرناش نوصلك. تقدر تتصل بينا في أي وقت على رقم الشركة اللي بينتهي بـ 140، أو هنحاول نتصل بيك تاني بكرة.",
+        'en' => "Hi%s, this is admepro. We tried to call you but couldn't reach you. Feel free to call us on our agency number 0100 037 0140, or we'll call you again tomorrow.",
+        'ar' => "أهلاً%s، معاك admepro. حاولنا نتصل بيك ومقدرناش نوصلك. تقدر تتصل بينا في أي وقت على رقم الشركة 0100 037 0140، أو هنحاول نتصل بيك تاني بكرة.",
     ],
     'call_later' => [
-        'en' => "Hi%s, thanks for your time. We'll call you back at a better time. If you'd rather reach us first, call our agency number ending in 140.",
-        'ar' => "أهلاً%s، شكراً على وقتك. هنتصل بيك تاني في وقت أنسب. ولو حابب تتواصل معانا قبل كده، اتصل على رقم الشركة اللي بينتهي بـ 140.",
+        'en' => "Hi%s, thanks for your time. We'll call you back at a better time. If you'd rather reach us first, call our agency number 0100 037 0140.",
+        'ar' => "أهلاً%s، شكراً على وقتك. هنتصل بيك تاني في وقت أنسب. ولو حابب تتواصل معانا قبل كده، اتصل على رقم الشركة 0100 037 0140.",
     ],
     'not_qualified' => [
         'en' => "Hi%s, thank you for your interest in admepro. From what you've shared, we may not be the right fit right now, but you're always welcome to message us again whenever your plans change.",
