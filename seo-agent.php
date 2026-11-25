@@ -194,7 +194,8 @@ function seoRun(PDO $pdo, $by, $jobFile = null) {
 
     $m = seoAgentModel($pdo);
     $markets = implode(', ', $cfg['markets']);
-    $prompt = "You are the SEO & growth agent for admepro, an AI-powered marketing, branding, content and production agency based in New Cairo, Egypt, winning clients in Egypt and the GCC. The site has English and Arabic versions.\n"
+    $prompt = "You are the SEO & growth agent for admepro, a marketing and advertising agency (AI-powered) based in New Cairo, Egypt, winning clients in Egypt and the GCC. The site has English and Arabic versions.\n"
+        . "POSITIONING (the admin's rule, always follow): the FIRST and main focus is MARKETING and ADVERTISING (marketing agency, advertising agency, digital marketing, social media marketing, paid ads, performance marketing, campaigns). Titles, descriptions, headlines and new articles must lead with marketing/advertising keywords. Branding, design, video and production are SECONDARY supporting services: mention them after, never as the lead keyword, and do not propose retargeting pages or the brand-name search around branding.\n"
         . "Goal: more qualified clients from search in these markets: $markets.\n\n"
         . "DATA (last 28 days, $ctx[period]):\n" . json_encode(array_diff_key($ctx, ['content' => 1, 'content_files' => 1]), JSON_UNESCAPED_UNICODE) . "\n\n"
         . "SEARCH rows are [query, page, clicks, impressions, avg position]. search_by_country rows are [query, country, clicks, impressions, position].\n\n"
