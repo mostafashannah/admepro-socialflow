@@ -29575,6 +29575,7 @@ const LEAD_STATUSES = [
   {key:"new", label:"New", color:"#6b7280", emoji:""},
   {key:"contacted", label:"Contacted", color:"#3b82f6", emoji:""},
   {key:"follow_up", label:"Follow-up", color:"#f59e0b", emoji:""},
+  {key:"meeting", label:"Meeting booked", color:"#0ea5e9", emoji:""},
   {key:"negotiation", label:"Negotiation", color:"#8b5cf6", emoji:""},
   {key:"closed_won", label:"Closed Won", color:"#10b981", emoji:""},
   {key:"closed_lost", label:"Closed Lost", color:"#ef4444", emoji:""},
@@ -30183,6 +30184,9 @@ function LeadCard({lead, onClick, team, onShortcut}) {
   const assignee = lead.assigned_to && (team||[]).find(t=>t.email===lead.assigned_to);
   const [showQr, setShowQr] = useState(false);
   const [busyAct, setBusyAct] = useState("");
+  const [showMeeting, setShowMeeting] = useState(false);
+  const [mDate, setMDate] = useState(()=>{ const d = new Date(); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); });
+  const [mTime, setMTime] = useState("11:00"); const [mType, setMType] = useState("office");
   const canShortcut = !!onShortcut && (lead.phone || /src_id:(instagram|messenger):/.test(lead.notes||"")) && !["closed_won","closed_lost","dead"].includes(lead.status||"");
   return (
     <div onClick={()=>onClick(lead)} style={{
@@ -30233,14 +30237,36 @@ function LeadCard({lead, onClick, team, onShortcut}) {
         </div>;
       })()}
       {canShortcut&&(
-        <div style={{display:"flex",gap:6,flexWrap:"wrap",paddingTop:10,borderTop:"1px solid var(--border)"}} onClick={e=>e.stopPropagation()}>
-          {[["no_answer","No answer","#f59e0b",["M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91","M23 1L1 23"]],["call_later","Call later","#3b82f6",Icons.clock],["not_qualified","Not qualified","#ef4444",Icons.x]].map(([k,l,c,ic])=>(
-            <button key={k} disabled={!!busyAct} onClick={async()=>{ setBusyAct(k); try { await onShortcut(lead,k); } finally { setBusyAct(""); } }}
-              title={k==="no_answer"?"Called, no answer: sends a WhatsApp message, follow-up tomorrow":k==="call_later"?"Customer asked for a later call: sends a WhatsApp message, follow-up tomorrow":"Not a fit: sends a polite WhatsApp message and closes the lead"}
-              style={{flex:"1 1 0",minWidth:92,padding:"7px 8px",borderRadius:10,border:`1px solid ${c}55`,background:c+"14",color:c,fontSize:11.5,fontWeight:800,cursor:busyAct?"default":"pointer",opacity:busyAct&&busyAct!==k?0.5:1,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>{busyAct===k?"Sending…":<><Ico d={ic} size={13} stroke={c}/>{l}</>}</button>
-          ))}
+        <div style={{display:"flex",flexDirection:"column",gap:6,paddingTop:10,borderTop:"1px solid var(--border)"}} onClick={e=>e.stopPropagation()}>
+          {[[["no_answer","No answer","#f59e0b",["M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91","M23 1L1 23"]],["call_later","Call later","#3b82f6",Icons.clock],["not_qualified","Not qualified","#ef4444",Icons.x]],
+            [["brief","Send brief","#8b5cf6",Icons.receipt],["meeting",lead.status==="meeting"?"Reschedule":"Book meeting","#0ea5e9",Icons.calendar]]].map((row,ri)=>(
+            <div key={ri} style={{display:"flex",gap:6}}>
+              {row.map(([k,l,c,ic])=>(
+                <button key={k} disabled={!!busyAct} onClick={async()=>{ if(k==="meeting") { setShowMeeting(v=>!v); return; } setBusyAct(k); try { await onShortcut(lead,k); } finally { setBusyAct(""); } }}
+                  title={k==="no_answer"?"Called, no answer: sends a message, follow-up tomorrow":k==="call_later"?"Customer asked for a later call: sends a message, follow-up tomorrow":k==="not_qualified"?"Not a fit: sends a polite message and closes the lead":k==="brief"?"Sends the lead a link to a short brief form; the answers fill the lead's profile":"Pick a day and time; the lead gets the confirmation and a reminder"}
+                  style={{flex:"1 1 0",minWidth:0,whiteSpace:"nowrap",padding:"8px 6px",borderRadius:10,border:`1px solid ${c}55`,background:c+"14",color:c,fontSize:12,fontWeight:800,cursor:busyAct?"default":"pointer",opacity:busyAct&&busyAct!==k?0.5:1,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>{busyAct===k?"Sending…":<><Ico d={ic} size={13} stroke={c}/>{l}</>}</button>
+              ))}
+            </div>))}
+          {showMeeting&&(
+            <div style={{display:"flex",flexDirection:"column",gap:8,padding:12,borderRadius:12,background:"var(--surface2)",border:"1px solid #0ea5e955"}}>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <input type="date" value={mDate} min={new Date().toISOString().slice(0,10)} onChange={e=>setMDate(e.target.value)} style={{...inputSt,flex:"1 1 130px",minHeight:"auto",padding:"7px 9px",fontSize:13}}/>
+                <select value={mTime} onChange={e=>setMTime(e.target.value)} style={{...inputSt,flex:"1 1 90px",minHeight:"auto",padding:"7px 9px",fontSize:13}}>
+                  {Array.from({length:21},(_,n)=>{ const m = 10*60+n*30; const h = String(Math.floor(m/60)).padStart(2,"0"), mi = String(m%60).padStart(2,"0"); return <option key={n} value={`${h}:${mi}`}>{`${h}:${mi}`}</option>; })}
+                </select>
+              </div>
+              {(()=>{ const d = mDate ? new Date(mDate+"T12:00:00").getDay() : 0; return (d===5||d===6) ? <p style={{margin:0,fontSize:11,color:"#b45309"}}>Our office hours are Sunday–Thursday, 10 am–8 pm. This day is a weekend.</p> : null; })()}
+              <div style={{display:"flex",gap:6}}>
+                {[["office","🏢 Office visit"],["phone","📞 Phone call"]].map(([k,l])=>(<button key={k} type="button" onClick={()=>setMType(k)} style={{flex:1,padding:"6px 8px",borderRadius:99,fontSize:12,fontWeight:700,border:`1.5px solid ${mType===k?"#0ea5e9":"var(--border2)"}`,background:mType===k?"#0ea5e922":"var(--surface)",color:mType===k?"#0369a1":"var(--text2)",cursor:"pointer"}}>{l}</button>))}
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button disabled={!!busyAct||!mDate} onClick={async()=>{ setBusyAct("meeting"); try { const ok = await onShortcut(lead,"meeting",{date:mDate,time:mTime,type:mType}); if(ok!==false) setShowMeeting(false); } finally { setBusyAct(""); } }} style={{flex:1,padding:"8px",borderRadius:10,border:"none",background:"#0ea5e9",color:"#fff",fontSize:13,fontWeight:800,cursor:"pointer"}}>{busyAct==="meeting"?"Booking…":(lead.status==="meeting"?"Reschedule & send":"Book & send confirmation")}</button>
+                <button onClick={()=>setShowMeeting(false)} style={{padding:"8px 14px",borderRadius:10,border:"1px solid var(--border2)",background:"transparent",color:"var(--text2)",fontSize:13,fontWeight:700,cursor:"pointer"}}>Cancel</button>
+              </div>
+            </div>)}
         </div>
       )}
+      {/Brief received/.test(lead.notes||"")&&<span style={{alignSelf:"flex-start",fontSize:11,fontWeight:800,padding:"3px 10px",borderRadius:99,background:"#8b5cf622",color:"#7c3aed"}}>Brief received</span>}
     </div>
   );
 }
@@ -30340,21 +30366,27 @@ function LeadRotationSettingsModal({appSettings, onSave, team, onClose}) {
 function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead, onUpdateLead, onAddActivity, onConvertLead, onDeleteLead, appSettings, onSaveSettings}) {
 
   // One-tap follow-up from the card: sends the WhatsApp message (server side), moves the card, sets tomorrow's follow-up and logs it.
-  const leadShortcut = async (lead, action) => {
-    if(action==="not_qualified" && !window.confirm(`Mark "${lead.name}" as not qualified?\nA polite message is sent the same way they contacted you, and the lead is closed.`)) return;
+  const leadShortcut = async (lead, action, extra={}) => {
+    if(action==="not_qualified" && !window.confirm(`Mark "${lead.name}" as not qualified?\nA polite message is sent the same way they contacted you, and the lead is closed.`)) return false;
     let j = null;
-    try { const r = await fetch("/lead-action.php",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({lead_id:lead.id, action})}); j = await r.json().catch(()=>({error:"Bad response"})); if(!r.ok && !j.error) j.error = "HTTP "+r.status; }
+    try { const r = await fetch("/lead-action.php",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({lead_id:lead.id, action, ...extra})}); j = await r.json().catch(()=>({error:"Bad response"})); if(!r.ok && !j.error) j.error = "HTTP "+r.status; }
     catch(e) { j = {error:"Connection problem"}; }
-    if(j.error) { alert("Nothing was changed: "+j.error); return; }
+    if(j.error) { alert("Nothing was changed: "+j.error); return false; }
     const tmr = new Date(); tmr.setDate(tmr.getDate()+1); const tomorrow = tmr.toISOString().slice(0,10);
-    const label = {no_answer:"📵 No answer", call_later:"⏰ Call later", not_qualified:"✖ Not qualified"}[action];
+    const label = {no_answer:"📵 No answer", call_later:"⏰ Call later", not_qualified:"✖ Not qualified", brief:"📝 Brief form sent", meeting:"📅 Meeting booked"}[action];
+    const mtxt = action==="meeting" ? `${extra.date} at ${extra.time} — ${extra.type==="phone"?"phone call":"office visit"}` : "";
     const patch = action==="not_qualified" ? {status:"closed_lost"}
       : action==="call_later" ? {status:"follow_up", followup_date:tomorrow}
+      : action==="meeting" ? {status:"meeting", followup_date:extra.date}
+      : action==="brief" ? {status:(!lead.status||lead.status==="new")?"contacted":lead.status}
       : {status:(!lead.status||lead.status==="new")?"contacted":lead.status, followup_date:tomorrow};
+    const what = action==="not_qualified" ? " — lead closed" : action==="brief" ? " — the answers fill the lead's profile" : action==="meeting" ? `: ${mtxt}` : " — follow-up set for tomorrow";
     await onUpdateLead({...lead, ...patch});
-    await onAddActivity({lead_id:lead.id, type:action==="not_qualified"?"note":"call", content:`${label}${action!=="not_qualified"?" — follow-up set for tomorrow":" — lead closed"}. ${j.sent?`${j.channel_label||"WhatsApp"} message sent: "${j.text}"`:`Message NOT sent: ${j.send_error||"unknown reason"}`}`, followup_date:patch.followup_date, author_name:currentUser?.name||"User", author_email:currentUser?.email});
+    await onAddActivity({lead_id:lead.id, type:action==="meeting"?"meeting":action==="not_qualified"||action==="brief"?"note":"call", content:`${label}${what}. ${j.sent?`${j.channel_label||"WhatsApp"} message sent: "${j.text}"`:`Message NOT sent: ${j.send_error||"unknown reason"}`}`, followup_date:action==="meeting"?`${extra.date}T${extra.time}`:patch.followup_date, author_name:currentUser?.name||"User", author_email:currentUser?.email});
     if(!j.sent) alert(`Saved, but the message was NOT sent:\n${j.send_error||"unknown reason"}`);
-  };  const [showRotationSettings, setShowRotationSettings] = useState(false);
+    return true;
+  };
+  const [showRotationSettings, setShowRotationSettings] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [view, setView_] = useState(()=>{ try{ const v=localStorage.getItem("sf_leads_view"); if(v) return v; }catch(e){} return ["account_manager","account_director","account_executive"].includes(currentUser?.role)?"today":"kanban"; });
   const setView = (v) => { setView_(v); try{ localStorage.setItem("sf_leads_view",typeof v==="function"?v(view):v); }catch(e){} };
