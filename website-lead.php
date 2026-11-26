@@ -23,7 +23,16 @@ $ALLOWED_ORIGINS = ['https://admepro.com', 'https://www.admepro.com', 'https://n
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 header('Content-Type: application/json');
 header('Vary: Origin');
-if (in_array($origin, $ALLOWED_ORIGINS, true)) {
+// admepro.com itself, or a client's own website registered in its "Website" integration (site address / other domains).
+$originOk = in_array($origin, $ALLOWED_ORIGINS, true); $siteClient = null;
+if (!$originOk && $origin !== '') {
+    try {
+        $wpd = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4', DB_USER, DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        require_once __DIR__ . '/website-sites-lib.php';
+        $siteClient = ws_client_for_origin($wpd, $origin); $originOk = (bool)$siteClient;
+    } catch (Throwable $e) { error_log('[website-lead] site lookup: ' . $e->getMessage()); }
+}
+if ($originOk) {
     header('Access-Control-Allow-Origin: ' . $origin);
     header('Access-Control-Allow-Methods: POST, OPTIONS');
     header('Access-Control-Allow-Headers: Content-Type');
@@ -31,7 +40,7 @@ if (in_array($origin, $ALLOWED_ORIGINS, true)) {
 }
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') { http_response_code(204); exit; }
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Method not allowed']); exit; }
-if (!in_array($origin, $ALLOWED_ORIGINS, true)) { http_response_code(403); echo json_encode(['error' => 'Origin not allowed']); exit; }
+if (!$originOk) { http_response_code(403); echo json_encode(['error' => 'Origin not allowed']); exit; }
 
 /**
  * Phone check. Accepts "+20 100 037 0140", "0020100...", "0100 037 0140" (Egypt local) or digits with a country code.
@@ -130,22 +139,30 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]);
     require_once __DIR__ . '/reply-bot-lib.php'; // assignLeadRotation()
     $am = null;
-    try { $am = function_exists('assignLeadRotation') ? assignLeadRotation($pdo) : null; } catch (Throwable $e) { error_log('[website-lead] rotation: ' . $e->getMessage()); }
+    try { $am = (!$siteClient && function_exists('assignLeadRotation')) ? assignLeadRotation($pdo) : null; } catch (Throwable $e) { error_log('[website-lead] rotation: ' . $e->getMessage()); }
     $assignedTo = $am['email'] ?? null;
     $assignedAt = $am ? date('Y-m-d H:i:s') : null;
     try {
-        $pdo->prepare("INSERT INTO leads (name, company, phone, email, source, status, platforms, notes, tags, category, assigned_to, assigned_at)
-                       VALUES (:name, :company, :phone, :email, 'website', 'new', :platforms, :notes, :tags, 'lead', :to, :at)")
+        $pdo->prepare("INSERT INTO leads (name, company, phone, email, source, status, platforms, notes, tags, category, assigned_to, assigned_at, client_id, client_name)
+                       VALUES (:name, :company, :phone, :email, 'website', 'new', :platforms, :notes, :tags, 'lead', :to, :at, :cid, :cname)")
             ->execute([':name' => $name, ':company' => $company ?: null, ':phone' => $phone ?: null, ':email' => $email ?: null,
-                       ':platforms' => json_encode(['website']), ':notes' => $full, ':tags' => json_encode($tags), ':to' => $assignedTo, ':at' => $assignedAt]);
+                       ':platforms' => json_encode(['website']), ':notes' => $full, ':tags' => json_encode($tags), ':to' => $assignedTo, ':at' => $assignedAt,
+                       ':cid' => $siteClient['client_id'] ?? null, ':cname' => $siteClient['client_name'] ?? null]);
     } catch (Throwable $e) {
         // older table without company/email/tags columns: keep those details inside the notes instead of losing the lead
         error_log('[website-lead] full insert failed, retrying minimal: ' . $e->getMessage());
-        $extra = trim(($company ? "Company: $company\n" : '') . ($email ? "Email: $email\n" : '') . ($tags ? 'Tags: ' . implode(', ', $tags) . "\n" : ''));
+        $extra = trim(($company ? "Company: $company\n" : '') . ($email ? "Email: $email\n" : '') . ($tags ? 'Tags: ' . implode(', ', $tags) . "\n" : '') . ($siteClient ? "Captured on {$siteClient['client_name']}'s account\n" : ''));
         $pdo->prepare("INSERT INTO leads (name, phone, source, status, platforms, notes, category, assigned_to, assigned_at)
                        VALUES (:name, :phone, 'website', 'new', :platforms, :notes, 'lead', :to, :at)")
             ->execute([':name' => $name, ':phone' => $phone ?: null, ':platforms' => json_encode(['website']),
                        ':notes' => ($extra ? $extra . "\n" : '') . $full, ':to' => $assignedTo, ':at' => $assignedAt]);
+    }
+    // a CLIENT's website: tell whoever is set in that client's Leads notification settings (best effort); no rotation, no admepro welcome
+    if ($siteClient) {
+        try {
+            require_once __DIR__ . '/reply-bot-lib.php';
+            if (function_exists('notifyLeadCategorySubscriber')) notifyLeadCategorySubscriber($pdo, $siteClient['client_id'], 'lead', $name, $phone ?: null, 'website form (' . $siteClient['site'] . ')', trim($notes) !== '' ? $notes : ('Form: ' . ($form ?: 'n/a') . ' · ' . ($email ?: '')), $siteClient['client_name']);
+        } catch (Throwable $e) { error_log('[website-lead] client notify: ' . $e->getMessage()); }
     }
     // tell the assigned account manager on WhatsApp (best effort, same wording as other new leads)
     if ($am && !empty($am['id']) && function_exists('sendWhatsAppReply')) {
@@ -165,7 +182,7 @@ try {
     // WhatsApp this only leaves a line in the lead's Activity — nothing else is affected.
     if (function_exists('fastcgi_finish_request')) { @fastcgi_finish_request(); } else { @ob_end_flush(); @flush(); }
     try {
-        if ($phone !== '' && !(defined('WEBSITE_WELCOME_TEMPLATE') && WEBSITE_WELCOME_TEMPLATE === '')) {
+        if (!$siteClient && $phone !== '' && !(defined('WEBSITE_WELCOME_TEMPLATE') && WEBSITE_WELCOME_TEMPLATE === '')) {   // admepro's own site only
             require_once __DIR__ . '/growth-lib.php';
             $tpl = defined('WEBSITE_WELCOME_TEMPLATE') ? (string)WEBSITE_WELCOME_TEMPLATE : 'lead_welcome';
             $first = trim(explode(' ', $name)[0] ?? '') ?: 'there';
