@@ -95,6 +95,8 @@ $notes   = $clean($lead['notes'] ?? '', 4000);
 if ($name === '') wl_fail(422, 'Name is required');
 [$phoneDigits, $phoneCountry, $phoneErr] = wl_phone($phone);
 if ($phoneErr) wl_fail(422, $phoneErr);
+// Nobody may enter the agency's own numbers (agency line 0100 037 0140, the WhatsApp business number 0100 0531842): spam, tests and mistakes.
+if (in_array($phoneDigits, ['201000370140', '201000531842'], true)) wl_fail(422, "That is admepro's own phone number. Please enter your own phone number.");
 $phone = $phoneDigits;   // stored as digits with the country code, e.g. 201000370140 (same format as the other leads)
 if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) wl_fail(422, 'Invalid email');
 if (preg_match_all('#https?://#i', $notes . ' ' . $name . ' ' . $company) > 3) wl_fail(422, 'Too many links');
