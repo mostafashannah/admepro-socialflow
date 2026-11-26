@@ -13017,7 +13017,7 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
                   {(()=>{
                     // Per-platform connection health for THIS client: green = connected & last run fine,
                     // amber = connected but its last run failed / status error, grey = not connected.
-                    const SOCIAL = ["instagram","facebook","linkedin","tiktok","youtube","twitter","x","whatsapp","snapchat","pinterest"];
+                    const SOCIAL = ["instagram","facebook","linkedin","tiktok","youtube","twitter","x","whatsapp","snapchat","pinterest","website"];
                     const mine = (integrations||[]).filter(i=>i.client_id===client.id && SOCIAL.includes(i.app_key));
                     const keys = [...new Set([...(client.platforms||[]), ...mine.map(i=>i.app_key)])];
                     return keys.map(p=>{
