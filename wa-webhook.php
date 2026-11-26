@@ -61,9 +61,27 @@ if (function_exists('fastcgi_finish_request')) {
 $body    = json_decode($raw, true);
 $value   = $body['entry'][0]['changes'][0]['value'] ?? [];
 $message = $value['messages'][0] ?? null;
+// Delivery reports: only FAILED ones matter. They explain why a template/message never reached the phone (not on WhatsApp,
+// not allowed to message, Meta chose not to deliver…) — written to the Activity Log and, if it was a website lead's welcome, to the lead.
+foreach (($value['statuses'] ?? []) as $stt) {
+    if (($stt['status'] ?? '') !== 'failed') continue;
+    try {
+        $err = $stt['errors'][0] ?? []; $rcpt = preg_replace('/\D/', '', (string)($stt['recipient_id'] ?? ''));
+        $why = trim(($err['code'] ?? '') . ' ' . ($err['title'] ?? '') . ' ' . ($err['message'] ?? ($err['error_data']['details'] ?? '')));
+        $dbf = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4', DB_USER, DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        $dbf->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), 'WhatsApp delivery failed', 'whatsapp', :d, 'error', 'system')")
+            ->execute([':d' => 'to=…' . substr($rcpt, -4) . ' ' . mb_substr($why, 0, 300)]);
+        if (strlen($rcpt) >= 8) {
+            $lq = $dbf->prepare("SELECT id FROM leads WHERE source = 'website' AND REPLACE(REPLACE(phone,'+',''),' ','') = :p AND created_at >= (NOW() - INTERVAL 2 DAY) ORDER BY created_at DESC LIMIT 1");
+            $lq->execute([':p' => $rcpt]);
+            if ($lid = $lq->fetchColumn()) $dbf->prepare("INSERT INTO lead_activities (id, lead_id, type, content, author_name) VALUES (UUID(), :l, 'note', :c, 'System')")
+                ->execute([':l' => $lid, ':c' => 'WhatsApp NOT delivered: ' . mb_substr($why ?: 'unknown reason', 0, 300)]);
+        }
+    } catch (Throwable $e) { error_log('[wa-webhook] status log: ' . $e->getMessage()); }
+}
 $msgType = $message['type'] ?? '';
 if (!$message || !in_array($msgType, ['text', 'audio', 'image', 'document'], true)) {
-    exit; // ignore statuses, non-text/audio/image/document messages, etc.
+    exit; // ignore (other) statuses, non-text/audio/image/document messages, etc.
 }
 
 $phoneNumberId = (string)($value['metadata']['phone_number_id'] ?? ''); // which of our numbers received it
