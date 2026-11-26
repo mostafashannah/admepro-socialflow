@@ -23,13 +23,16 @@ function lead_context(PDO $pdo, array $lead): array {
     $digits = preg_replace('/\D/', '', (string)($lead['phone'] ?? ''));
     $channel = ''; $custId = '';
     if (preg_match('/src_id:(whatsapp|instagram|messenger):(\S+)/', (string)($lead['notes'] ?? ''), $mc)) { $channel = $mc[1]; $custId = $mc[2]; }
+    // A website-form lead never wrote to us on WhatsApp (so WhatsApp would refuse a free message): reach them by email when they left one.
+    $leadEmail = trim((string)($lead['email'] ?? ''));
+    if ($channel === '' && strpos((string)($lead['notes'] ?? ''), 'src_id:website:') !== false && filter_var($leadEmail, FILTER_VALIDATE_EMAIL)) { $channel = 'email'; $custId = $leadEmail; }
     if ($channel === 'whatsapp') $digits = preg_replace('/\D/', '', $custId) ?: $digits;
-    if ($channel === '' || $channel === 'whatsapp') { $channel = 'whatsapp'; $custId = $digits; }
+    if ($channel === '' || $channel === 'whatsapp') { $channel = 'whatsapp'; $custId = $digits; }   // (email leads keep 'email')
     $clientId = (string)($lead['client_id'] ?? ''); $clientName = '';
     if ($clientId === '') { $ag = $pdo->query("SELECT id, name FROM clients WHERE LOWER(TRIM(name)) = 'admepro' ORDER BY created_at LIMIT 1")->fetch(PDO::FETCH_ASSOC); if ($ag) { $clientId = $ag['id']; $clientName = $ag['name']; } }
     else { $q = $pdo->prepare("SELECT name FROM clients WHERE id = :i"); $q->execute([':i' => $clientId]); $clientName = (string)$q->fetchColumn(); }
     $ar = false;
-    $ids = $channel === 'whatsapp' ? array_values(array_unique([$digits, '+' . $digits])) : [$custId];
+    $ids = $channel === 'whatsapp' ? array_values(array_unique([$digits, '+' . $digits])) : ($channel === 'email' ? [] : [$custId]);
     if ($ids && $ids[0] !== '') {
         $qm = $pdo->prepare("SELECT message_text FROM customer_messages WHERE customer_id IN (" . implode(',', array_fill(0, count($ids), '?')) . ") AND direction = 'in' ORDER BY created_at DESC LIMIT 6");
         $qm->execute($ids);
@@ -39,13 +42,21 @@ function lead_context(PDO $pdo, array $lead): array {
     $first = trim(explode(' ', trim((string)($lead['name'] ?? '')))[0] ?? '');
     if ($first === '' || preg_match('/\d/', $first)) $first = '';
     return ['channel' => $channel, 'cust_id' => $custId, 'digits' => $digits, 'client_id' => $clientId, 'client_name' => $clientName, 'ar' => $ar, 'first' => $first,
-            'label' => ['whatsapp' => 'WhatsApp', 'instagram' => 'Instagram', 'messenger' => 'Messenger'][$channel]];
+            'label' => ['whatsapp' => 'WhatsApp', 'instagram' => 'Instagram', 'messenger' => 'Messenger', 'email' => 'Email'][$channel]];
 }
 
 /** Sends $text to the lead. Returns ['sent' => bool, 'channel', 'channel_label', 'send_error'?]. */
 function lead_send(PDO $pdo, array $lead, string $text, ?array $ctx = null): array {
     $c = $ctx ?: lead_context($pdo, $lead);
     $base = ['sent' => false, 'channel' => $c['channel'], 'channel_label' => $c['label']];
+    if ($c['channel'] === 'email') {
+        // Plain text -> simple HTML (links clickable), replies go to the agency mailbox.
+        $esc = htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
+        $esc = preg_replace('~(https?://[^\s<]+)~', '<a href="$1">$1</a>', $esc);
+        $html = '<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#111;direction:' . ($c['ar'] ? 'rtl' : 'ltr') . '">' . nl2br($esc) . '<br><br>admepro · ' . LEAD_AGENCY_PHONE . ' · <a href="https://admepro.com/">admepro.com</a></div>';
+        $ok = function_exists('authSendMail') && authSendMail($c['cust_id'], $c['ar'] ? 'admepro — رسالة من فريقنا' : 'admepro — a message from our team', $html, 'admepro', 'info@admepro.com');
+        return $ok ? ['sent' => true, 'channel' => 'email', 'channel_label' => 'Email'] : $base + ['send_error' => 'The email could not be sent (mail service not available).'];
+    }
     if ($c['channel'] === 'whatsapp' && strlen($c['digits']) < 8) return $base + ['send_error' => 'This lead has no usable phone number, so no message was sent.'];
     $appKey = $c['channel'] === 'whatsapp' ? 'whatsapp' : ($c['channel'] === 'instagram' ? 'instagram' : 'facebook');
     $creds = $c['client_id'] !== '' ? findIntegrationCreds($pdo, $c['client_id'], $appKey) : null;

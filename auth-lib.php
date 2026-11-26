@@ -221,12 +221,12 @@ function authStoreHash(PDO $pdo, $table, $id, $typed) {
 }
 
 /** Sends an email through Resend (same account mail.php uses). Returns true on success. */
-function authSendMail($to, $subject, $html, $fromName = 'SocialFlow') {
+function authSendMail($to, $subject, $html, $fromName = 'SocialFlow', $replyTo = null) {
     if (!defined('RESEND_API_KEY') || !RESEND_API_KEY) return false;
     $ch = curl_init('https://api.resend.com/emails');
     curl_setopt_array($ch, [
         CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20,
-        CURLOPT_POSTFIELDS => json_encode(['from' => "$fromName <noreply@admepro.com>", 'to' => is_array($to) ? $to : [$to], 'subject' => $subject, 'html' => $html]),
+        CURLOPT_POSTFIELDS => json_encode(['from' => "$fromName <noreply@admepro.com>", 'to' => is_array($to) ? $to : [$to], 'subject' => $subject, 'html' => $html] + ($replyTo ? ['reply_to' => $replyTo] : [])),
         CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . RESEND_API_KEY, 'Content-Type: application/json'],
     ]);
     curl_exec($ch);

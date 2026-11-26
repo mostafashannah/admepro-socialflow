@@ -21,7 +21,7 @@ foreach ($rows as $r) {
     if (!$when || $when < $now || $when > $limit) continue;
     $m = $pdo->prepare("SELECT COUNT(*) FROM lead_activities WHERE lead_id = :l AND type = 'meeting_reminded' AND followup_date = :f"); $m->execute([':l' => $r['lead_id'], ':f' => $r['followup_date']]);
     if ((int)$m->fetchColumn() > 0) continue;
-    $q = $pdo->prepare("SELECT id, name, phone, client_id, notes, status, assigned_to FROM leads WHERE id = :id"); $q->execute([':id' => $r['lead_id']]); $lead = $q->fetch(PDO::FETCH_ASSOC);
+    $q = $pdo->prepare("SELECT id, name, phone, email, client_id, notes, status, assigned_to FROM leads WHERE id = :id"); $q->execute([':id' => $r['lead_id']]); $lead = $q->fetch(PDO::FETCH_ASSOC);
     if (!$lead || in_array($lead['status'], ['closed_won', 'closed_lost', 'dead'], true)) continue;
     $type = (strpos((string)$r['content'], 'phone call') !== false) ? 'phone' : 'office';
     $ctx = lead_context($pdo, $lead);

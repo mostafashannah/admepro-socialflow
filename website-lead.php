@@ -65,7 +65,7 @@ $email   = $clean($lead['email'] ?? '', 190);
 $phone   = $clean($lead['phone'] ?? '', 40);
 $notes   = $clean($lead['notes'] ?? '', 4000);
 if ($name === '') wl_fail(422, 'Name is required');
-if ($email === '' && $phone === '') wl_fail(422, 'Email or phone is required');
+if (strlen(preg_replace('/\D/', '', $phone)) < 7) wl_fail(422, 'A valid phone number is required');
 if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) wl_fail(422, 'Invalid email');
 if (preg_match_all('#https?://#i', $notes . ' ' . $name . ' ' . $company) > 3) wl_fail(422, 'Too many links');
 $tags = [];
