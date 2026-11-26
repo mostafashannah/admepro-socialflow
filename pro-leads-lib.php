@@ -87,8 +87,8 @@ function runLeadTool(PDO $pdo, array $input, string $senderRole, ?string $sender
 function lead_reassign(PDO $pdo, array $lead, string $to, ?string $senderName, string $senderEmail, ?string $senderId): array {
     $to = trim($to);
     if ($to === '') return ['error' => 'Say who to assign it to.'];
-    $st = $pdo->prepare("SELECT id, name, email, whatsapp_number FROM team_members WHERE status = 'active' AND (name LIKE :n OR email LIKE :n) ORDER BY name LIMIT 8");
-    $st->execute([':n' => '%' . $to . '%']); $c = $st->fetchAll(PDO::FETCH_ASSOC);
+    $st = $pdo->prepare("SELECT id, name, email, whatsapp_number FROM team_members WHERE status = 'active' AND (name LIKE :n1 OR email LIKE :n2) ORDER BY name LIMIT 8");
+    $st->execute([':n1' => '%' . $to . '%', ':n2' => '%' . $to . '%']); $c = $st->fetchAll(PDO::FETCH_ASSOC);
     if (count($c) > 1) { $ex = array_values(array_filter($c, fn($r) => mb_strtolower(trim($r['name'])) === mb_strtolower($to) || mb_strtolower($r['email']) === mb_strtolower($to))); if (count($ex) === 1) $c = $ex; }
     if (!$c) return ['error' => 'No active team member matches "' . $to . '".'];
     if (count($c) > 1) return ['error' => 'More than one team member matches — ask which one.', 'matches' => array_map(fn($r) => $r['name'], $c)];
