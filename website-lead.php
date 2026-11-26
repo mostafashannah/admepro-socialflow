@@ -33,6 +33,34 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') { http_response_code(204);
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Method not allowed']); exit; }
 if (!in_array($origin, $ALLOWED_ORIGINS, true)) { http_response_code(403); echo json_encode(['error' => 'Origin not allowed']); exit; }
 
+/**
+ * Phone check. Accepts "+20 100 037 0140", "0020100...", "0100 037 0140" (Egypt local) or digits with a country code.
+ * Returns [digits-with-country-code, country, error|null]. Gulf countries have exact rules; any other country needs 8-15 digits (E.164).
+ */
+function wl_phone(string $raw): array {
+    $d = preg_replace('/\D/', '', $raw);
+    if ($d === '') return ['', '', 'A valid phone number is required'];
+    if (strpos($d, '00') === 0) $d = substr($d, 2);
+    elseif (preg_match('/^01[0125]\d{8}$/', $d)) $d = '20' . substr($d, 1);          // Egyptian mobile typed locally: 010... -> 2010...
+    elseif ($d[0] === '0') return ['', '', 'Please add the country code (for example +20 for Egypt)'];
+    $rules = [
+        '20'  => ['Egypt',        '/^(1[0125]\d{8}|[2-9]\d{7,8})$/'],      // mobile 10/11/12/15 + 8 digits, or a landline
+        '966' => ['Saudi Arabia', '/^(5\d{8}|1[1-9]\d{7})$/'],             // mobile 5xxxxxxxx, or a landline
+        '971' => ['UAE',          '/^(5[0-9]\d{7}|[2-79]\d{7})$/'],
+        '965' => ['Kuwait',       '/^[2569]\d{7}$/'],
+        '974' => ['Qatar',        '/^[3-7]\d{7}$/'],
+        '973' => ['Bahrain',      '/^[1-9]\d{7}$/'],
+        '968' => ['Oman',         '/^[79]\d{7}$/'],
+    ];
+    foreach ($rules as $cc => [$name, $re]) {
+        if (strpos($d, $cc) === 0) {
+            return preg_match($re, substr($d, strlen($cc))) ? [$d, $name, null] : ['', $name, "That doesn't look like a valid $name number (+$cc …). Please check it."];
+        }
+    }
+    if (strlen($d) < 8 || strlen($d) > 15) return ['', '', 'Please enter the number with its country code, 8 to 15 digits'];
+    return [$d, 'other', null];
+}
+
 function wl_fail(int $code, string $msg): void { http_response_code($code); echo json_encode(['error' => $msg]); exit; }
 
 // ---- rate limit: 5 per IP per 10 min, 60 total per hour (file based, no schema change)
@@ -65,7 +93,9 @@ $email   = $clean($lead['email'] ?? '', 190);
 $phone   = $clean($lead['phone'] ?? '', 40);
 $notes   = $clean($lead['notes'] ?? '', 4000);
 if ($name === '') wl_fail(422, 'Name is required');
-if (strlen(preg_replace('/\D/', '', $phone)) < 7) wl_fail(422, 'A valid phone number is required');
+[$phoneDigits, $phoneCountry, $phoneErr] = wl_phone($phone);
+if ($phoneErr) wl_fail(422, $phoneErr);
+$phone = $phoneDigits;   // stored as digits with the country code, e.g. 201000370140 (same format as the other leads)
 if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) wl_fail(422, 'Invalid email');
 if (preg_match_all('#https?://#i', $notes . ' ' . $name . ' ' . $company) > 3) wl_fail(422, 'Too many links');
 $tags = [];
