@@ -30002,7 +30002,7 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
 
             {/* Notes */}
             {lead.notes&&<div style={{padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-              <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>{lead.notes}</p>
+              <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.6,whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{String(lead.notes).split(/(https?:\/\/[^\s<>"']+)/g).map((part,i)=>/^https?:\/\//.test(part)?<a key={i} href={part.replace(/[.,;:!?)]+$/,"")} target="_blank" rel="noopener noreferrer" style={{color:"var(--accent, #d90b2c)",textDecoration:"underline"}}>{part}</a>:part)}</p>
             </div>}
 
             {/* Status Change */}
@@ -30044,7 +30044,7 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
                 <Ico d={Icons.convert} size={16} stroke="#10b981"/> Convert to Client
               </button>
             )}
-            {lead.converted&&<div style={{padding:10,background:"#10b98111",border:"1px solid #10b98133",borderRadius:"var(--rs)",textAlign:"center",color:"#10b981",fontSize:12,fontWeight:700}}>
+            {!!Number(lead.converted)&&<div style={{padding:10,background:"#10b98111",border:"1px solid #10b98133",borderRadius:"var(--rs)",textAlign:"center",color:"#10b981",fontSize:12,fontWeight:700}}>
                Converted to Client
             </div>}
 
