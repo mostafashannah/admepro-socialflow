@@ -158,6 +158,13 @@ try {
                        ':notes' => ($extra ? $extra . "\n" : '') . $full, ':to' => $assignedTo, ':at' => $assignedAt,
                        ':cid' => $siteClient['client_id'] ?? null, ':cname' => $siteClient['client_name'] ?? null]);
     }
+    // a CLIENT's website: ONLY the recipients set in that client's Lead Notifications (WhatsApp numbers / emails) are told; nothing is sent to the lead
+    if ($siteClient) {
+        try {
+            require_once __DIR__ . '/reply-bot-lib.php';
+            if (function_exists('notifyLeadCategorySubscriber')) notifyLeadCategorySubscriber($pdo, $siteClient['client_id'], 'lead', $name, $phone ?: null, 'website form (' . $siteClient['site'] . ')', trim(($notes !== '' ? $notes . "\n" : '') . ($email ? 'Email: ' . $email . "\n" : '') . ($tags ? 'Tags: ' . implode(', ', $tags) : '')), $siteClient['client_name']);
+        } catch (Throwable $e) { error_log('[website-lead] client notify: ' . $e->getMessage()); }
+    }
     // tell the assigned account manager on WhatsApp (best effort, same wording as other new leads)
     if ($am && !empty($am['id']) && function_exists('sendWhatsAppReply')) {
         try {

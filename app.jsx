@@ -15343,6 +15343,9 @@ function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[]
       return next;
     });
   }, [notifySettings.map(s=>s.category+":"+s.whatsapp_number).join(",")]);
+  const parseEmails = (c) => { const raw = notifySettings.find(s=>s.category===c)?.emails || ""; const list = raw.split(",").map(n=>n.trim()).filter(Boolean); return list.length ? list : [""]; };
+  const [emails, setEmails] = useState(()=>{ const m = {}; LEAD_CATEGORIES.forEach(c=>{ m[c] = parseEmails(c); }); return m; });
+  useEffect(()=>{ setEmails(m=>{ const next = {...m}; LEAD_CATEGORIES.forEach(c=>{ next[c] = parseEmails(c); }); return next; }); }, [notifySettings.map(s=>s.category+":"+(s.emails||"")).join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
   const filtered = catF==="all" ? clientLeads : clientLeads.filter(l=>l.category===catF);
   const sorted = [...filtered].sort((a,b)=>new Date(b.created_date||b.created_at)-new Date(a.created_date||a.created_at));
 
@@ -15357,7 +15360,9 @@ function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[]
 
   const handleSaveNotifyNumber = async (category) => {
     const list = (numbers[category]||[]).map(n=>n.trim()).filter(Boolean);
-    onSaveNotifySetting && onSaveNotifySetting(clientId, category, list.join(","));
+    const elist = (emails[category]||[]).map(n=>n.trim()).filter(Boolean);
+    if (elist.some(e=>!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e))) { alert("Please check the email address(es) - one of them is not valid."); return; }
+    onSaveNotifySetting && onSaveNotifySetting(clientId, category, list.join(","), elist.join(","));
     if (!list.length) return;
     setSavingCat(category);
     try {
@@ -15380,20 +15385,20 @@ function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[]
         </button>
       </div>
       {canEditSettings&&(()=>{
-        const totalNumbers = LEAD_CATEGORIES.reduce((sum,c)=>sum+(numbers[c]||[]).filter(n=>n.trim()).length,0);
+        const totalNumbers = LEAD_CATEGORIES.reduce((sum,c)=>sum+(numbers[c]||[]).filter(n=>n.trim()).length+(emails[c]||[]).filter(n=>n.trim()).length,0);
         return (
         <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
           <div onClick={()=>setSettingsOpen(o=>!o)} style={{padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",background:"var(--surface2)"}}>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <Ico d={Icons.robot||Icons.chat} size={15} stroke="#6366f1"/>
               <p style={{fontWeight:700,fontSize:13}}>Lead Notifications</p>
-              <Badge label={totalNumbers?`${totalNumbers} number${totalNumbers>1?"s":""}`:"Off"} color={totalNumbers?"#10b981":"#6b7280"} xs/>
+              <Badge label={totalNumbers?`${totalNumbers} recipient${totalNumbers>1?"s":""}`:"Off"} color={totalNumbers?"#10b981":"#6b7280"} xs/>
             </div>
             <Ico d={Icons.chevD} size={14} stroke="var(--text3)" style={{transform:settingsOpen?"rotate(180deg)":"none",transition:"transform 0.2s"}}/>
           </div>
           {settingsOpen&&(
           <div style={{padding:16,display:"flex",flexDirection:"column",gap:10,borderTop:"1px solid var(--border)"}}>
-          <p style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>Notify by WhatsApp when a new contact is captured</p>
+          <p style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>Notify when a new contact is captured: by WhatsApp and/or email</p>
           {LEAD_CATEGORIES.map(c=>(
             <div key={c} style={{display:"flex",flexDirection:"column",gap:6}}>
               <span style={{fontSize:12,fontWeight:600,color:"var(--text2)"}}>{LEAD_CATEGORY_LABELS[c]}</span>
@@ -15409,7 +15414,23 @@ function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[]
                   )}
                 </div>
               ))}
-              <div style={{display:"flex",gap:8}}>
+              {(emails[c]||[""]).map((em,i)=>(
+                <div key={"e"+i} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                  <input type="email" value={em} onChange={e=>setEmails(n=>({...n,[c]:(n[c]||[""]).map((v,vi)=>vi===i?e.target.value:v)}))}
+                    placeholder="email address" style={{flex:1,minWidth:180,padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontSize:13}}/>
+                  {(emails[c]||[]).length>1&&(
+                    <button onClick={()=>setEmails(n=>({...n,[c]:n[c].filter((_,vi)=>vi!==i)}))}
+                      style={{padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text3)",fontSize:12,cursor:"pointer"}}>
+                      Remove
+                    </button>
+                  )}
+                </div>
+              ))}
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <button onClick={()=>setEmails(n=>({...n,[c]:[...(n[c]||[""]),""]}))}
+                  style={{padding:"6px 12px",borderRadius:8,border:"1px dashed var(--border2)",background:"transparent",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                  + Add email
+                </button>
                 <button onClick={()=>setNumbers(n=>({...n,[c]:[...(n[c]||[]),""]}))}
                   style={{padding:"6px 12px",borderRadius:8,border:"1px dashed var(--border2)",background:"transparent",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>
                   + Add number
@@ -55648,16 +55669,20 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
 
   // Create or update the WhatsApp number that gets notified when the Leads tab
   // captures a new contact in a given category (lead/service_provider/hiring).
-  const saveLeadNotifySetting = async (clientId, category, whatsapp_number) => {
+  const saveLeadNotifySetting = async (clientId, category, whatsapp_number, emails) => {
     const existing = (data.leadNotifySettings||[]).find(s=>s.client_id===clientId && s.category===category);
+    const hasEmails = emails !== undefined;
+    // emails are saved in a SEPARATE update: if the database does not have the 'emails' column yet, the WhatsApp numbers still save.
+    const noCol = "Emails could not be saved: the database needs the 'emails' column (run the migration).";
     if(existing) {
-      setData(d=>({...d, leadNotifySettings:d.leadNotifySettings.map(s=>s.id===existing.id?{...s,whatsapp_number}:s)}));
+      setData(d=>({...d, leadNotifySettings:d.leadNotifySettings.map(s=>s.id===existing.id?{...s,whatsapp_number,...(hasEmails?{emails}:{})}:s)}));
       ue("LeadNotifySetting", existing.id, {whatsapp_number}).catch(()=>{});
+      if(hasEmails) ue("LeadNotifySetting", existing.id, {emails}).catch(()=>{ setToast(noCol); });
     } else {
-      const local = {id:uid(), client_id:clientId, category, whatsapp_number};
+      const local = {id:uid(), client_id:clientId, category, whatsapp_number, ...(hasEmails?{emails}:{})};
       setData(d=>({...d, leadNotifySettings:[local,...(d.leadNotifySettings||[])]}));
       ce("LeadNotifySetting",[{client_id:clientId, category, whatsapp_number}])
-        .then(r=>{ const real=r.entities?.[0]; if(real?.id) setData(d=>({...d,leadNotifySettings:d.leadNotifySettings.map(s=>s.id===local.id?{...s,...real}:s)})); })
+        .then(r=>{ const real=r.entities?.[0]; if(real?.id) { setData(d=>({...d,leadNotifySettings:d.leadNotifySettings.map(s=>s.id===local.id?{...s,...real,...(hasEmails?{emails}:{})}:s)})); if(hasEmails) ue("LeadNotifySetting", real.id, {emails}).catch(()=>{ setToast(noCol); }); } })
         .catch(()=>{});
     }
   };

@@ -592,11 +592,31 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
 // since that caused admins to get notified of every client's every category
 // regardless of what they'd actually configured.
 function notifyLeadCategorySubscriber(PDO $pdo, string $clientId, string $category, string $leadName, ?string $phone, string $channel, string $brief, ?string $clientName = null) {
-    if (!function_exists('sendWhatsAppReply')) return;
-    $stmt = $pdo->prepare("SELECT whatsapp_number FROM lead_notify_settings WHERE client_id = :cid AND category = :cat LIMIT 1");
-    $stmt->execute([':cid' => $clientId, ':cat' => $category]);
-    $raw = $stmt->fetchColumn();
-    if (!$raw) return;
+    $raw = ''; $emailsRaw = '';
+    try {
+        $stmt = $pdo->prepare("SELECT whatsapp_number, emails FROM lead_notify_settings WHERE client_id = :cid AND category = :cat LIMIT 1");
+        $stmt->execute([':cid' => $clientId, ':cat' => $category]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: []; $raw = (string)($row['whatsapp_number'] ?? ''); $emailsRaw = (string)($row['emails'] ?? '');
+    } catch (\Throwable $e) {   // the 'emails' column is not there yet: WhatsApp keeps working as before
+        $stmt = $pdo->prepare("SELECT whatsapp_number FROM lead_notify_settings WHERE client_id = :cid AND category = :cat LIMIT 1");
+        $stmt->execute([':cid' => $clientId, ':cat' => $category]);
+        $raw = (string)$stmt->fetchColumn();
+    }
+    if (!$raw && !$emailsRaw) return;
+    // email recipients get the same details as the WhatsApp message
+    if ($emailsRaw !== '' && !function_exists('authSendMail') && is_file(__DIR__ . '/auth-lib.php')) { try { require_once __DIR__ . '/auth-lib.php'; } catch (\Throwable $e) {} }
+    if ($emailsRaw !== '' && function_exists('authSendMail')) {
+        $catLabel = ['lead' => 'Lead', 'service_provider' => 'Service Provider', 'hiring' => 'Hiring'][$category] ?? ucfirst($category);
+        $snip = mb_strlen($brief) > 800 ? mb_substr($brief, 0, 800) . '…' : $brief;
+        $h = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
+        $html = '<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#111"><h3 style="margin:0 0 8px">New ' . $h($catLabel) . ' captured' . ($clientName ? ' for ' . $h($clientName) : '') . '</h3>'
+              . '<p><b>Name:</b> ' . $h($leadName) . '<br><b>Source:</b> ' . $h($channel) . ($phone ? '<br><b>Phone:</b> ' . $h($phone) : '') . '</p>'
+              . '<p><b>Details:</b><br>' . nl2br($h($snip)) . '</p><p style="color:#666">Captured by SocialFlow. No message was sent to this contact.</p></div>';
+        foreach (array_filter(array_map('trim', explode(',', $emailsRaw))) as $to) {
+            if (filter_var($to, FILTER_VALIDATE_EMAIL)) { try { authSendMail($to, 'New ' . $catLabel . ' captured' . ($clientName ? ' - ' . $clientName : ''), $html, 'SocialFlow'); } catch (\Throwable $e) {} }
+        }
+    }
+    if (!$raw || !function_exists('sendWhatsAppReply')) return;
     // Multiple numbers for the same client+category are stored comma-separated
     // in the one row (e.g. "201001234567,201009876543").
     $numbers = array_filter(array_map('trim', explode(',', $raw)));
