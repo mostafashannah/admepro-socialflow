@@ -240,6 +240,11 @@ function identifySender(PDO $pdo, string $digits) {
             $lq = $pdo->prepare("SELECT name, phone, source, status, followup_date FROM leads WHERE assigned_to = :e AND status NOT IN ('closed_won','closed_lost','dead') ORDER BY created_at DESC LIMIT 15");
             $lq->execute([':e' => $m['email']]); $lr = $lq->fetchAll(PDO::FETCH_ASSOC);
             if ($lr) $leadsBlock = "\n\nTheir open LEADS (assigned to them; newest first):\n" . implode("\n", array_map(fn($r) => "- {$r['name']} — {$r['phone']} (source: {$r['source']}, status: {$r['status']}" . ($r['followup_date'] ? ", follow-up {$r['followup_date']}" : '') . ')', $lr));
+            if (($m['role'] ?? '') === 'admin') {
+                $rq = $pdo->query("SELECT name, phone, source, status, assigned_to FROM leads WHERE status NOT IN ('closed_won','closed_lost','dead') AND created_at >= (NOW() - INTERVAL 3 DAY) ORDER BY created_at DESC LIMIT 10");
+                $rr = $rq->fetchAll(PDO::FETCH_ASSOC);
+                if ($rr) $leadsBlock .= "\n\nRECENT LEADS in the last 3 days, any owner (newest first):\n" . implode("\n", array_map(fn($r) => "- {$r['name']} — {$r['phone']} (source: {$r['source']}, status: {$r['status']}, owner: " . ($r['assigned_to'] ?: 'unassigned') . ')', $rr));
+            }
         } catch (Throwable $e) { /* leads are optional context */ }
         return [$m['name'], 'team:' . $m['role'], "Their open assigned posts:\n$list" . $approvalsBlock . $leadsBlock, $m['id']];
     }
@@ -2513,6 +2518,7 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
             $system .= "\n\nLEADS: every \"New lead assigned to you: NAME — PHONE. Source: X.\" message is a lead assigned to the sender (their open leads are listed in your context). When they reply about it, or mention a lead by name, "
                      . "saying what happened (\"called Mona, no answer\", \"she will look at the website, remind me tomorrow 8pm\", \"not interested\", \"asked me to call later\"), they are reporting the outcome on THAT LEAD: it is NEVER a client contact report, so do NOT ask which client and do NOT offer a contact report. "
                      . "Call update_lead right away (lead = name or phone, action, followup_date if they gave a day, remind_at if they asked to be reminded, note = their own words short). Only ask a question if two leads match. "
+                     . "To HAND a lead to someone else (\"assign to Menna\", \"give it to Mona\", \"reassign Ahmed to Suha\") call update_lead with action=reassign and assign_to = that person; this is about a LEAD, not a task. If they did not name the lead (they are replying to a \"New contact captured by SocialFlow\" alert) pass lead=\"latest\"; only if the tool says several match, ask which one. Confirm the lead name, the new owner and whether they were notified. "
                      . "A time like \"4pm\" or \"tomorrow at 8\" is a clock time, not minutes. After the tool returns, confirm in one or two lines exactly what was changed (status, follow-up date, reminder, whether the lead was messaged); never say something was set unless the tool returned ok.";
         }
         if ($canRecruit && !$isAdmin) {
