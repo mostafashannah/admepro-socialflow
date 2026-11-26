@@ -30414,7 +30414,9 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const isRealLead = l => {
     const cat = String(l.category||"lead").toLowerCase();
     if(cat && cat!=="lead") return false;
-    if(String(l.phone||"").replace(/\D/g,"").length<7) return false;   // every lead needs a phone number
+    // A website form lead may have an email only (the phone field is optional there): it is a real enquiry, keep it.
+    if(String(l.source||"").toLowerCase()==="website" && /.+@.+\..+/.test(String(l.email||""))) return true;
+    if(String(l.phone||"").replace(/\D/g,"").length<7) return false;   // every other lead needs a phone number
     return true;
   };
   const [showHiddenLeads,setShowHiddenLeads] = useState(false);
