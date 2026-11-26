@@ -157,6 +157,24 @@ try {
             ->execute([':a' => 'New website lead (' . ($form ?: 'form') . ')', ':d' => "{$name} <{$email}> {$phone} page={$page}"]);
     } catch (Throwable $e) { /* best effort */ }
     echo json_encode(['ok' => true]);
+
+    // ---- first WhatsApp message (approved template), AFTER the visitor already got their answer so the form never waits for Meta.
+    // Opens the 24 h window so the card shortcuts can use WhatsApp for replies; if the template is not approved / the number is not on
+    // WhatsApp this only leaves a line in the lead's Activity — nothing else is affected.
+    if (function_exists('fastcgi_finish_request')) { @fastcgi_finish_request(); } else { @ob_end_flush(); @flush(); }
+    try {
+        if ($phone !== '' && !(defined('WEBSITE_WELCOME_TEMPLATE') && WEBSITE_WELCOME_TEMPLATE === '')) {
+            require_once __DIR__ . '/growth-lib.php';
+            $tpl = defined('WEBSITE_WELCOME_TEMPLATE') ? (string)WEBSITE_WELCOME_TEMPLATE : 'lead_welcome';
+            $first = trim(explode(' ', $name)[0] ?? '') ?: 'there';
+            [$okT, , $errT] = gSendWaTemplate($phone, $tpl, 'en_US', [$first]);
+            $q = $pdo->prepare("SELECT id FROM leads WHERE notes LIKE :t ORDER BY created_at DESC LIMIT 1"); $q->execute([':t' => '%' . $srcTag . '%']); $newId = $q->fetchColumn();
+            if ($newId) {
+                $pdo->prepare("INSERT INTO lead_activities (id, lead_id, type, content, author_name) VALUES (UUID(), :l, 'note', :c, 'System')")
+                    ->execute([':l' => $newId, ':c' => $okT ? "Welcome WhatsApp sent (template {$tpl})." : ('Welcome WhatsApp NOT sent: ' . mb_substr((string)$errT, 0, 300))]);
+            }
+        }
+    } catch (Throwable $e) { error_log('[website-lead] welcome whatsapp: ' . $e->getMessage()); }
 } catch (Throwable $e) {
     error_log('[website-lead] EXCEPTION: ' . $e->getMessage());
     wl_fail(500, 'Could not save, please email us instead');
