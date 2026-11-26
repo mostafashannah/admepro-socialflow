@@ -34,14 +34,14 @@ function runLeadTool(PDO $pdo, array $input, string $senderRole, ?string $sender
     $isAdmin = $senderRole === 'team:admin';
     if ($action === 'reassign' && ($q === '' || in_array(mb_strtolower($q), ['latest', 'last', 'this', 'it', 'the lead'], true))) {
         // the sender replied to a "contact captured" alert without naming the lead: use the newest open lead (last 12 h), only if it is unambiguous
-        $rs = $pdo->prepare("SELECT id, name, phone, email, status, assigned_to, client_id, notes, followup_date FROM leads WHERE status NOT IN ('closed_won','closed_lost','dead') AND created_at >= (NOW() - INTERVAL 12 HOUR)" . ($isAdmin ? "" : " AND assigned_to = :me") . " ORDER BY created_at DESC LIMIT 6");
+        $rs = $pdo->prepare("SELECT id, name, phone, email, status, assigned_to, client_id, notes, followup_date FROM leads WHERE status NOT IN ('closed_won','closed_lost','dead') AND (((client_name IS NULL OR client_name = '') AND (client_id IS NULL OR client_id = '')) OR LOWER(TRIM(client_name)) = 'admepro') AND created_at >= (NOW() - INTERVAL 12 HOUR)" . ($isAdmin ? "" : " AND assigned_to = :me") . " ORDER BY created_at DESC LIMIT 6");
         $rs->execute($isAdmin ? [] : [':me' => $email]); $recent = $rs->fetchAll(PDO::FETCH_ASSOC);
         if (!$recent) return ['error' => 'No new lead in the last 12 hours — ask for the lead\'s name or phone.'];
         if (count($recent) > 1) return ['error' => 'More than one recent lead — ask which one.', 'matches' => array_map(fn($h) => ['name' => $h['name'], 'phone' => $h['phone'], 'assigned_to' => $h['assigned_to']], $recent)];
         return lead_reassign($pdo, $recent[0], (string)($input['assign_to'] ?? ''), $senderName, $email, $senderId);
     }
     $digits = preg_replace('/\D/', '', $q); $nameLike = '%' . $q . '%';
-    $sql = "SELECT id, name, phone, email, status, assigned_to, client_id, notes, followup_date FROM leads WHERE status NOT IN ('closed_won','closed_lost','dead') AND (name LIKE :n" . (strlen($digits) >= 6 ? " OR REPLACE(REPLACE(phone,' ',''),'+','') LIKE :p" : "") . ")" . ($isAdmin ? "" : " AND assigned_to = :me") . " ORDER BY created_at DESC LIMIT 6";
+    $sql = "SELECT id, name, phone, email, status, assigned_to, client_id, notes, followup_date FROM leads WHERE status NOT IN ('closed_won','closed_lost','dead') AND (((client_name IS NULL OR client_name = '') AND (client_id IS NULL OR client_id = '')) OR LOWER(TRIM(client_name)) = 'admepro') AND (name LIKE :n" . (strlen($digits) >= 6 ? " OR REPLACE(REPLACE(phone,' ',''),'+','') LIKE :p" : "") . ")" . ($isAdmin ? "" : " AND assigned_to = :me") . " ORDER BY created_at DESC LIMIT 6";
     $st = $pdo->prepare($sql); $bind = [':n' => $nameLike]; if (strlen($digits) >= 6) $bind[':p'] = '%' . substr($digits, -9) . '%'; if (!$isAdmin) $bind[':me'] = $email;
     $st->execute($bind); $hits = $st->fetchAll(PDO::FETCH_ASSOC);
     if (count($hits) > 1) { $exact = array_values(array_filter($hits, fn($h) => mb_strtolower(trim($h['name'])) === mb_strtolower($q))); if (count($exact) === 1) $hits = $exact; }

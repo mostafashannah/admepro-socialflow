@@ -152,7 +152,7 @@ function seoGather(PDO $pdo, array $cfg) {
         $ctx['sources'] = $q("SELECT COALESCE(utm_source, ref_host, 'Direct'), COUNT(DISTINCT visitor) FROM site_events WHERE event='pageview' AND day >= DATE_SUB(CURDATE(), INTERVAL 28 DAY) GROUP BY 1 ORDER BY 2 DESC LIMIT 10");
         $ctx['visitor_countries'] = $q("SELECT COALESCE(country,'??'), COUNT(DISTINCT visitor) FROM site_events WHERE event='pageview' AND day >= DATE_SUB(CURDATE(), INTERVAL 28 DAY) GROUP BY 1 ORDER BY 2 DESC LIMIT 10");
         $ctx['contact_clicks'] = (int)$pdo->query("SELECT COUNT(*) FROM site_events WHERE event='click' AND day >= DATE_SUB(CURDATE(), INTERVAL 28 DAY)")->fetchColumn();
-        $ctx['website_leads'] = (int)$pdo->query("SELECT COUNT(*) FROM leads WHERE source='website' AND created_at >= DATE_SUB(NOW(), INTERVAL 28 DAY)")->fetchColumn();
+        $ctx['website_leads'] = (int)$pdo->query("SELECT COUNT(*) FROM leads WHERE source='website' AND (((client_name IS NULL OR client_name = '') AND (client_id IS NULL OR client_id = '')) OR LOWER(TRIM(client_name)) = 'admepro') AND created_at >= DATE_SUB(NOW(), INTERVAL 28 DAY)")->fetchColumn();
     } catch (Throwable $e) { $ctx['visitor_data'] = 'unavailable'; }
     // website content
     $files = seoListContent();

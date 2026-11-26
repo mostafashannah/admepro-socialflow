@@ -132,7 +132,7 @@ if (!empty($_FILES['brief']['tmp_name']) && is_uploaded_file($_FILES['brief']['t
 
 // ---- store
 $srcTag = 'src_id:website:' . bin2hex(random_bytes(6));
-$full = $notes . "\n\n— Website form: " . ($form ?: 'n/a') . ($page ? "\nPage: $page" : '') . ($ref ? "\nReferrer: $ref" : '')
+$full = $notes . "\n\n— Website form: " . ($form ?: 'n/a') . ($siteClient ? "\nSite: " . $siteClient['site'] : '') . ($page ? "\nPage: $page" : '') . ($ref ? "\nReferrer: $ref" : '')
       . ($utm ? "\nUTM: " . json_encode($utm, JSON_UNESCAPED_SLASHES) : '') . ($briefUrl ? "\nBrief file: $briefUrl" : '') . "\n\n$srcTag";
 try {
     $pdo = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4', DB_USER, DB_PASS,
@@ -152,17 +152,11 @@ try {
         // older table without company/email/tags columns: keep those details inside the notes instead of losing the lead
         error_log('[website-lead] full insert failed, retrying minimal: ' . $e->getMessage());
         $extra = trim(($company ? "Company: $company\n" : '') . ($email ? "Email: $email\n" : '') . ($tags ? 'Tags: ' . implode(', ', $tags) . "\n" : '') . ($siteClient ? "Captured on {$siteClient['client_name']}'s account\n" : ''));
-        $pdo->prepare("INSERT INTO leads (name, phone, source, status, platforms, notes, category, assigned_to, assigned_at)
-                       VALUES (:name, :phone, 'website', 'new', :platforms, :notes, 'lead', :to, :at)")
+        $pdo->prepare("INSERT INTO leads (name, phone, source, status, platforms, notes, category, assigned_to, assigned_at, client_id, client_name)
+                       VALUES (:name, :phone, 'website', 'new', :platforms, :notes, 'lead', :to, :at, :cid, :cname)")
             ->execute([':name' => $name, ':phone' => $phone ?: null, ':platforms' => json_encode(['website']),
-                       ':notes' => ($extra ? $extra . "\n" : '') . $full, ':to' => $assignedTo, ':at' => $assignedAt]);
-    }
-    // a CLIENT's website: tell whoever is set in that client's Leads notification settings (best effort); no rotation, no admepro welcome
-    if ($siteClient) {
-        try {
-            require_once __DIR__ . '/reply-bot-lib.php';
-            if (function_exists('notifyLeadCategorySubscriber')) notifyLeadCategorySubscriber($pdo, $siteClient['client_id'], 'lead', $name, $phone ?: null, 'website form (' . $siteClient['site'] . ')', trim($notes) !== '' ? $notes : ('Form: ' . ($form ?: 'n/a') . ' · ' . ($email ?: '')), $siteClient['client_name']);
-        } catch (Throwable $e) { error_log('[website-lead] client notify: ' . $e->getMessage()); }
+                       ':notes' => ($extra ? $extra . "\n" : '') . $full, ':to' => $assignedTo, ':at' => $assignedAt,
+                       ':cid' => $siteClient['client_id'] ?? null, ':cname' => $siteClient['client_name'] ?? null]);
     }
     // tell the assigned account manager on WhatsApp (best effort, same wording as other new leads)
     if ($am && !empty($am['id']) && function_exists('sendWhatsAppReply')) {
@@ -173,7 +167,7 @@ try {
     }
     try {
         $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), :a, 'leads', :d, 'success', 'website')")
-            ->execute([':a' => 'New website lead (' . ($form ?: 'form') . ')', ':d' => "{$name} <{$email}> {$phone} page={$page}"]);
+            ->execute([':a' => 'New website lead (' . ($form ?: 'form') . ')', ':d' => ($siteClient ? "[{$siteClient['client_name']}] " : '') . "{$name} <{$email}> {$phone} page={$page}"]);
     } catch (Throwable $e) { /* best effort */ }
     echo json_encode(['ok' => true]);
 

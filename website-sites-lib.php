@@ -16,11 +16,17 @@ function ws_host(string $u): string {
 function ws_client_for_origin(PDO $pdo, string $origin): ?array {
     $oh = ws_host($origin); if ($oh === '') return null;
     $rows = $pdo->query("SELECT client_id, client_name, credentials FROM integrations WHERE app_key = 'website' AND status = 'active' AND client_id IS NOT NULL")->fetchAll(PDO::FETCH_ASSOC);
+    $found = [];
     foreach ($rows as $r) {
         $c = json_decode((string)$r['credentials'], true) ?: [];
         $hosts = [ws_host((string)($c['site_url'] ?? ''))];
         foreach (preg_split('/[\s,;]+/', (string)($c['site_domains'] ?? '')) as $d) $hosts[] = ws_host($d);
-        if (in_array($oh, array_filter($hosts), true)) return ['client_id' => $r['client_id'], 'client_name' => (string)$r['client_name'], 'site' => $oh];
+        if (in_array($oh, array_filter($hosts), true)) $found[$r['client_id']] = ['client_id' => $r['client_id'], 'client_name' => (string)$r['client_name'], 'site' => $oh];
     }
-    return null;
+    // The same domain registered for two clients would mix their leads: refuse it (nothing is saved) and say so in the Activity Log.
+    if (count($found) > 1) {
+        try { $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), 'Website domain registered for two clients', 'leads', :d, 'error', 'system')")->execute([':d' => $oh . ' → ' . implode(' / ', array_column($found, 'client_name'))]); } catch (Throwable $e) {}
+        return null;
+    }
+    return $found ? array_values($found)[0] : null;
 }

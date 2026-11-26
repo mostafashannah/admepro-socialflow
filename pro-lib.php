@@ -241,7 +241,7 @@ function identifySender(PDO $pdo, string $digits) {
             $lq->execute([':e' => $m['email']]); $lr = $lq->fetchAll(PDO::FETCH_ASSOC);
             if ($lr) $leadsBlock = "\n\nTheir open LEADS (assigned to them; newest first):\n" . implode("\n", array_map(fn($r) => "- {$r['name']} — {$r['phone']} (source: {$r['source']}, status: {$r['status']}" . ($r['followup_date'] ? ", follow-up {$r['followup_date']}" : '') . ')', $lr));
             if (($m['role'] ?? '') === 'admin') {
-                $rq = $pdo->query("SELECT name, phone, source, status, assigned_to FROM leads WHERE status NOT IN ('closed_won','closed_lost','dead') AND created_at >= (NOW() - INTERVAL 3 DAY) ORDER BY created_at DESC LIMIT 10");
+                $rq = $pdo->query("SELECT name, phone, source, status, assigned_to FROM leads WHERE status NOT IN ('closed_won','closed_lost','dead') AND (((client_name IS NULL OR client_name = '') AND (client_id IS NULL OR client_id = '')) OR LOWER(TRIM(client_name)) = 'admepro') AND created_at >= (NOW() - INTERVAL 3 DAY) ORDER BY created_at DESC LIMIT 10");
                 $rr = $rq->fetchAll(PDO::FETCH_ASSOC);
                 if ($rr) $leadsBlock .= "\n\nRECENT LEADS in the last 3 days, any owner (newest first):\n" . implode("\n", array_map(fn($r) => "- {$r['name']} — {$r['phone']} (source: {$r['source']}, status: {$r['status']}, owner: " . ($r['assigned_to'] ?: 'unassigned') . ')', $rr));
             }

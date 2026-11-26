@@ -21,8 +21,10 @@ $leadId = preg_replace('/[^A-Za-z0-9-]/', '', (string)($in['lead_id'] ?? '')); $
 if ($leadId === '' || !in_array($action, ['no_answer', 'call_later', 'not_qualified', 'reply', 'brief', 'meeting'], true)) { http_response_code(400); echo json_encode(['error' => 'lead_id and a valid action are required']); exit; }
 
 $pdo = authPdo();
-$st = $pdo->prepare("SELECT id, name, phone, email, client_id, notes FROM leads WHERE id = :id LIMIT 1"); $st->execute([':id' => $leadId]); $lead = $st->fetch(PDO::FETCH_ASSOC);
+$st = $pdo->prepare("SELECT id, name, phone, email, client_id, client_name, notes FROM leads WHERE id = :id LIMIT 1"); $st->execute([':id' => $leadId]); $lead = $st->fetch(PDO::FETCH_ASSOC);
 if (!$lead) { http_response_code(404); echo json_encode(['error' => 'Lead not found']); exit; }
+// A client's lead (not admepro's own) is only recorded: no message, brief or meeting is ever sent from here.
+if ((trim((string)($lead['client_name'] ?? '')) !== '' && strtolower(trim((string)$lead['client_name'])) !== 'admepro') || (trim((string)($lead['client_name'] ?? '')) === '' && trim((string)($lead['client_id'] ?? '')) !== '')) { http_response_code(403); echo json_encode(['error' => "This lead belongs to a client, so no action can be taken on it from here."]); exit; }
 $c = lead_context($pdo, $lead);
 $ar = $c['ar']; $first = $c['first']; $nm = $first !== '' ? ' ' . $first : '';
 $when = null; $extra = [];

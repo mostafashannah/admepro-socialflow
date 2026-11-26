@@ -65,8 +65,8 @@ if ($action === 'stats') {
     $livePages = $q("SELECT path, COUNT(DISTINCT visitor) AS v FROM site_events WHERE event='pageview' AND ts >= ? GROUP BY path ORDER BY v DESC LIMIT 5", [(new DateTime('now', $tz))->modify('-5 minutes')->format('Y-m-d H:i:s')]);
     $leads = []; $leadCount = 0;
     try {
-        $leads = $q("SELECT id, name, company, phone, email, status, notes, created_at, assigned_to FROM leads WHERE source = 'website' ORDER BY created_at DESC LIMIT 100");
-        $leadCount = (int)$one("SELECT COUNT(*) FROM leads WHERE source = 'website' AND DATE(created_at) BETWEEN ? AND ?", [$F, $T]);
+        $leads = $q("SELECT id, name, company, phone, email, status, notes, created_at, assigned_to FROM leads WHERE source = 'website' AND (((client_name IS NULL OR client_name = '') AND (client_id IS NULL OR client_id = '')) OR LOWER(TRIM(client_name)) = 'admepro') ORDER BY created_at DESC LIMIT 100");
+        $leadCount = (int)$one("SELECT COUNT(*) FROM leads WHERE source = 'website' AND (((client_name IS NULL OR client_name = '') AND (client_id IS NULL OR client_id = '')) OR LOWER(TRIM(client_name)) = 'admepro') AND DATE(created_at) BETWEEN ? AND ?", [$F, $T]);
     } catch (Throwable $e) {}
     // A WhatsApp tap on the site counts as a lead too: one per visitor per day (repeat taps by the same person aren't double counted).
     $waLeads = (int)$one("SELECT COUNT(*) FROM (SELECT DISTINCT visitor, day FROM site_events WHERE event='click' AND (title LIKE '%wa.me%' OR title LIKE '%whatsapp%') AND $range) x", [$F, $T]);

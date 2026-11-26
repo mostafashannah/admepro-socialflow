@@ -252,7 +252,7 @@ if ($mode === 'digest') {
         $prevDay = date('Y-m-d', strtotime($today . ' -1 day')); $wk = date('Y-m-d', strtotime($today . ' -6 days'));
         try { $pdo2 = null; $rowsOf("SELECT 1 FROM site_events LIMIT 1"); } catch (Throwable $e) { $websiteCache = false; return null; }
         $vis = fn($f, $t) => (int)$one("SELECT COUNT(DISTINCT visitor) FROM site_events WHERE event='pageview' AND day BETWEEN :f AND :t", [':f'=>$f, ':t'=>$t]);
-        $leads = fn($f, $t) => (int)$one("SELECT COUNT(*) FROM leads WHERE source='website' AND DATE(created_at) BETWEEN :f AND :t", [':f'=>$f, ':t'=>$t]);
+        $leads = fn($f, $t) => (int)$one("SELECT COUNT(*) FROM leads WHERE source='website' AND (((client_name IS NULL OR client_name = '') AND (client_id IS NULL OR client_id = '')) OR LOWER(TRIM(client_name)) = 'admepro') AND DATE(created_at) BETWEEN :f AND :t", [':f'=>$f, ':t'=>$t]);
         $src = $rowsOf("SELECT COALESCE(utm_source, ref_host, 'Direct') AS s FROM site_events WHERE event='pageview' AND day = :d GROUP BY s ORDER BY COUNT(DISTINCT visitor) DESC LIMIT 1", [':d'=>$today]);
         $pg = $rowsOf("SELECT path FROM site_events WHERE event='pageview' AND day = :d GROUP BY path ORDER BY COUNT(*) DESC LIMIT 1", [':d'=>$today]);
         return $websiteCache = [

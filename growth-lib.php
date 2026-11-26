@@ -414,7 +414,7 @@ function gClassifyUntaggedIndustries(PDO $pdo, $limit = 40) {
 function gSyncLeadsAndClients(PDO $pdo, &$tagged = null) {
     $n = 0;
     try {
-        foreach ($pdo->query("SELECT * FROM leads WHERE ((email IS NOT NULL AND email<>'') OR (phone IS NOT NULL AND phone<>'')) AND (category IS NULL OR category IN ('', 'lead', 'no_contact')) LIMIT 20000") as $r) {
+        foreach ($pdo->query("SELECT * FROM leads WHERE ((email IS NOT NULL AND email<>'') OR (phone IS NOT NULL AND phone<>'')) AND (category IS NULL OR category IN ('', 'lead', 'no_contact')) AND (((client_name IS NULL OR client_name = '') AND (client_id IS NULL OR client_id = '')) OR LOWER(TRIM(client_name)) = 'admepro') LIMIT 20000") as $r) {
             $ind = gIndustryTag(($r['industry'] ?? '') ?: ($r['company'] ?? '') . ' ' . ($r['name'] ?? ''));
             if (gUpsertContact($pdo, ['email' => $r['email'], 'phone' => $r['phone'], 'name' => $r['name'], 'company' => $r['company'] ?? null, 'source' => 'lead', 'tags' => trim('lead,' . $ind, ','), 'lead_id' => (string)$r['id'], 'consent' => 'lead', 'consent_note' => 'From leads'])) $n++;
         }
